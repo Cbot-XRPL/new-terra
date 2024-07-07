@@ -29,6 +29,9 @@
   height: 8rem;
 }
 
+.nav-logo:hover{
+  opacity: 0.7;
+}
 
 .title {
   font-weight: 600;
@@ -40,16 +43,20 @@
 
 
 .button {
-  background-color: #8be03c;
+  background-color: #f1b205;
+  color:#000000;
   font-size: 1rem;
-  font-weight: 400;
-  color: rgb(0, 0, 0);
+  font-weight: 600;
   padding: 10px 20px;
-  border-radius: 10px;
+  border-radius: 8px;
   outline: none;
   border: none;
   cursor: pointer;
 
+}
+
+.button.section{
+  margin:1rem;
 }
 
 
@@ -102,7 +109,6 @@
 
 .main {
   overflow: hidden;
-  background-color: #8be03c;
   display: flex;
   flex-wrap: wrap;
   flex-direction: row;
@@ -139,7 +145,7 @@
 }
 
 .flex-item3 {
-  background-color: #8be03c;
+  background-color:#3E5875;
   width: 100%;
   display: flex;
   justify-content: center;
@@ -242,6 +248,10 @@
   max-height: 30px;
 }
 
+.image2:hover{
+    opacity: 0.7;
+}
+
 
 .text {
   color: grey;
@@ -280,9 +290,8 @@
 }
 
 .tag {
-  color: #5e9e22;
-  ;
-  background-color: #c2e0a7;
+  color: #ffffff;
+  background-color:  #8999aa;
   opacity: 100%;
   margin: 10px;
   padding: 10px 20px;
@@ -312,7 +321,7 @@
 
 .fa-twitter {
   border-radius: 6px;
-  background: #8be03c;
+  background: #3E5875;
   color: white;
 }
 
