@@ -16,7 +16,8 @@ let logoButton = () => {
   }
 
 let menuButton = () => {
-location.assign(`${local}/index.html#1`)
+const element = document.getElementById('0')
+element.classList.contains("nav-moblie") ? element.classList.remove("nav-moblie") : element.classList.add("nav-moblie");
 console.log('open active menu')
 }
 
