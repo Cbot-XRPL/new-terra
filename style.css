@@ -2,9 +2,10 @@
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   margin: 0;
   padding: 0;
+  scroll-behavior: smooth;
 }
 
-
+/* navbar ---------------------------------------------------------------------------------------- */
 .navbar {
   position: fixed;
   top: 0;
@@ -17,7 +18,7 @@
 
 }
 
-/* The sticky class is added to the navbar with JS when it reaches its scroll position */
+
 .sticky {
   position: fixed;
   top: 0;
@@ -27,6 +28,7 @@
 .nav-logo {
   justify-self: start;
   height: 8rem;
+  cursor: pointer;
 }
 
 .nav-logo:hover{
@@ -87,6 +89,7 @@
   margin: 1rem;
   text-decoration: none;
   color: black;
+  cursor: pointer;
 }
 
 
@@ -106,7 +109,7 @@
   display: none;
 }
 
-
+/* main container ---------------------------------------------------------------------------------------- */
 .main {
   overflow: hidden;
   display: flex;
@@ -233,6 +236,8 @@
   height: 250px;
 }
 
+/* images ---------------------------------------------------------------------------------------- */
+
 .image {
   width: 200px;
   height: 200px;
@@ -252,6 +257,7 @@
     opacity: 0.7;
 }
 
+/* text ---------------------------------------------------------------------------------------- */
 
 .text {
   color: grey;
@@ -398,6 +404,7 @@
   }
 }
 
+/* screen adjustment ---------------------------------------------------------------------------------------- */
 
 @media screen and (max-width: 1300px) {
   .nav-menu {
@@ -503,24 +510,12 @@
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* form page ---------------------------------------------------------------------------------------- */
 
 .form-container {
   margin-top: 80px;
-    max-width: 500px;
+  margin-bottom: 50px;
+    max-width: 750px;
 }
 label {
     display: block;
@@ -537,6 +532,7 @@ button {
     color: white;
     border: none;
     cursor: pointer;
+    border-radius: 6px;
 }
 button:hover {
     background-color: #45a049;

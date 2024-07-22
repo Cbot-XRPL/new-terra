@@ -19,12 +19,13 @@
 <body>
     <nav class="navbar" id="navbar">
 <!-- Navbar --------------------------------------------------------------------------------------------------------------------------- -->
-        <img class="nav-logo" src="./media/logo.png" alt="logo">
+
+        <img class="nav-logo" onclick="logoButton()" src="./media/logo.png" alt="logo">
         <img class="nav-icon" onclick="menuButton()" src="./media/menu_icon.png" alt="logo" />
 
 
         <ul id="0" class="nav-menu">
-            <a class="nav-links" onclick="serviceButton()">
+            <a class="nav-links"  onclick="serviceButton()">
                 <p>Services</p>
             </a>
 
@@ -36,8 +37,8 @@
                 <p>FAQ</p>
             </a>
 
-            <a class="nav-button">
-                <button class="button" onclick="serviceButton()">Contact</button>
+            <a class="nav-button" href="http://127.0.0.1:5500/contact.html">
+                <button class="button">Contact</button>
             </a>
 
             <a href="https://www.facebook.com/newterraconstruction"><img class="fa3" src="./media/facebookblack.svg"alt="logo"></a>
@@ -96,7 +97,7 @@
 
    <!-- Services --------------------------------------------------------------------------------------------------------------------------- -->
     <div class="flex-item5">
-        <p class="tag">Our Services</p>
+        <p class="tag" id="1">Our Services</p>
         <h1 class="" id="" style="color: black;">What We Offer</h1>
         <p class="text">Our primary objective is the satisfaction of our customers. We guarantee a professional and
             properly cleaned home experience.</p>
@@ -106,7 +107,7 @@
 
     <div class="flex-item4">
         <div class="container">
-            <img class="container-image" src="./media/window2.png" alt="logo" id="1">
+            <img class="container-image" src="./media/window2.png" alt="logo" id="">
             <h1>Window Cleaning</h1>
             <p class="container-text">Clear Choice Window Cleaning prides ourselves on serving the local community. We
                 also have monthly and

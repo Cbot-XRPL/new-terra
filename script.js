@@ -1,53 +1,41 @@
 
 
-console.log('page refesh')
+console.log('page refresh')
 
+
+
+
+//routing buttons ----------------------------------------------------------------------------------------------------
+
+let logoButton = () => {
+  location.assign("http://127.0.0.1:5500/index.html")
+  console.log('open active menu')
+  }
 
 let menuButton = () => {
-  const element = document.getElementById('0')
-
-  element.classList.contains("nav-moblie") ? element.classList.remove("nav-moblie") : element.classList.add("nav-moblie");
-
-
-  console.log('test')
+location.assign("http://127.0.0.1:5500/index.html#1")
+console.log('open active menu')
 }
 
 
-let serviceButton = () => {
-  const element = document.getElementById('1')
-  element.scrollIntoView({ behavior: "smooth", block: "end", inline: "nearest" });
-  const element2 = document.getElementById('0')
-  element2.classList.remove("nav-moblie")
-  console.log('test2')
+let serviceButton = async () => {
+location.assign("http://127.0.0.1:5500/index.html#1")
+console.log('go to services')
 }
 
 
 
-let aboutUsButton = () => {
-  const element = document.getElementById('2')
-  element.scrollIntoView({ behavior: "smooth", block: "end", inline: "nearest" });
-  const element2 = document.getElementById('0')
-  element2.classList.remove("nav-moblie")
-  console.log('test2')
+let aboutButton = () => {
+location.assign("http://127.0.0.1:5500/index.html#1")
+console.log('go to about us')
 }
 
 
-let FAQButton = () => {
-  const element = document.getElementById('3')
-  element.scrollIntoView({ behavior: "smooth", block: "end", inline: "nearest" });
-  const element2 = document.getElementById('0')
-  element2.classList.remove("nav-moblie")
-  console.log('test2')
+let faqButton = () => {
+location.assign("http://127.0.0.1:5500/index.html#1")
+console.log('go to FAQ')
 }
 
-
-let contactButton = () => {
-  const element = document.getElementById('4')
-  element.scrollIntoView({ behavior: "smooth", block: "end", inline: "nearest" });
-  const element2 = document.getElementById('0')
-  element2.classList.remove("nav-moblie")
-  console.log('test2')
-}
 
 
 

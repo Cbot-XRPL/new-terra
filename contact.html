@@ -19,8 +19,9 @@
 <body>
     <nav class="navbar" id="navbar">
 <!-- Navbar --------------------------------------------------------------------------------------------------------------------------- -->
-        <img class="nav-logo" src="./media/logo.png" alt="logo">
-        <img class="nav-icon" onclick="menuButton()" src="./media/menu_icon.png" alt="logo" />
+     
+<img class="nav-logo" onclick="logoButton()" src="./media/logo.png" alt="logo">
+<img class="nav-icon" onclick="menuButton()" src="./media/menu_icon.png" alt="logo" />
 
 
         <ul id="0" class="nav-menu">
@@ -36,8 +37,8 @@
                 <p>FAQ</p>
             </a>
 
-            <a class="nav-button">
-                <button class="button" onclick="serviceButton()">Contact</button>
+            <a class="nav-button" href="http://127.0.0.1:5500/contact.html">
+                <button class="button">Contact</button>
             </a>
 
             <a href="https://www.facebook.com/newterraconstruction"><img class="fa3" src="./media/facebookblack.svg"alt="logo"></a>
@@ -52,6 +53,7 @@
 <!-- Sections --------------------------------------------------------------------------------------------------------------------------- -->
     <div class="flex-item2">
         <div class="form-container">
+     
             <h2>Inquiry Form</h2>
             <form id="inquiryForm">
                 <label for="name">Name:</label>
