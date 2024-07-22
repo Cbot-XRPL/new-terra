@@ -37,6 +37,12 @@ console.log('go to FAQ')
 }
 
 
+let callButton = () => {
+  window.open('tel:6782079719', '_self');
+  console.log('go to FAQ')
+  }
+
+
 
 
 
