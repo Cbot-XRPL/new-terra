@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+<!-- Setup --------------------------------------------------------------------------------------------------------------------------- -->
+    <title>New Terra Construction</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="shortcut" icon” href="/favicon.ico" type="image/x-icon" />.
+    <link rel="stylesheet" href="style.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inconsolata:wght@500&display=swap');
+    </style>
+    <script src="script.js"></script>
+    <script src="https://kit.fontawesome.com/0e16416b8b.js" crossorigin="anonymous"></script>
+</head>
+
+<body>
+    <nav class="navbar" id="navbar">
+<!-- Navbar --------------------------------------------------------------------------------------------------------------------------- -->
+        <img class="nav-logo" src="./media/logo.png" alt="logo">
+        <img class="nav-icon" onclick="menuButton()" src="./media/menu_icon.png" alt="logo" />
+
+
+        <ul id="0" class="nav-menu">
+            <a class="nav-links" onclick="serviceButton()">
+                <p>Services</p>
+            </a>
+
+            <a class="nav-links" onclick="aboutButton()">
+                <p>About Us</p>
+            </a>
+
+            <a class="nav-links" onclick="faqButton()">
+                <p>FAQ</p>
+            </a>
+
+            <a class="nav-button">
+                <button class="button" onclick="serviceButton()">Contact</button>
+            </a>
+
+            <a href="https://www.facebook.com/newterraconstruction"><img class="fa3" src="./media/facebookblack.svg"alt="logo"></a>
+            <a href="https://www.instagram.com/newterraconstruction/"><img class="fa3" src="./media/instagramblack.svg" alt="logo"></a>
+
+        </ul>
+
+    </nav>
+
+
+    <div class="main">
+<!-- Sections --------------------------------------------------------------------------------------------------------------------------- -->
+    <div class="flex-item2">
+        <div class="form-container">
+            <h2>Inquiry Form</h2>
+            <form id="inquiryForm">
+                <label for="name">Name:</label>
+                <input type="text" id="name" name="name" required>
+    
+                <label for="email">Email:</label>
+                <input type="email" id="email" name="email" required>
+    
+                <label for="message">Message:</label>
+                <textarea id="message" name="message" rows="4" required></textarea>
+    
+                <button type="submit">Submit</button>
+            </form>
+            <div id="responseMessage"></div>
+        </div>
+    </div>
+
+   
+
+
+<!-- Footer --------------------------------------------------------------------------------------------------------------------------- -->
+    <div class="flex-item8">
+        
+
+
+        <div class="menucontainer">
+
+            <h2>Work Hours</h1>
+                <p class="text">8:30 AM - 5:30 PM , Monday - Friday</p>
+                <p class="text">Schedule your free estimate today. One-click away!</p>
+
+                <button class="button" style="margin-top: 40px;">Call Today</button>
+        </div>
+
+   
+       
+
+        <div class="menucontainer">
+            <h2>Quick Links</h1>
+
+                <a class="nav-links"
+                    href="https://cosmicxahau.com/collection/view/82a52d88-85f8-4db3-b2e2-f43d52df067a">
+                    <p>Services</p>
+                </a>
+
+                <a class="nav-links"
+                    href="https://cosmicxahau.com/collection/view/82a52d88-85f8-4db3-b2e2-f43d52df067a">
+                    <p>About Us</p>
+                </a>
+
+                <a class="nav-links"
+                    href="https://cosmicxahau.com/collection/view/82a52d88-85f8-4db3-b2e2-f43d52df067a">
+                    <p>FAQ</p>
+                </a>
+
+                <a class="nav-links"
+                    href="https://cosmicxahau.com/collection/view/82a52d88-85f8-4db3-b2e2-f43d52df067a">
+                    <p>Contact</p>
+                </a>
+        </div>
+
+
+        <div class="menucontainer">
+            <h2>Useful Links</h1>
+
+                <a class="nav-links"
+                    href="https://cosmicxahau.com/collection/view/82a52d88-85f8-4db3-b2e2-f43d52df067a">
+                    <p>Services</p>
+                </a>
+
+                <a class="nav-links"
+                    href="https://cosmicxahau.com/collection/view/82a52d88-85f8-4db3-b2e2-f43d52df067a">
+                    <p>About Us</p>
+                </a>
+
+                <a class="nav-links"
+                    href="https://cosmicxahau.com/collection/view/82a52d88-85f8-4db3-b2e2-f43d52df067a">
+                    <p>FAQ</p>
+                </a>
+
+                <a class="nav-links"
+                    href="https://cosmicxahau.com/collection/view/82a52d88-85f8-4db3-b2e2-f43d52df067a">
+                    <p>Contact</p>
+                </a>
+        </div>
+        <div class="menucontainer">
+            <img style="width: 100px; height: 100px;" src="./media/logo.png" alt="logo">
+            <p class="text">Whenever you need residential cleaning, our professional cleaners can offer a
+                helping hand. We know people are often busy with work and children to look after, so why not take a
+                break and leave the mundane chores to us?</p>
+            <a href="https://www.facebook.com/newterraconstruction"><img class="fa fa-twitter" src="./media/facebook.svg"alt="logo"></a>
+            <a href="https://www.instagram.com/newterraconstruction/"><img class="fa fa-twitter" src="./media/instagram.svg" alt="logo"></a>
+            <a href="https://g.co/kgs/EvZS4J"><img class="fa fa-twitter" src="./media/google.svg" alt="logo"></a>
+            <a href="https://g.co/kgs/mpAM7rF"><img class="fa2 fa-twitter" src="./media/nextdoor.svg" alt="logo"></a>
+          
+            <a href="https://nextdoor.com/pages/dixie-service-and-trade/"><img class="fa fa-twitter" src="./media/angie.svg" alt="logo"></a>
+        </div>
+    </div>
+
+</body>
+
+</html>
