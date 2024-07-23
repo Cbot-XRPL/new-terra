@@ -2,8 +2,8 @@
 
 console.log('page refresh')
 
-//let local = "http://127.0.0.1:5500"
-let local = "http://192.168.1.163:8082"
+let local = "http://127.0.0.1:5500"
+//let local = "http://192.168.1.163:8082"
 
 
 
@@ -43,8 +43,14 @@ console.log('go to FAQ')
 
 let callButton = () => {
   window.open('tel:6782079719', '_self');
-  console.log('go to FAQ')
+  console.log('set up call')
   }
+
+  let emailButton = () => {
+    window.open('tel:6782079719', '_self');
+    console.log('set up call')
+    }
+  
 
 
 

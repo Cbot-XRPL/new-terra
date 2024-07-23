@@ -152,8 +152,8 @@
   width: 100%;
   display: flex;
   justify-content: center;
-  text-align: center;
-  align-items: center;
+text-align: center;
+align-items: center;
 }
 
 .flex-item4 {
@@ -179,6 +179,7 @@
   flex-direction: column;
   flex-wrap: wrap;
   margin-bottom: -5px;
+  margin-top: 20px;
 
 }
 
@@ -195,6 +196,7 @@
 
 .container {
   color: #000000;
+  height: 700px;
   background-color: #ffffff;
   padding: 10px;
   box-shadow: 3px 3px 15px 4px rgb(219, 223, 228);
@@ -202,6 +204,38 @@
   flex-direction: column;
   overflow: hidden;
   width: 300px;
+  padding: 10px 20px;
+  border-radius: 4px;
+  align-items: center;
+  text-align: center;
+}
+
+.container2 {
+  color: #ffffff;
+  background-color: #ffffff00;
+  padding: 10px;
+  margin: 4rem;
+  flex-direction: column;
+  overflow: hidden;
+  width: 300px;
+
+  padding: 10px 20px;
+  border-radius: 4px;
+  align-items: center;
+  text-align: center;
+}
+
+.container3 {
+  color: #000000;
+  background-color: #ffffff;
+  padding: 10px;
+  box-shadow: 3px 3px 15px 4px rgb(219, 223, 228);
+  margin: 4rem;
+  display: flex;
+  
+  overflow: hidden;
+  width: 700px;
+  height: 350px;
   padding: 10px 20px;
   border-radius: 4px;
   align-items: center;
@@ -230,10 +264,24 @@
   margin-bottom: 20px;
 }
 
+.container-text2 {
+  color: rgb(255, 255, 255);
+  text-align: center;
+  margin: 10px;
+ 
+  margin-bottom: 20px;
+}
+
 .container-image {
   margin: 5px;
   width: 250px;
   height: 250px;
+}
+
+.container-image2 {
+  margin: 5px;
+  width: 60px;
+  height: 60px;
 }
 
 /* images ---------------------------------------------------------------------------------------- */
@@ -294,6 +342,18 @@
   flex-direction: column;
   flex-wrap: wrap;
 }
+
+.text-stack2 {
+
+  max-width: 700px;
+  display: flex;
+  justify-content: center;
+  text-align: center;
+  align-items: center;
+  flex-direction: column;
+  flex-wrap: wrap;
+}
+
 
 .tag {
   color: #ffffff;
@@ -496,6 +556,24 @@
 
   .flex-item8 {
     flex-direction: column;
+  }
+
+  .container3{
+
+      color: #000000;
+      height: 700px;
+      background-color: #ffffff;
+      padding: 10px;
+      box-shadow: 3px 3px 15px 4px rgb(219, 223, 228);
+      margin: 4rem;
+      flex-direction: column;
+      overflow: hidden;
+      width: 300px;
+      padding: 10px 20px;
+      border-radius: 4px;
+      align-items: center;
+      text-align: center;
+    
   }
 
   .container-image {
