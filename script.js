@@ -2,8 +2,8 @@
 
 console.log('page refresh')
 
-let local = "http://127.0.0.1:5500"
-//let local = "http://192.168.1.163:8082"
+//let local = "http://127.0.0.1:5500"
+let local = "http://192.168.1.163:8082"
 
 
 
@@ -62,7 +62,7 @@ let callButton = () => {
 
 
 
-    
+
     document.getElementById('inquiryForm').addEventListener('submit', function(event) {
       event.preventDefault(); // Prevent form from submitting the traditional way
   
