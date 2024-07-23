@@ -25,16 +25,17 @@
 
 
         <ul id="0" class="nav-menu">
+
+            <a class="nav-links"  onclick="homeButton()">
+                <p>Home</p>
+            </a>
+
             <a class="nav-links" onclick="serviceButton()">
                 <p>Services</p>
             </a>
 
             <a class="nav-links" onclick="aboutButton()">
                 <p>About Us</p>
-            </a>
-
-            <a class="nav-links" onclick="faqButton()">
-                <p>FAQ</p>
             </a>
 
             <a class="nav-button" href="http://127.0.0.1:5500/contact.html">
@@ -70,8 +71,8 @@
         </div>
     </div>
 
-    <button class="button section" onclick="callButton()">Give Us a Call 678-207-9719</button>
-            <button class="button section" onclick="callButton()"">Send Us A Email sales@newterraconstruction.com</button>
+            <button class="button section" onclick="callButton()">Give Us a Call 678-207-9719</button>
+            <button class="button section" onclick="emailButton()"">Send Us A Email sales@newterraconstruction.com</button>
 
 
 <!-- Footer --------------------------------------------------------------------------------------------------------------------------- -->
@@ -97,23 +98,19 @@
         <div class="menucontainer">
             <h2>Quick Links</h1>
 
-                <a class="nav-links"
-                    href="https://cosmicxahau.com/collection/view/82a52d88-85f8-4db3-b2e2-f43d52df067a">
-                    <p>Services</p>
+                <a class="nav-links"  onclick="homeButton()">
+                    <p>Home</p>
                 </a>
 
-                <a class="nav-links"
-                    href="https://cosmicxahau.com/collection/view/82a52d88-85f8-4db3-b2e2-f43d52df067a">
+                <a class="nav-links"  onclick="serviceButton()">
+                    <p>Services</p>
+                </a>
+    
+                <a class="nav-links" onclick="aboutButton()">
                     <p>About Us</p>
                 </a>
 
-                <a class="nav-links"
-                    href="https://cosmicxahau.com/collection/view/82a52d88-85f8-4db3-b2e2-f43d52df067a">
-                    <p>FAQ</p>
-                </a>
-
-                <a class="nav-links"
-                    href="https://cosmicxahau.com/collection/view/82a52d88-85f8-4db3-b2e2-f43d52df067a">
+                <a class="nav-links" onclick="contactButton()">
                     <p>Contact</p>
                 </a>
         </div>
@@ -149,7 +146,7 @@
                 <p class="text">8:30 AM - 5:30 PM , Monday - Friday</p>
                 <p class="text">Schedule your free estimate today. One-click away!</p>
 
-                <button class="button" style="margin-top: 40px;">Call Today</button>
+                <button onclick="callButton()" class="button" style="margin-top: 40px;">Call Today</button>
         </div>
 
  
