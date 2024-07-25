@@ -2,8 +2,8 @@
 
 console.log('page refresh')
 
-//let local = "http://127.0.0.1:5500"
-let local = "http://192.168.1.163:8082"
+let local = "http://127.0.0.1:5500"
+//let local = "http://192.168.1.163:8082"
 
 
 
@@ -20,6 +20,12 @@ const element = document.getElementById('0')
 element.classList.contains("nav-moblie") ? element.classList.remove("nav-moblie") : element.classList.add("nav-moblie");
 console.log('open active menu')
 }
+
+
+let homeButton = async () => {
+  location.assign(`${local}`)
+  console.log('go to services')
+  }
 
 
 let contactButton = async () => {
@@ -55,7 +61,7 @@ let callButton = () => {
   let emailButton = () => {
     window.open('mailto:sales@newterraconsturction.com', '_self');
     console.log('set up call')
-    }
+  }
 
 
     //form---------------------------------------------------------
