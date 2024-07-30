@@ -276,12 +276,14 @@ align-items: center;
   margin-top: 10px;
   width: 250px;
   height: 250px;
+  border-radius: 6px;
 }
 
 .container-image2 {
   margin: 5px;
   width: 60px;
   height: 60px;
+  border-radius: 6px;
 }
 
 /* images ---------------------------------------------------------------------------------------- */
