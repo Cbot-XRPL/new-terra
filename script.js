@@ -2,8 +2,8 @@
 
 console.log('page refresh')
 
-let local = "http://127.0.0.1:5500"
-//let local = "http://192.168.1.163:8082"
+//let local = "http://127.0.0.1:5500"
+let local = "https://newterraconstruction.com"
 
 
 
