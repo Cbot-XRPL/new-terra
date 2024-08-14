@@ -63,6 +63,17 @@ let callButton = () => {
     console.log('set up call')
   }
 
+  let googleButton = () => {
+    location.assign("https://g.co/kgs/EvZS4J")
+    console.log('open active menu')
+    }
+
+    let angiButton = () => {
+      location.assign("https://www.angi.com/companylist/us/ga/buford/new-terra-construction-reviews-11090456.htm?showcaseId=0")
+      console.log('open active menu')
+      }
+
+
 
     //form---------------------------------------------------------
 
