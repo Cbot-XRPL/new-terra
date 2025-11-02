@@ -78,7 +78,56 @@ let callButton = () => {
     //form---------------------------------------------------------
 
 
+// Initialize EmailJS
+(function() {
+  emailjs.init({
+    publicKey: "WmQSqc_LUYI1MKFID", // from EmailJS Dashboard
+  });
+})();
 
+// Attach event listener
+document.addEventListener("DOMContentLoaded", () => {
+  const form = document.getElementById("inquiryForm");
+
+  form.addEventListener("submit", function(event) {
+    event.preventDefault(); // stop normal form submission
+
+    // Get form values
+    const name = document.getElementById("name").value.trim();
+    const email = document.getElementById("email").value.trim();
+    const message = document.getElementById("message").value.trim();
+    const phone = document.getElementById("phone").value.trim();
+
+    // Create params object matching your EmailJS template variables
+    const formData = {
+      from_name: name,
+      reply_to: email,
+      message: message,
+      phone: phone,
+    };
+
+    // Optional: show loading message
+    const response = document.getElementById("responseMessage");
+    response.textContent = "Sending...";
+
+    // Send email using EmailJS
+    emailjs.send("service_2dvtuee", "template_6b2zj3l", formData)
+      .then(() => {
+        response.textContent = `✅ Thank you, ${name}! Your message has been sent.`;
+        form.reset();
+      })
+      .catch((error) => {
+        console.error("EmailJS error:", error);
+        response.textContent = "❌ Sorry, something went wrong. Please try again later.";
+      });
+  });
+});
+
+
+
+
+
+ /*
 
     document.getElementById('inquiryForm').addEventListener('submit', function(event) {
       event.preventDefault(); // Prevent form from submitting the traditional way
@@ -94,12 +143,14 @@ let callButton = () => {
           email: email,
           message: message
       };
+
+      console.log(formData)
   
       // Display a message to the user
       document.getElementById('responseMessage').textContent = 'Thank you for your inquiry, ' + formData.name + '! We will get back to you shortly.';
   
       // Optionally, send the form data to a server using Fetch API
-      /*
+     
       fetch('https://your-server-endpoint.com/inquiry', {
           method: 'POST',
           headers: {
@@ -114,14 +165,7 @@ let callButton = () => {
       .catch((error) => {
           console.error('Error:', error);
       });
-      */
-  });
-
-
-
-
-
-
-
+      
+  }); */
 
 
