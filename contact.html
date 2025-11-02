@@ -12,8 +12,9 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inconsolata:wght@500&display=swap');
     </style>
-    <script src="script.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
     <script src="https://kit.fontawesome.com/0e16416b8b.js" crossorigin="anonymous"></script>
+    <script src="script.js" defer></script>
 </head>
 
 <body>
@@ -62,6 +63,9 @@
     
                 <label for="email">Email:</label>
                 <input type="email" id="email" name="email" required>
+
+                 <label for="phone">Phone Number:</label>
+                <input id="phone" name="phone" required>
     
                 <label for="message">Message:</label>
                 <textarea id="message" name="message" rows="4" required></textarea>
