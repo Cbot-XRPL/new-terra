@@ -36,6 +36,8 @@ let contactButton = async () => {
 
 let serviceButton = async () => {
 location.assign(`${local}/index.html#1`)
+const element = document.getElementById('0')
+element.classList.contains("nav-moblie") ? element.classList.remove("nav-moblie") : console.log('not in moblie')
 console.log('go to services')
 }
 
@@ -43,6 +45,8 @@ console.log('go to services')
 
 let aboutButton = () => {
 location.assign(`${local}/index.html#2`)
+const element = document.getElementById('0')
+element.classList.contains("nav-moblie") ? element.classList.remove("nav-moblie") : console.log('not in moblie')
 console.log('go to about us')
 }
 
