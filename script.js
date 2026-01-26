@@ -77,6 +77,14 @@ let callButton = () => {
       console.log('open active menu')
       }
 
+      
+    let nextdoorButton = () => {
+      location.assign("https://nextdoor.com/pages/dixie-service-and-trade/")
+      console.log('open active menu')
+      }
+
+  
+
 
 
     //form---------------------------------------------------------
