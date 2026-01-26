@@ -318,6 +318,20 @@ align-items: center;
     opacity: 0.7;
 }
 
+.image3 {
+  max-height: 100px;
+  margin: 10px;
+  margin-top: 20px;
+}
+
+.image4 {
+  max-width: 200px;
+  margin: 10px;
+  margin-bottom: 40px;
+}
+
+
+
 /* text ---------------------------------------------------------------------------------------- */
 
 .text {
