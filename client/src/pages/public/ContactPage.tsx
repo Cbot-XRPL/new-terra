@@ -1,23 +1,45 @@
 import { type FormEvent, useState } from 'react';
+import { ApiError, api } from '../../lib/api';
 
 export default function ContactPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [message, setMessage] = useState('');
-  const [status, setStatus] = useState<string | null>(null);
+  // Honeypot — must remain empty for the submission to be processed.
+  const [website, setWebsite] = useState('');
+  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [error, setError] = useState<string | null>(null);
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    // Public contact form is intentionally not wired to the backend yet — leaving
-    // a mailto fallback so the existing inquiry flow keeps working without a public
-    // unauthenticated POST endpoint that could be abused.
-    const subject = encodeURIComponent(`Inquiry from ${name}`);
-    const body = encodeURIComponent(
-      `Name: ${name}\nEmail: ${email}\nPhone: ${phone}\n\n${message}`,
+    setError(null);
+    setStatus('sending');
+    try {
+      await api('/api/public/contact', {
+        method: 'POST',
+        body: JSON.stringify({ name, email, phone, message, website }),
+      });
+      setStatus('sent');
+      setName('');
+      setEmail('');
+      setPhone('');
+      setMessage('');
+    } catch (err) {
+      setStatus('error');
+      setError(err instanceof ApiError ? err.message : 'Could not send your message');
+    }
+  }
+
+  if (status === 'sent') {
+    return (
+      <section className="auth-page">
+        <div className="form-container">
+          <h2>Thanks!</h2>
+          <p>We've received your inquiry and will be in touch shortly.</p>
+        </div>
+      </section>
     );
-    window.location.href = `mailto:sales@newterraconstruction.com?subject=${subject}&body=${body}`;
-    setStatus('Opening your email client…');
   }
 
   return (
@@ -30,16 +52,43 @@ export default function ContactPage() {
           <input id="c-name" value={name} onChange={(e) => setName(e.target.value)} required />
 
           <label htmlFor="c-email">Email</label>
-          <input id="c-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input
+            id="c-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
 
           <label htmlFor="c-phone">Phone</label>
           <input id="c-phone" value={phone} onChange={(e) => setPhone(e.target.value)} required />
 
           <label htmlFor="c-message">Message</label>
-          <textarea id="c-message" rows={5} value={message} onChange={(e) => setMessage(e.target.value)} required />
+          <textarea
+            id="c-message"
+            rows={5}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            required
+          />
 
-          <button type="submit">Submit</button>
-          {status && <p className="muted">{status}</p>}
+          {/* Honeypot field — hidden via CSS; bots fill it, humans don't. */}
+          <div className="hp-field" aria-hidden="true">
+            <label htmlFor="c-website">Website</label>
+            <input
+              id="c-website"
+              tabIndex={-1}
+              autoComplete="off"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+            />
+          </div>
+
+          {error && <div className="form-error">{error}</div>}
+
+          <button type="submit" disabled={status === 'sending'}>
+            {status === 'sending' ? 'Sending…' : 'Submit'}
+          </button>
         </form>
 
         <div className="cta-row">

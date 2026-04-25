@@ -28,3 +28,28 @@ export async function sendInviteEmail(to: string, inviteUrl: string, role: strin
     text,
   });
 }
+
+export async function sendInquiryEmail(input: {
+  name: string;
+  email: string;
+  phone?: string;
+  message: string;
+}) {
+  const subject = `Inquiry from ${input.name}`;
+  const text = `Name: ${input.name}\nEmail: ${input.email}\nPhone: ${input.phone ?? '—'}\n\n${input.message}`;
+  const to = process.env.INQUIRY_TO ?? 'sales@newterraconstruction.com';
+
+  if (!transporter) {
+    console.log('[mailer:dev] Inquiry submission for', to);
+    console.log('[mailer:dev]', text);
+    return;
+  }
+
+  await transporter.sendMail({
+    to,
+    from: env.smtp.from,
+    replyTo: input.email,
+    subject,
+    text,
+  });
+}

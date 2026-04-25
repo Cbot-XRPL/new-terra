@@ -289,6 +289,17 @@ input:focus, textarea:focus, select:focus {
   word-break: break-all;
 }
 .cta-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem; }
+
+/* Honeypot — kept in the DOM but moved off-screen so bots see it and
+   humans don't. */
+.hp-field {
+  position: absolute;
+  left: -10000px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
 .inline-form {
   display: flex;
   gap: 0.75rem;
