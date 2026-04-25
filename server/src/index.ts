@@ -6,6 +6,8 @@ import { errorHandler } from './middleware/error.js';
 import authRouter from './routes/auth.js';
 import adminRouter from './routes/admin.js';
 import portalRouter from './routes/portal.js';
+import projectsRouter from './routes/projects.js';
+import schedulesRouter from './routes/schedules.js';
 
 const app = express();
 
@@ -18,6 +20,8 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/portal', portalRouter);
+app.use('/api/projects', projectsRouter);
+app.use('/api/schedules', schedulesRouter);
 
 app.use(errorHandler);
 

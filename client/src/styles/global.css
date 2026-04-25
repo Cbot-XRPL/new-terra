@@ -297,6 +297,10 @@ input:focus, textarea:focus, select:focus {
 }
 .inline-form input, .inline-form select { margin-bottom: 0; flex: 1; min-width: 180px; }
 
+.row-between { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
+
 /* Portal layout */
 .portal-shell {
   display: grid;

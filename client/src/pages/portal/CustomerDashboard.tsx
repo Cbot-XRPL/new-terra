@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 
@@ -68,7 +69,9 @@ export default function CustomerDashboard() {
           <ul className="list">
             {data.projects.map((p) => (
               <li key={p.id}>
-                <strong>{p.name}</strong>
+                <Link to={`/portal/projects/${p.id}`}>
+                  <strong>{p.name}</strong>
+                </Link>
                 {p.address && <div className="muted">{p.address}</div>}
               </li>
             ))}

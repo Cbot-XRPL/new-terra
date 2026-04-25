@@ -69,9 +69,27 @@ router.get('/invitations', async (_req, res, next) => {
   }
 });
 
-router.get('/users', async (_req, res, next) => {
+const listUsersQuery = z.object({
+  // Comma-separated roles, e.g. ?roles=EMPLOYEE,SUBCONTRACTOR
+  roles: z.string().optional(),
+  active: z.enum(['true', 'false']).optional(),
+});
+
+router.get('/users', async (req, res, next) => {
   try {
+    const { roles, active } = listUsersQuery.parse(req.query);
+    const where: { role?: { in: Role[] }; isActive?: boolean } = {};
+    if (roles) {
+      const parsed = roles
+        .split(',')
+        .map((r) => r.trim().toUpperCase())
+        .filter((r): r is Role => (Object.values(Role) as string[]).includes(r));
+      if (parsed.length) where.role = { in: parsed };
+    }
+    if (active) where.isActive = active === 'true';
+
     const users = await prisma.user.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
       select: { id: true, email: true, name: true, role: true, isActive: true, createdAt: true },
     });

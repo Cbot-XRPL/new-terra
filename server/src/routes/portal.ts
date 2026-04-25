@@ -25,6 +25,24 @@ router.get('/customer/overview', requireRole(Role.CUSTOMER), async (req, res, ne
   }
 });
 
+// Staff lookup — used by project + schedule forms to populate assignee pickers.
+router.get(
+  '/staff/users',
+  requireRole(Role.ADMIN, Role.EMPLOYEE),
+  async (_req, res, next) => {
+    try {
+      const users = await prisma.user.findMany({
+        where: { role: { in: [Role.ADMIN, Role.EMPLOYEE, Role.SUBCONTRACTOR] }, isActive: true },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true, role: true },
+      });
+      res.json({ users });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 // --- Employee / Subcontractor ---
 router.get(
   '/staff/overview',
