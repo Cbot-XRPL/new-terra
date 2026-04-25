@@ -329,6 +329,26 @@ input:focus, textarea:focus, select:focus {
 .kv dt { color: var(--text-muted); }
 .kv dd { margin: 0; }
 
+/* Job costing progress bar */
+.job-cost-bar {
+  display: flex;
+  height: 8px;
+  background: var(--surface);
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(95, 99, 104, 0.32);
+}
+.job-cost-bar-fill {
+  background: var(--accent);
+  height: 100%;
+}
+.job-cost-bar-fill.over { background: var(--error); }
+.job-cost-bar-overflow {
+  background: rgba(242, 139, 130, 0.6);
+  height: 100%;
+  border-left: 1px dashed rgba(255, 255, 255, 0.4);
+}
+
 /* Honeypot — kept in the DOM but moved off-screen so bots see it and
    humans don't. */
 .hp-field {

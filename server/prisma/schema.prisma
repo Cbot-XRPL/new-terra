@@ -187,6 +187,9 @@ model Project {
   projectManager   User?  @relation("ProjectsManaging", fields: [projectManagerId], references: [id], onDelete: SetNull)
   startDate   DateTime?
   endDate     DateTime?
+  // Top-level project budget. Per-category line items live in ProjectBudgetLine
+  // and supersede this number when present in the job-cost rollup.
+  budgetCents Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -198,6 +201,7 @@ model Project {
   contracts   Contract[]
   comments    ProjectComment[]
   expenses    Expense[]
+  budgetLines ProjectBudgetLine[]
 
   @@index([projectManagerId])
 }
@@ -484,6 +488,7 @@ model ExpenseCategory {
   updatedAt   DateTime @updatedAt
 
   expenses    Expense[]
+  budgetLines ProjectBudgetLine[]
 
   @@index([parentId])
 }
@@ -536,4 +541,22 @@ model Expense {
   @@index([vendorId])
   @@index([paidByUserId])
   @@index([syncStatus])
+}
+
+// One row per category-level budget on a project. Optional categoryId so
+// "general / unscoped" budget lines are still tracked; uniqueness on
+// (projectId, categoryId) prevents accidental duplicates per category.
+model ProjectBudgetLine {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  categoryId  String?
+  category    ExpenseCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  budgetCents Int
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([projectId, categoryId])
+  @@index([projectId])
 }

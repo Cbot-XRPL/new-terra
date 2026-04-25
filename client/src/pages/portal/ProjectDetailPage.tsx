@@ -8,6 +8,7 @@ import InvoicesSection from './InvoicesSection';
 import SelectionsSection from './SelectionsSection';
 import LogEntriesSection from './LogEntriesSection';
 import ProjectComments from './ProjectComments';
+import JobCostingSection from './JobCostingSection';
 
 type ProjectStatus = 'PLANNING' | 'AWAITING_CONTRACT' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETE' | 'CANCELLED';
 
@@ -293,6 +294,10 @@ export default function ProjectDetailPage() {
         customerId={project.customer.id}
         customerName={project.customer.name}
       />
+
+      {(isAdmin || (user?.role === 'EMPLOYEE' && (user.isProjectManager || user.isAccounting))) && (
+        <JobCostingSection projectId={project.id} canEditBudget={!!isPmOrAdmin} />
+      )}
 
       <LogEntriesSection projectId={project.id} />
 

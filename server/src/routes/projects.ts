@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { ProjectStatus, Role, type Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
-import { canManageProject, hasProjectManagerCapability } from '../lib/permissions.js';
+import { canManageProject, hasProjectManagerCapability, hasAccountingAccess } from '../lib/permissions.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -43,6 +43,7 @@ const createProjectSchema = z.object({
   projectManagerId: z.string().nullable().optional(),
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
+  budgetCents: z.number().int().nonnegative().nullable().optional(),
 });
 
 const updateProjectSchema = createProjectSchema.partial().omit({ customerId: true });
@@ -110,6 +111,7 @@ router.post('/', requireRole(Role.ADMIN), async (req, res, next) => {
         projectManagerId: data.projectManagerId ?? null,
         startDate: data.startDate ? new Date(data.startDate) : undefined,
         endDate: data.endDate ? new Date(data.endDate) : undefined,
+        budgetCents: data.budgetCents ?? null,
       },
       include: projectInclude,
     });
@@ -164,6 +166,7 @@ router.patch('/:id', async (req, res, next) => {
               : data.projectManagerId,
         startDate: data.startDate ? new Date(data.startDate) : undefined,
         endDate: data.endDate ? new Date(data.endDate) : undefined,
+        budgetCents: data.budgetCents === null ? null : data.budgetCents,
       },
       include: projectInclude,
     });
@@ -246,6 +249,199 @@ router.post('/:id/schedules', async (req, res, next) => {
       include: { assignee: { select: { id: true, name: true, role: true } } },
     });
     res.status(201).json({ schedule });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ----- Job costing -----
+//
+// Combines per-category budget lines with rolled-up actual expenses to give
+// PMs and accounting a single source of truth for "are we on budget on this
+// job?". Visible to the project's customer + assigned PM + admin + accounting.
+
+const budgetLineSchema = z.object({
+  categoryId: z.string().nullable().optional(),
+  budgetCents: z.number().int().nonnegative(),
+  notes: z.string().max(500).nullable().optional(),
+});
+
+router.get('/:id/job-cost', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    const project = await prisma.project.findUnique({
+      where: { id: req.params.id },
+      include: { budgetLines: { include: { category: { select: { id: true, name: true } } } } },
+    });
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    if (!me) return res.status(401).json({ error: 'Unauthenticated' });
+
+    const access = canManageProject(me, project).read || hasAccountingAccess(me);
+    if (!access) return res.status(403).json({ error: 'Forbidden' });
+
+    // Roll up actual spend per category for this project. We tolerate
+    // categoryId being null (uncategorised expenses bucket together).
+    const grouped = await prisma.expense.groupBy({
+      by: ['categoryId'],
+      where: { projectId: project.id },
+      _sum: { amountCents: true },
+      _count: { _all: true },
+    });
+
+    type Row = {
+      categoryId: string | null;
+      categoryName: string | null;
+      budgetCents: number;
+      actualCents: number;
+      expenseCount: number;
+    };
+    const rows = new Map<string, Row>();
+    const keyOf = (id: string | null) => id ?? '__uncategorised__';
+
+    for (const line of project.budgetLines) {
+      const key = keyOf(line.categoryId);
+      rows.set(key, {
+        categoryId: line.categoryId,
+        categoryName: line.category?.name ?? null,
+        budgetCents: line.budgetCents,
+        actualCents: 0,
+        expenseCount: 0,
+      });
+    }
+
+    // Need names for any actual-only categories that don't have a budget line.
+    const orphanCatIds = grouped
+      .map((g) => g.categoryId)
+      .filter((id): id is string => !!id && !rows.has(keyOf(id)));
+    const orphanCats = orphanCatIds.length
+      ? await prisma.expenseCategory.findMany({
+          where: { id: { in: orphanCatIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const orphanName = new Map(orphanCats.map((c) => [c.id, c.name]));
+
+    for (const g of grouped) {
+      const key = keyOf(g.categoryId);
+      const existing = rows.get(key);
+      if (existing) {
+        existing.actualCents = g._sum.amountCents ?? 0;
+        existing.expenseCount = g._count._all;
+      } else {
+        rows.set(key, {
+          categoryId: g.categoryId,
+          categoryName: g.categoryId ? orphanName.get(g.categoryId) ?? 'Unknown' : null,
+          budgetCents: 0,
+          actualCents: g._sum.amountCents ?? 0,
+          expenseCount: g._count._all,
+        });
+      }
+    }
+
+    const lines = [...rows.values()].sort((a, b) => {
+      const an = a.categoryName ?? 'Uncategorised';
+      const bn = b.categoryName ?? 'Uncategorised';
+      return an.localeCompare(bn);
+    });
+
+    const linesBudget = lines.reduce((sum, l) => sum + l.budgetCents, 0);
+    const actualTotal = lines.reduce((sum, l) => sum + l.actualCents, 0);
+    // Top-level project budget overrides if set; otherwise fall back to the
+    // sum of the lines so projects without a top number still surface a roll-up.
+    const totalBudgetCents = project.budgetCents ?? (linesBudget > 0 ? linesBudget : 0);
+
+    res.json({
+      projectId: project.id,
+      totalBudgetCents,
+      linesBudgetCents: linesBudget,
+      actualCents: actualTotal,
+      varianceCents: totalBudgetCents - actualTotal,
+      lines,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Budget-line CRUD — admin + PM + accounting (per the same project-write
+// rule) can add/edit. Customers cannot mutate budgets.
+async function ensureBudgetWrite(userId: string, projectId: string) {
+  const me = await prisma.user.findUnique({ where: { id: userId } });
+  const project = await prisma.project.findUnique({ where: { id: projectId } });
+  if (!me || !project) return { ok: false as const };
+  const writeViaProject = canManageProject(me, project).write;
+  const writeViaAccounting = hasAccountingAccess(me);
+  return { ok: writeViaProject || writeViaAccounting, me, project };
+}
+
+router.get('/:id/budget-lines', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    const project = await prisma.project.findUnique({ where: { id: req.params.id } });
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    if (!me) return res.status(401).json({ error: 'Unauthenticated' });
+    if (!canManageProject(me, project).read && !hasAccountingAccess(me)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const lines = await prisma.projectBudgetLine.findMany({
+      where: { projectId: project.id },
+      include: { category: { select: { id: true, name: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    res.json({ lines });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/budget-lines', async (req, res, next) => {
+  try {
+    const data = budgetLineSchema.parse(req.body);
+    const guard = await ensureBudgetWrite(req.user!.sub, req.params.id);
+    if (!guard.ok) return res.status(403).json({ error: 'Forbidden' });
+
+    // Postgres allows multiple NULLs in a unique index so the compound upsert
+    // doesn't work for the "uncategorised" bucket — fall back to find + branch.
+    const existing = await prisma.projectBudgetLine.findFirst({
+      where: {
+        projectId: req.params.id,
+        categoryId: data.categoryId ?? null,
+      },
+    });
+    const payload = {
+      projectId: req.params.id,
+      categoryId: data.categoryId ?? null,
+      budgetCents: data.budgetCents,
+      notes: data.notes ?? null,
+    };
+    const line = existing
+      ? await prisma.projectBudgetLine.update({
+          where: { id: existing.id },
+          data: payload,
+          include: { category: { select: { id: true, name: true } } },
+        })
+      : await prisma.projectBudgetLine.create({
+          data: payload,
+          include: { category: { select: { id: true, name: true } } },
+        });
+    res.status(existing ? 200 : 201).json({ line });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:id/budget-lines/:lineId', async (req, res, next) => {
+  try {
+    const guard = await ensureBudgetWrite(req.user!.sub, req.params.id);
+    if (!guard.ok) return res.status(403).json({ error: 'Forbidden' });
+    const line = await prisma.projectBudgetLine.findUnique({
+      where: { id: req.params.lineId },
+    });
+    if (!line || line.projectId !== req.params.id) {
+      return res.status(404).json({ error: 'Budget line not found' });
+    }
+    await prisma.projectBudgetLine.delete({ where: { id: line.id } });
+    res.status(204).end();
   } catch (err) {
     next(err);
   }
