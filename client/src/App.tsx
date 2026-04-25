@@ -20,6 +20,7 @@ import ContractTemplatesPage from './pages/portal/ContractTemplatesPage';
 import ContractsPage from './pages/portal/ContractsPage';
 import NewContractPage from './pages/portal/NewContractPage';
 import ContractDetailPage from './pages/portal/ContractDetailPage';
+import BulkImportPage from './pages/portal/BulkImportPage';
 
 function PortalIndex() {
   const { user } = useAuth();
@@ -110,6 +111,14 @@ export default function App() {
           }
         />
         <Route path="contracts/:id" element={<ContractDetailPage />} />
+        <Route
+          path="bulk-import"
+          element={
+            <RequireAuth roles={['ADMIN']}>
+              <BulkImportPage />
+            </RequireAuth>
+          }
+        />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

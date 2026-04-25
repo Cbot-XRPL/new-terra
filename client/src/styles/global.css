@@ -541,6 +541,38 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* Contracts */
+.saved-views {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.saved-view-chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--surface-strong);
+  border: 1px solid rgba(95, 99, 104, 0.4);
+  border-radius: 999px;
+  overflow: hidden;
+  font-size: 0.85rem;
+}
+.saved-view-chip button {
+  background: transparent;
+  color: var(--text);
+  border: none;
+  padding: 4px 12px;
+  cursor: pointer;
+  font: inherit;
+}
+.saved-view-chip button:hover { background: var(--surface); }
+.saved-view-remove {
+  padding: 4px 10px !important;
+  border-left: 1px solid rgba(95, 99, 104, 0.4) !important;
+  color: var(--text-muted) !important;
+}
+.saved-view-remove:hover { color: var(--error) !important; }
+
 .sortable { cursor: pointer; user-select: none; }
 .sortable:hover { color: var(--accent); }
 

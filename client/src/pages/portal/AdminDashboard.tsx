@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import type { Role } from '../../auth/AuthContext';
 import MembershipsAdmin from './MembershipsAdmin';
@@ -99,9 +100,14 @@ export default function AdminDashboard() {
 
   return (
     <div className="dashboard">
-      <header>
-        <h1>Admin</h1>
-        <p className="muted">Manage who has access to the portal.</p>
+      <header className="row-between">
+        <div>
+          <h1>Admin</h1>
+          <p className="muted">Manage who has access to the portal.</p>
+        </div>
+        <Link to="/portal/bulk-import" className="button button-ghost">
+          Bulk import…
+        </Link>
       </header>
 
       {error && <div className="form-error">{error}</div>}

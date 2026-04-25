@@ -3,6 +3,9 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { formatDate } from '../../lib/format';
+import { addView, listViews, removeView, type SavedView } from '../../lib/savedViews';
+
+const VIEWS_SCOPE = 'contracts';
 
 type ContractStatus = 'DRAFT' | 'SENT' | 'VIEWED' | 'SIGNED' | 'DECLINED' | 'VOID';
 type SortField = 'createdAt' | 'sentAt' | 'signedAt' | 'status';
@@ -64,6 +67,10 @@ export default function ContractsPage() {
     if (options?.resetPage) next.delete('page');
     setParams(next, { replace: true });
   }
+
+  // Saved filter views (localStorage) so reps can stash combos like
+  // "my SENT contracts sorted by sentAt asc" and jump back with one click.
+  const [views, setViews] = useState<SavedView[]>(() => listViews(VIEWS_SCOPE));
 
   // Debounced search — input typed locally, written to the URL after 300ms.
   const [qInput, setQInput] = useState(q);
@@ -149,6 +156,48 @@ export default function ContractsPage() {
       </header>
 
       {error && <div className="form-error">{error}</div>}
+
+      {(views.length > 0 || params.toString()) && (
+        <div className="saved-views">
+          {views.map((v) => (
+            <span key={v.id} className="saved-view-chip">
+              <button
+                type="button"
+                onClick={() => setParams(new URLSearchParams(v.query), { replace: true })}
+                title={`Apply: ?${v.query || '(default)'}`}
+              >
+                {v.name}
+              </button>
+              <button
+                type="button"
+                className="saved-view-remove"
+                onClick={() => {
+                  removeView(VIEWS_SCOPE, v.id);
+                  setViews(listViews(VIEWS_SCOPE));
+                }}
+                aria-label={`Remove saved view ${v.name}`}
+                title="Remove"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          {params.toString() && (
+            <button
+              type="button"
+              className="button-ghost button-small"
+              onClick={() => {
+                const name = prompt('Save current filters as:');
+                if (!name) return;
+                addView(VIEWS_SCOPE, name.trim(), params.toString());
+                setViews(listViews(VIEWS_SCOPE));
+              }}
+            >
+              ★ Save current view
+            </button>
+          )}
+        </div>
+      )}
 
       <section className="card">
         {contracts.length ? (
