@@ -58,6 +58,14 @@ export default function PortalLayout() {
           {(user?.role === 'EMPLOYEE' ||
             user?.role === 'SUBCONTRACTOR' ||
             user?.role === 'ADMIN') && <NavLink to="/portal/board">Message board</NavLink>}
+          {(user?.role === 'ADMIN' ||
+            user?.role === 'CUSTOMER' ||
+            (user?.role === 'EMPLOYEE' && user.isSales)) && (
+            <NavLink to="/portal/contracts">Contracts</NavLink>
+          )}
+          {user?.role === 'ADMIN' && (
+            <NavLink to="/portal/contract-templates">Templates</NavLink>
+          )}
           {user?.role === 'ADMIN' && <NavLink to="/portal/admin">Admin</NavLink>}
         </nav>
         <div className="portal-user">

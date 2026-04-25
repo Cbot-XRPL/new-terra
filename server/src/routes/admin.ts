@@ -91,7 +91,15 @@ router.get('/users', async (req, res, next) => {
     const users = await prisma.user.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      select: { id: true, email: true, name: true, role: true, isActive: true, createdAt: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isActive: true,
+        isSales: true,
+        createdAt: true,
+      },
     });
     res.json({ users });
   } catch (err) {
@@ -102,6 +110,7 @@ router.get('/users', async (req, res, next) => {
 const updateUserSchema = z.object({
   isActive: z.boolean().optional(),
   role: z.nativeEnum(Role).optional(),
+  isSales: z.boolean().optional(),
 });
 
 router.patch('/users/:id', async (req, res, next) => {
@@ -111,7 +120,14 @@ router.patch('/users/:id', async (req, res, next) => {
     const updated = await prisma.user.update({
       where: { id },
       data,
-      select: { id: true, email: true, name: true, role: true, isActive: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isActive: true,
+        isSales: true,
+      },
     });
     res.json({ user: updated });
   } catch (err) {

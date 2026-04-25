@@ -17,6 +17,8 @@ import membershipsRouter from './routes/memberships.js';
 import logEntriesRouter from './routes/logEntries.js';
 import boardRouter from './routes/board.js';
 import publicRouter from './routes/public.js';
+import contractTemplatesRouter from './routes/contractTemplates.js';
+import contractsRouter from './routes/contracts.js';
 
 const app = express();
 
@@ -48,6 +50,8 @@ app.use('/api/board', boardRouter);
 app.use('/api/schedules', schedulesRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/messages', messagesRouter);
+app.use('/api/contract-templates', contractTemplatesRouter);
+app.use('/api/contracts', contractsRouter);
 
 // In production, serve the built React client from this same process. The
 // SPA fallback comes after every /api route is registered so client routes

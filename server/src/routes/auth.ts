@@ -24,7 +24,13 @@ router.post('/login', async (req, res, next) => {
     const token = signJwt({ sub: user.id, role: user.role, email: user.email });
     res.json({
       token,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        isSales: user.isSales,
+      },
     });
   } catch (err) {
     next(err);
@@ -35,7 +41,14 @@ router.get('/me', requireAuth, async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.sub },
-      select: { id: true, email: true, name: true, role: true, phone: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        phone: true,
+        isSales: true,
+      },
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({ user });
@@ -87,7 +100,13 @@ router.post('/accept-invite', async (req, res, next) => {
     const jwtToken = signJwt({ sub: user.id, role: user.role, email: user.email });
     res.json({
       token: jwtToken,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        isSales: user.isSales,
+      },
     });
   } catch (err) {
     next(err);

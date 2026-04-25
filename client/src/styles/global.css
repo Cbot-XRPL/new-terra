@@ -540,6 +540,20 @@ input:focus, textarea:focus, select:focus {
   .calendar-day-num { font-size: 0.8rem; }
 }
 
+/* Contracts */
+.contract-body {
+  background: var(--surface);
+  border: 1px solid rgba(95, 99, 104, 0.32);
+  border-radius: 8px;
+  padding: 1.25rem;
+  white-space: pre-wrap;
+  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
 @media (max-width: 800px) {
   .messages-page { grid-template-columns: 1fr; height: auto; max-height: none; }
   .messages-main { min-height: 60vh; }

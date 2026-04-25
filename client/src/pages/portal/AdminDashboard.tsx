@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import type { Role } from '../../auth/AuthContext';
 import MembershipsAdmin from './MembershipsAdmin';
+import SalesFlow from './SalesFlow';
 
 interface AdminUser {
   id: string;
@@ -9,6 +10,7 @@ interface AdminUser {
   name: string;
   role: Role;
   isActive: boolean;
+  isSales: boolean;
   createdAt: string;
 }
 
@@ -83,6 +85,18 @@ export default function AdminDashboard() {
     }
   }
 
+  async function toggleSales(user: AdminUser) {
+    try {
+      await api(`/api/admin/users/${user.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isSales: !user.isSales }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Update failed');
+    }
+  }
+
   return (
     <div className="dashboard">
       <header>
@@ -120,7 +134,14 @@ export default function AdminDashboard() {
         <h2>Users ({users.length})</h2>
         <table className="table">
           <thead>
-            <tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Sales</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
           </thead>
           <tbody>
             {users.map((u) => (
@@ -128,9 +149,22 @@ export default function AdminDashboard() {
                 <td>{u.name}</td>
                 <td>{u.email}</td>
                 <td>{u.role.toLowerCase()}</td>
+                <td>
+                  {u.role === 'EMPLOYEE' ? (
+                    <button
+                      className={`button-small ${u.isSales ? '' : 'button-ghost'}`}
+                      onClick={() => toggleSales(u)}
+                      title={u.isSales ? 'Remove sales access' : 'Grant sales access'}
+                    >
+                      {u.isSales ? 'Sales ✓' : 'Grant'}
+                    </button>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
                 <td>{u.isActive ? 'Active' : 'Disabled'}</td>
                 <td>
-                  <button className="button button-ghost" onClick={() => toggleActive(u)}>
+                  <button className="button button-ghost button-small" onClick={() => toggleActive(u)}>
                     {u.isActive ? 'Disable' : 'Enable'}
                   </button>
                 </td>
@@ -139,6 +173,8 @@ export default function AdminDashboard() {
           </tbody>
         </table>
       </section>
+
+      <SalesFlow />
 
       <MembershipsAdmin />
 

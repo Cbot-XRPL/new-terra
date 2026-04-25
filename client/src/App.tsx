@@ -16,6 +16,10 @@ import InvoicesPage from './pages/portal/InvoicesPage';
 import MessagesPage from './pages/portal/MessagesPage';
 import MessageBoardPage from './pages/portal/MessageBoardPage';
 import CalendarPage from './pages/portal/CalendarPage';
+import ContractTemplatesPage from './pages/portal/ContractTemplatesPage';
+import ContractsPage from './pages/portal/ContractsPage';
+import NewContractPage from './pages/portal/NewContractPage';
+import ContractDetailPage from './pages/portal/ContractDetailPage';
 
 function PortalIndex() {
   const { user } = useAuth();
@@ -88,6 +92,24 @@ export default function App() {
             </RequireAuth>
           }
         />
+        <Route
+          path="contract-templates"
+          element={
+            <RequireAuth roles={['ADMIN']}>
+              <ContractTemplatesPage />
+            </RequireAuth>
+          }
+        />
+        <Route path="contracts" element={<ContractsPage />} />
+        <Route
+          path="contracts/new"
+          element={
+            <RequireAuth salesAccess>
+              <NewContractPage />
+            </RequireAuth>
+          }
+        />
+        <Route path="contracts/:id" element={<ContractDetailPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

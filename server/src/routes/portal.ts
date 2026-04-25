@@ -25,6 +25,25 @@ router.get('/customer/overview', requireRole(Role.CUSTOMER), async (req, res, ne
   }
 });
 
+// Customer lookup — admin and sales-flagged employees use this when picking
+// a customer (e.g. drafting a contract). Returns active customers only.
+router.get('/customers', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    const allowed =
+      me?.role === Role.ADMIN || (me?.role === Role.EMPLOYEE && me.isSales);
+    if (!allowed) return res.status(403).json({ error: 'Forbidden' });
+    const users = await prisma.user.findMany({
+      where: { role: Role.CUSTOMER, isActive: true },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, email: true },
+    });
+    res.json({ users });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Staff lookup — used by project + schedule forms to populate assignee pickers.
 router.get(
   '/staff/users',

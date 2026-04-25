@@ -38,6 +38,15 @@ enum MembershipTier {
   PREMIER
 }
 
+enum ContractStatus {
+  DRAFT
+  SENT
+  VIEWED
+  SIGNED
+  DECLINED
+  VOID
+}
+
 model User {
   id            String   @id @default(cuid())
   email         String   @unique
@@ -45,6 +54,9 @@ model User {
   name          String
   phone         String?
   role          Role
+  // Employees flagged as sales get access to the contract portal in addition
+  // to their normal employee permissions. Toggleable by admin.
+  isSales       Boolean  @default(false)
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -66,6 +78,11 @@ model User {
   logEntries    LogEntry[]
   boardPosts    MessageBoardPost[]
   invitesIssued Invitation[]    @relation("InvitesIssued")
+
+  // Contracts
+  contractTemplates ContractTemplate[] @relation("TemplateAuthor")
+  contractsSent     Contract[]         @relation("ContractsCreated")
+  contractsReceived Contract[]         @relation("ContractsForCustomer")
 }
 
 model Invitation {
@@ -205,4 +222,59 @@ model Message {
 
   @@index([toUserId])
   @@index([fromUserId])
+}
+
+model ContractTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  // Body is a string with {{variable}} placeholders. Plain text or markdown.
+  body        String
+  // List of variable definitions: [{ key, label, required, multiline }, ...]
+  variables   Json     @default("[]")
+  active      Boolean  @default(true)
+  createdById String
+  createdBy   User     @relation("TemplateAuthor", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  contracts   Contract[]
+}
+
+model Contract {
+  id           String         @id @default(cuid())
+  templateId   String?
+  template     ContractTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  // Snapshots — preserved when the underlying template changes or is deleted
+  // so what the customer signed is the body that was sent, regardless of
+  // future template edits.
+  templateNameSnapshot String
+  bodySnapshot         String
+  variableValues       Json @default("{}")
+
+  customerId   String
+  customer     User           @relation("ContractsForCustomer", fields: [customerId], references: [id])
+  createdById  String
+  createdBy    User           @relation("ContractsCreated", fields: [createdById], references: [id])
+
+  status       ContractStatus @default(DRAFT)
+  sentAt       DateTime?
+  viewedAt     DateTime?
+  signedAt     DateTime?
+  declinedAt   DateTime?
+
+  // Lightweight typed-name signature with audit metadata. Not legally
+  // equivalent to a notarised e-sig service, but enough for soft-signoff
+  // construction agreements; swap to DocuSign/Dropbox Sign later if needed.
+  signatureName String?
+  signatureIp   String?
+  declineReason String?
+
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([customerId])
+  @@index([createdById])
+  @@index([status])
 }
