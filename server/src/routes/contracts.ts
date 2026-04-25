@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { ContractStatus, Role } from '@prisma/client';
+import { ContractStatus, Role, type Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
+import { renderContractPdf } from '../lib/contractPdf.js';
+import { sendContractInviteEmail } from '../lib/mailer.js';
+import { remindStaleContracts } from '../lib/reminders.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -45,43 +48,77 @@ async function loadMe(userId: string) {
   return prisma.user.findUnique({ where: { id: userId } });
 }
 
+const SORT_FIELDS = ['createdAt', 'sentAt', 'signedAt', 'status'] as const;
+type SortField = (typeof SORT_FIELDS)[number];
+
+const listQuery = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  sort: z.enum(SORT_FIELDS).default('createdAt'),
+  dir: z.enum(['asc', 'desc']).default('desc'),
+  status: z.nativeEnum(ContractStatus).optional(),
+  q: z.string().trim().optional(),
+});
+
 router.get('/', async (req, res, next) => {
   try {
     const me = await loadMe(req.user!.sub);
     if (!me) return res.status(401).json({ error: 'Unauthenticated' });
 
-    if (me.role === Role.CUSTOMER) {
-      const contracts = await prisma.contract.findMany({
-        // Customers don't see drafts that haven't been sent to them yet.
-        where: {
-          customerId: me.id,
-          status: { in: [ContractStatus.SENT, ContractStatus.VIEWED, ContractStatus.SIGNED, ContractStatus.DECLINED] },
-        },
-        orderBy: { createdAt: 'desc' },
-        include: {
-          createdBy: { select: { id: true, name: true } },
-          template: { select: { id: true, name: true } },
-        },
-      });
-      return res.json({ contracts });
-    }
+    const { page, pageSize, sort, dir, status, q } = listQuery.parse(req.query);
+    const skip = (page - 1) * pageSize;
+    const orderBy = { [sort as SortField]: dir } as const;
 
-    if (!isSalesOrAdmin(me.role, me.isSales)) {
+    let where: Prisma.ContractWhereInput = {};
+
+    if (me.role === Role.CUSTOMER) {
+      // Customers don't see drafts that haven't been sent to them yet.
+      where = {
+        customerId: me.id,
+        status: status ?? {
+          in: [
+            ContractStatus.SENT,
+            ContractStatus.VIEWED,
+            ContractStatus.SIGNED,
+            ContractStatus.DECLINED,
+          ],
+        },
+      };
+    } else if (isSalesOrAdmin(me.role, me.isSales)) {
+      // Sales see their own; admins see everything.
+      where = me.role === Role.ADMIN ? {} : { createdById: me.id };
+      if (status) where.status = status;
+    } else {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    // Sales see their own; admins see everything.
-    const where = me.role === Role.ADMIN ? {} : { createdById: me.id };
-    const contracts = await prisma.contract.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        customer: { select: { id: true, name: true, email: true } },
-        createdBy: { select: { id: true, name: true } },
-        template: { select: { id: true, name: true } },
-      },
-    });
-    res.json({ contracts });
+    if (q) {
+      where = {
+        ...where,
+        OR: [
+          { templateNameSnapshot: { contains: q, mode: 'insensitive' } },
+          { customer: { name: { contains: q, mode: 'insensitive' } } },
+          { customer: { email: { contains: q, mode: 'insensitive' } } },
+        ],
+      };
+    }
+
+    const [contracts, total] = await Promise.all([
+      prisma.contract.findMany({
+        where,
+        orderBy,
+        skip,
+        take: pageSize,
+        include: {
+          customer: { select: { id: true, name: true, email: true } },
+          createdBy: { select: { id: true, name: true } },
+          template: { select: { id: true, name: true } },
+        },
+      }),
+      prisma.contract.count({ where }),
+    ]);
+
+    res.json({ contracts, total, page, pageSize });
   } catch (err) {
     next(err);
   }
@@ -248,8 +285,73 @@ router.post('/:id/send', async (req, res, next) => {
     const updated = await prisma.contract.update({
       where: { id: contract.id },
       data: { status: ContractStatus.SENT, sentAt: new Date() },
+      include: {
+        customer: { select: { id: true, name: true, email: true } },
+        createdBy: { select: { id: true, name: true } },
+      },
     });
+
+    // Email is best-effort — failure here shouldn't roll back the send.
+    // Logged to the server console (and the dev mailer) for visibility.
+    sendContractInviteEmail({
+      to: updated.customer.email,
+      customerName: updated.customer.name,
+      contractName: updated.templateNameSnapshot,
+      contractId: updated.id,
+      sentByName: updated.createdBy.name,
+    }).catch((err) => console.warn('[contracts] invite email failed', err));
+
     res.json({ contract: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PDF — accessible to admin, the rep who created it, and the contract's
+// customer. Generated on demand; the response is application/pdf.
+router.get('/:id/pdf', async (req, res, next) => {
+  try {
+    const me = await loadMe(req.user!.sub);
+    if (!me) return res.status(401).json({ error: 'Unauthenticated' });
+
+    const contract = await prisma.contract.findUnique({
+      where: { id: req.params.id },
+      include: {
+        customer: { select: { id: true, name: true, email: true } },
+        createdBy: { select: { id: true, name: true } },
+      },
+    });
+    if (!contract) return res.status(404).json({ error: 'Contract not found' });
+
+    const isAdmin = me.role === Role.ADMIN;
+    const isAuthor = contract.createdById === me.id;
+    const isTheirCustomer = me.role === Role.CUSTOMER && contract.customerId === me.id;
+    if (!isAdmin && !isAuthor && !isTheirCustomer) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const pdf = await renderContractPdf({
+      contractId: contract.id,
+      templateName: contract.templateNameSnapshot,
+      body: contract.bodySnapshot,
+      customer: contract.customer,
+      createdBy: contract.createdBy,
+      status: contract.status,
+      createdAt: contract.createdAt,
+      sentAt: contract.sentAt,
+      viewedAt: contract.viewedAt,
+      signedAt: contract.signedAt,
+      declinedAt: contract.declinedAt,
+      signatureName: contract.signatureName,
+      signatureIp: contract.signatureIp,
+      declineReason: contract.declineReason,
+    });
+
+    const filename = `${contract.templateNameSnapshot.replace(/[^a-zA-Z0-9._-]/g, '_')}-${contract.id.slice(0, 8)}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'private, no-cache');
+    res.send(pdf);
   } catch (err) {
     next(err);
   }
@@ -309,6 +411,19 @@ router.post('/:id/decline', async (req, res, next) => {
       },
     });
     res.json({ contract: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/admin/remind-stale', async (req, res, next) => {
+  try {
+    const me = await loadMe(req.user!.sub);
+    if (!me || me.role !== Role.ADMIN) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const result = await remindStaleContracts();
+    res.json(result);
   } catch (err) {
     next(err);
   }

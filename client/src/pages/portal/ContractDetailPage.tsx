@@ -6,6 +6,28 @@ import { formatDateTime } from '../../lib/format';
 
 type ContractStatus = 'DRAFT' | 'SENT' | 'VIEWED' | 'SIGNED' | 'DECLINED' | 'VOID';
 
+const API_BASE = import.meta.env.VITE_API_URL ?? '';
+
+async function downloadPdf(id: string, filename: string) {
+  const token = localStorage.getItem('nt_token');
+  const res = await fetch(`${API_BASE}/api/contracts/${id}/pdf`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    alert('Could not download PDF');
+    return;
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}-${id.slice(0, 8)}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 interface VariableDef {
   key: string;
   label: string;
@@ -172,7 +194,18 @@ export default function ContractDetailPage() {
       {error && <div className="form-error">{error}</div>}
 
       <section className="card">
-        <h2>Audit trail</h2>
+        <div className="row-between">
+          <h2>Audit trail</h2>
+          {contract.status !== 'DRAFT' && (
+            <button
+              type="button"
+              className="button-ghost button-small"
+              onClick={() => downloadPdf(contract.id, contract.templateNameSnapshot)}
+            >
+              Download PDF
+            </button>
+          )}
+        </div>
         <ul className="list">
           <li>Created {formatDateTime(contract.createdAt)} by {contract.createdBy.name}</li>
           {contract.sentAt && <li>Sent {formatDateTime(contract.sentAt)}</li>}

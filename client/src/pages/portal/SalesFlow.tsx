@@ -20,12 +20,41 @@ interface FlowResponse {
 export default function SalesFlow() {
   const [data, setData] = useState<FlowResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reminding, setReminding] = useState(false);
+  const [reminderResult, setReminderResult] = useState<string | null>(null);
 
-  useEffect(() => {
+  function load() {
     api<FlowResponse>('/api/contracts/admin/flow')
       .then(setData)
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load'));
-  }, []);
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function remindStale() {
+    setReminding(true);
+    setReminderResult(null);
+    setError(null);
+    try {
+      const res = await api<{ considered: number; reminded: number; skippedCooldown: number }>(
+        '/api/contracts/admin/remind-stale',
+        { method: 'POST' },
+      );
+      setReminderResult(
+        res.reminded
+          ? `Sent ${res.reminded} reminder${res.reminded === 1 ? '' : 's'}` +
+              (res.skippedCooldown > 0
+                ? ` (skipped ${res.skippedCooldown} reminded recently)`
+                : '')
+          : `No reminders sent — ${res.considered} stale contract${res.considered === 1 ? '' : 's'}, all on cooldown`,
+      );
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Reminder failed');
+    } finally {
+      setReminding(false);
+    }
+  }
 
   // Pivot byRep into a name -> { status: count, total } map for the table.
   const repTable = (() => {
@@ -92,7 +121,17 @@ export default function SalesFlow() {
             <p className="muted">No contracts yet.</p>
           )}
 
-          <h3 style={{ marginTop: '1.5rem' }}>Stale (sent &gt; 7 days, no response)</h3>
+          <div className="row-between" style={{ marginTop: '1.5rem' }}>
+            <h3 style={{ marginBottom: 0 }}>Stale (sent &gt; 7 days, no response)</h3>
+            <button
+              className="button-ghost button-small"
+              onClick={remindStale}
+              disabled={reminding}
+            >
+              {reminding ? 'Sending…' : 'Email reminders'}
+            </button>
+          </div>
+          {reminderResult && <p className="form-success" style={{ marginTop: '0.5rem' }}>{reminderResult}</p>}
           {data.stale.length ? (
             <ul className="list">
               {data.stale.map((c) => (

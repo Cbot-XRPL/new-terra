@@ -2,7 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import path from 'node:path';
+import cron from 'node-cron';
 import { env } from './env.js';
+import { remindStaleContracts } from './lib/reminders.js';
 import { errorHandler } from './middleware/error.js';
 import authRouter from './routes/auth.js';
 import adminRouter from './routes/admin.js';
@@ -69,3 +71,20 @@ app.use(errorHandler);
 app.listen(env.port, () => {
   console.log(`[server] http://localhost:${env.port}`);
 });
+
+// Daily stale-contract reminder. Off by default in development so working on
+// the API doesn't accidentally send emails; flip CONTRACT_REMINDER_CRON to a
+// valid cron expression (e.g. "0 9 * * *" for 9:00am every day) in prod.
+const reminderSchedule = process.env.CONTRACT_REMINDER_CRON;
+if (reminderSchedule) {
+  if (cron.validate(reminderSchedule)) {
+    cron.schedule(reminderSchedule, () => {
+      remindStaleContracts()
+        .then((r) => console.log('[cron:contract-reminders]', r))
+        .catch((err) => console.warn('[cron:contract-reminders] failed', err));
+    });
+    console.log(`[cron] contract reminders scheduled "${reminderSchedule}"`);
+  } else {
+    console.warn(`[cron] CONTRACT_REMINDER_CRON="${reminderSchedule}" is not a valid expression; skipping`);
+  }
+}

@@ -541,6 +541,21 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* Contracts */
+.sortable { cursor: pointer; user-select: none; }
+.sortable:hover { color: var(--accent); }
+
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(95, 99, 104, 0.25);
+}
+.pagination button:disabled { opacity: 0.4; }
+
 .contract-body {
   background: var(--surface);
   border: 1px solid rgba(95, 99, 104, 0.32);

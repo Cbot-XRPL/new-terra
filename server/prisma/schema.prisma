@@ -271,6 +271,10 @@ model Contract {
   signatureIp   String?
   declineReason String?
 
+  // Last time we nudged the customer about this open contract — used to
+  // throttle reminders so we don't email more than once per day.
+  lastReminderAt DateTime?
+
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
