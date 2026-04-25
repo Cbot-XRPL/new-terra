@@ -52,6 +52,9 @@ export default function PortalLayout() {
             Messages
             {unread > 0 && <span className="unread-dot" style={{ marginLeft: 8 }}>{unread}</span>}
           </NavLink>
+          {(user?.role === 'EMPLOYEE' ||
+            user?.role === 'SUBCONTRACTOR' ||
+            user?.role === 'ADMIN') && <NavLink to="/portal/board">Message board</NavLink>}
           {user?.role === 'ADMIN' && <NavLink to="/portal/admin">Admin</NavLink>}
         </nav>
         <div className="portal-user">

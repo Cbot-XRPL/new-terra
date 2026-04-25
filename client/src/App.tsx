@@ -14,6 +14,7 @@ import ProjectsListPage from './pages/portal/ProjectsListPage';
 import ProjectDetailPage from './pages/portal/ProjectDetailPage';
 import InvoicesPage from './pages/portal/InvoicesPage';
 import MessagesPage from './pages/portal/MessagesPage';
+import MessageBoardPage from './pages/portal/MessageBoardPage';
 
 function PortalIndex() {
   const { user } = useAuth();
@@ -70,6 +71,14 @@ export default function App() {
         <Route path="projects/:id" element={<ProjectDetailPage />} />
         <Route path="invoices" element={<InvoicesPage />} />
         <Route path="messages" element={<MessagesPage />} />
+        <Route
+          path="board"
+          element={
+            <RequireAuth roles={['ADMIN', 'EMPLOYEE', 'SUBCONTRACTOR']}>
+              <MessageBoardPage />
+            </RequireAuth>
+          }
+        />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
