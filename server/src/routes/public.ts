@@ -18,18 +18,19 @@ const contactSchema = z.object({
   email: z.string().email().max(200),
   phone: z.string().max(40).optional().nullable(),
   message: z.string().min(1).max(5000),
-  // Honeypot — real users won't fill this; bots usually do.
-  website: z.string().max(0).optional(),
+  // Honeypot — real users won't fill this; bots usually do. Validated leniently
+  // so a filled value still parses; we silently succeed below.
+  website: z.string().max(500).optional(),
 });
 
 router.post('/contact', contactLimiter, async (req, res, next) => {
   try {
-    const data = contactSchema.parse(req.body);
-
-    // Silent success when honeypot is filled — don't tell the bot it was caught.
-    if (data.website && data.website.length > 0) {
+    // Honeypot pre-check — done before parsing so a bot's payload that looks
+    // otherwise valid still gets a 200 with no email sent.
+    if (typeof req.body?.website === 'string' && req.body.website.length > 0) {
       return res.json({ ok: true });
     }
+    const data = contactSchema.parse(req.body);
 
     await sendInquiryEmail({
       name: data.name,

@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
-import jwt from 'jsonwebtoken';
+import jwt, { type SignOptions } from 'jsonwebtoken';
 import { env } from '../env.js';
 import type { Role } from '@prisma/client';
 
@@ -11,7 +11,8 @@ export interface JwtPayload {
 }
 
 export function signJwt(payload: JwtPayload): string {
-  return jwt.sign(payload, env.jwtSecret, { expiresIn: env.jwtExpiresIn });
+  const options = { expiresIn: env.jwtExpiresIn } as SignOptions;
+  return jwt.sign(payload, env.jwtSecret, options);
 }
 
 export function verifyJwt(token: string): JwtPayload {
