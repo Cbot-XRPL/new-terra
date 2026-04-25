@@ -28,6 +28,7 @@ import FinanceOverviewPage from './pages/portal/FinanceOverviewPage';
 import ExpensesPage from './pages/portal/ExpensesPage';
 import NewExpensePage from './pages/portal/NewExpensePage';
 import ExpenseDetailPage from './pages/portal/ExpenseDetailPage';
+import QuickBooksPage from './pages/portal/QuickBooksPage';
 
 function PortalIndex() {
   const { user } = useAuth();
@@ -172,6 +173,14 @@ export default function App() {
           element={
             <RequireAuth submitExpense>
               <ExpenseDetailPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="finance/qb"
+          element={
+            <RequireAuth accountingAccess>
+              <QuickBooksPage />
             </RequireAuth>
           }
         />

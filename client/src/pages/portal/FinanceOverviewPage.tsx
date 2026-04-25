@@ -77,6 +77,11 @@ export default function FinanceOverviewPage() {
           <Link to="/portal/finance/expenses" className="button button-ghost">
             All expenses
           </Link>
+          {isAccounting && (
+            <Link to="/portal/finance/qb" className="button button-ghost">
+              QuickBooks
+            </Link>
+          )}
         </div>
       </header>
 
