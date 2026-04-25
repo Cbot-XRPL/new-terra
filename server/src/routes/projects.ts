@@ -217,11 +217,14 @@ router.post('/:id/schedules', async (req, res, next) => {
     if (!project) return res.status(404).json({ error: 'Project not found' });
     if (!me) return res.status(401).json({ error: 'Unauthenticated' });
 
-    // Admin and the assigned PM can always schedule. Other employees keep
-    // their existing ability to schedule on any project.
+    // Admin + the assigned PM can always schedule on their projects. Sales-
+    // flagged employees can schedule on any project to help the PM coordinate.
+    // Pure-PM employees who aren't assigned to *this* project cannot — that
+    // prevents one PM from scheduling work on another PM's job.
     const canSchedule =
       me.role === Role.ADMIN ||
-      (me.role === Role.EMPLOYEE && (project.projectManagerId === me.id || !me.isProjectManager));
+      (me.role === Role.EMPLOYEE &&
+        (project.projectManagerId === me.id || !me.isProjectManager || me.isSales));
     if (!canSchedule) return res.status(403).json({ error: 'Forbidden' });
 
     if (data.assigneeId) {

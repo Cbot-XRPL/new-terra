@@ -19,24 +19,28 @@ export function hasProjectManagerCapability(
 
 /**
  * True if the user can see / edit project-level data for this specific project.
- * - ADMIN: every project
- * - EMPLOYEE PM: only the projects they're assigned to
- * - The project's customer: their own project
+ * - ADMIN: every project, full write
+ * - EMPLOYEE PM (assigned): full write
+ * - EMPLOYEE sales: read (and comment via the comments route's read gate) so
+ *   reps can keep tabs on their accounts and help the PM coordinate with the
+ *   customer; cannot edit project metadata or status
+ * - The project's customer: read of their own project
  * Subcontractors and other employees fall through to the schedule lookup
  * elsewhere; this helper only governs the rich project hub.
  */
 export function canManageProject(
-  user: Pick<User, 'id' | 'role' | 'isProjectManager'>,
+  user: Pick<User, 'id' | 'role' | 'isProjectManager' | 'isSales'>,
   project: Pick<Project, 'projectManagerId' | 'customerId'>,
 ): { read: boolean; write: boolean } {
   if (user.role === 'ADMIN') return { read: true, write: true };
   if (user.role === 'EMPLOYEE' && user.isProjectManager && project.projectManagerId === user.id) {
     return { read: true, write: true };
   }
+  if (user.role === 'EMPLOYEE' && user.isSales) {
+    return { read: true, write: false };
+  }
   if (user.role === 'CUSTOMER' && project.customerId === user.id) {
     return { read: true, write: false };
   }
-  // Other employees can read project metadata (already exposed via the
-  // schedule list) but the rich hub is restricted to PMs + admin + customer.
   return { read: false, write: false };
 }
