@@ -11,6 +11,7 @@ interface Invoice {
   status: string;
   issuedAt: string;
   dueAt: string | null;
+  paymentUrl: string | null;
   customer: { id: string; name: string };
   project: { id: string; name: string } | null;
 }
@@ -71,6 +72,7 @@ export default function InvoicesPage() {
                 <th>Project</th>
                 <th>Amount</th>
                 <th>Status</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -92,6 +94,18 @@ export default function InvoicesPage() {
                     <span className={`badge badge-${inv.status.toLowerCase()}`}>
                       {inv.status.toLowerCase()}
                     </span>
+                  </td>
+                  <td>
+                    {inv.paymentUrl && inv.status !== 'PAID' && inv.status !== 'VOID' && (
+                      <a
+                        className="button button-small"
+                        href={inv.paymentUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Pay now
+                      </a>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -130,6 +130,9 @@ model Invoice {
   paidAt      DateTime?
   notes       String?
   lineItems   Json?
+  // Hosted-payment URL (Stripe payment link, QuickBooks, Square, etc.).
+  // Set by the admin; rendered as a "Pay now" button on the customer side.
+  paymentUrl  String?
 }
 
 model Selection {
@@ -164,6 +167,7 @@ model ProjectImage {
   uploadedBy  User     @relation("UploadedImages", fields: [uploadedById], references: [id])
   filename    String
   url         String
+  thumbnailUrl String?
   caption     String?
   createdAt   DateTime @default(now())
 }

@@ -7,6 +7,39 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 const router = Router();
 router.use(requireAuth);
 
+const calendarQuery = z.object({
+  from: z.string().datetime(),
+  to: z.string().datetime(),
+  mine: z.enum(['true', 'false']).optional(),
+});
+
+// Company-wide calendar view for staff. Customers must keep using the
+// per-project schedule list — they shouldn't see other customers' projects.
+router.get('/', requireRole(Role.ADMIN, Role.EMPLOYEE, Role.SUBCONTRACTOR), async (req, res, next) => {
+  try {
+    const { from, to, mine } = calendarQuery.parse(req.query);
+    const where: {
+      startsAt: { gte: Date; lte: Date };
+      assigneeId?: string;
+    } = {
+      startsAt: { gte: new Date(from), lte: new Date(to) },
+    };
+    if (mine === 'true') where.assigneeId = req.user!.sub;
+
+    const schedules = await prisma.schedule.findMany({
+      where,
+      orderBy: { startsAt: 'asc' },
+      include: {
+        project: { select: { id: true, name: true, address: true } },
+        assignee: { select: { id: true, name: true, role: true } },
+      },
+    });
+    res.json({ schedules });
+  } catch (err) {
+    next(err);
+  }
+});
+
 const updateScheduleSchema = z.object({
   title: z.string().min(1).optional(),
   notes: z.string().nullable().optional(),

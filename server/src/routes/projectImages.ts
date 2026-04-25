@@ -1,5 +1,8 @@
 import { Router } from 'express';
 import multer from 'multer';
+import sharp from 'sharp';
+import path from 'node:path';
+import fs from 'node:fs/promises';
 import { z } from 'zod';
 import { Role } from '@prisma/client';
 import { prisma } from '../db.js';
@@ -56,20 +59,55 @@ router.post(
       const files = (req.files as Array<Express.Multer.File & { key?: string }>) ?? [];
       const caption = typeof req.body.caption === 'string' ? req.body.caption : undefined;
 
+      // Generate thumbnails sequentially so a single big image doesn't peg the
+      // event loop. Failures are non-fatal — we fall back to no thumbnail.
+      const records: Array<{
+        filename: string;
+        originalName: string;
+        url: string;
+        thumbnailUrl: string | null;
+      }> = [];
+
+      for (const f of files) {
+        // disk storage exposes filename; multer-s3 exposes key — handle both.
+        const filename =
+          (f as Express.Multer.File).filename ?? f.key?.split('/').pop() ?? f.originalname;
+        const url = storage.publicUrl(project.id, filename);
+
+        let thumbnailUrl: string | null = null;
+        try {
+          const source = (f as Express.Multer.File).path
+            ? await fs.readFile((f as Express.Multer.File).path)
+            : (f.buffer as Buffer | undefined);
+          if (source) {
+            const thumb = await sharp(source)
+              .rotate()
+              .resize({ width: 480, height: 480, fit: 'inside', withoutEnlargement: true })
+              .webp({ quality: 78 })
+              .toBuffer();
+            const thumbName = `thumb-${path.parse(filename).name}.webp`;
+            thumbnailUrl = await storage.putDerived(project.id, thumbName, thumb);
+          }
+        } catch (thumbErr) {
+          console.warn('[upload] thumbnail generation failed', thumbErr);
+        }
+
+        records.push({ filename, originalName: f.originalname, url, thumbnailUrl });
+      }
+
       const created = await prisma.$transaction(
-        files.map((f) => {
-          // disk storage exposes filename; multer-s3 exposes key — handle both.
-          const filename = (f as Express.Multer.File).filename ?? f.key?.split('/').pop() ?? f.originalname;
-          return prisma.projectImage.create({
+        records.map((r) =>
+          prisma.projectImage.create({
             data: {
               projectId: project.id,
               uploadedById: req.user!.sub,
-              filename: f.originalname,
-              url: storage.publicUrl(project.id, filename),
+              filename: r.originalName,
+              url: r.url,
+              thumbnailUrl: r.thumbnailUrl,
               caption,
             },
-          });
-        }),
+          }),
+        ),
       );
       res.status(201).json({ images: created });
     } catch (err) {
@@ -92,6 +130,7 @@ router.delete(
       }
       await prisma.projectImage.delete({ where: { id: imageId } });
       await storage.remove(image.url);
+      if (image.thumbnailUrl) await storage.remove(image.thumbnailUrl);
       res.status(204).end();
     } catch (err) {
       next(err);

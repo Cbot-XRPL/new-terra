@@ -15,6 +15,7 @@ import ProjectDetailPage from './pages/portal/ProjectDetailPage';
 import InvoicesPage from './pages/portal/InvoicesPage';
 import MessagesPage from './pages/portal/MessagesPage';
 import MessageBoardPage from './pages/portal/MessageBoardPage';
+import CalendarPage from './pages/portal/CalendarPage';
 
 function PortalIndex() {
   const { user } = useAuth();
@@ -76,6 +77,14 @@ export default function App() {
           element={
             <RequireAuth roles={['ADMIN', 'EMPLOYEE', 'SUBCONTRACTOR']}>
               <MessageBoardPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="calendar"
+          element={
+            <RequireAuth roles={['ADMIN', 'EMPLOYEE', 'SUBCONTRACTOR']}>
+              <CalendarPage />
             </RequireAuth>
           }
         />

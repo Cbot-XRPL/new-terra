@@ -21,6 +21,7 @@ const createInvoiceSchema = z.object({
   dueAt: z.string().datetime().nullable().optional(),
   notes: z.string().optional(),
   lineItems: z.array(lineItemSchema).optional(),
+  paymentUrl: z.string().url().nullable().optional(),
 });
 
 const updateInvoiceSchema = z.object({
@@ -30,6 +31,7 @@ const updateInvoiceSchema = z.object({
   notes: z.string().nullable().optional(),
   lineItems: z.array(lineItemSchema).optional(),
   paidAt: z.string().datetime().nullable().optional(),
+  paymentUrl: z.string().url().nullable().optional(),
 });
 
 async function nextInvoiceNumber(): Promise<string> {
@@ -106,6 +108,7 @@ router.post('/', requireRole(Role.ADMIN), async (req, res, next) => {
         dueAt: data.dueAt ? new Date(data.dueAt) : undefined,
         notes: data.notes,
         lineItems: data.lineItems ?? undefined,
+        paymentUrl: data.paymentUrl ?? undefined,
         status: InvoiceStatus.DRAFT,
       },
       include: {
@@ -135,6 +138,7 @@ router.patch('/:id', requireRole(Role.ADMIN), async (req, res, next) => {
         dueAt: data.dueAt === null ? null : data.dueAt ? new Date(data.dueAt) : undefined,
         notes: data.notes === null ? null : data.notes,
         lineItems: data.lineItems ?? undefined,
+        paymentUrl: data.paymentUrl === null ? null : data.paymentUrl,
         paidAt: paidAt as Date | null | undefined,
       },
       include: {

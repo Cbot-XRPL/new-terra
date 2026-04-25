@@ -13,6 +13,11 @@ export interface ProjectStorage {
   engine: StorageEngine;
   /** Build the public URL stored in the DB row for an uploaded file */
   publicUrl(projectId: string, filename: string): string;
+  /**
+   * Persist a derived asset (e.g. thumbnail) next to a previously-uploaded file
+   * and return its public URL. Returns null on failure so callers can fall back.
+   */
+  putDerived(projectId: string, filename: string, body: Buffer): Promise<string | null>;
   /** Best-effort delete by the URL we previously generated */
   remove(url: string): Promise<void>;
 }
@@ -36,6 +41,13 @@ function localStorage(): ProjectStorage {
   return {
     engine,
     publicUrl(projectId, filename) {
+      return `/uploads/projects/${projectId}/${filename}`;
+    },
+    async putDerived(projectId, filename, body) {
+      const dir = path.join(root, projectId);
+      await fs.promises.mkdir(dir, { recursive: true });
+      const target = path.join(dir, filename);
+      await fs.promises.writeFile(target, body);
       return `/uploads/projects/${projectId}/${filename}`;
     },
     async remove(url) {

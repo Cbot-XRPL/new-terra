@@ -14,6 +14,7 @@ interface Invoice {
   dueAt: string | null;
   paidAt: string | null;
   notes: string | null;
+  paymentUrl: string | null;
   customer: { id: string; name: string };
   project: { id: string; name: string } | null;
 }
@@ -37,6 +38,7 @@ export default function InvoicesSection({ projectId, customerId, customerName }:
   const [amount, setAmount] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [notes, setNotes] = useState('');
+  const [paymentUrl, setPaymentUrl] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   async function load() {
@@ -70,11 +72,13 @@ export default function InvoicesSection({ projectId, customerId, customerName }:
           amountCents: cents,
           dueAt: dueAt ? new Date(dueAt).toISOString() : null,
           notes: notes || undefined,
+          paymentUrl: paymentUrl || undefined,
         }),
       });
       setAmount('');
       setDueAt('');
       setNotes('');
+      setPaymentUrl('');
       setShowForm(false);
       await load();
     } catch (err) {
@@ -142,6 +146,14 @@ export default function InvoicesSection({ projectId, customerId, customerName }:
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
+          <label htmlFor="i-pay">Hosted payment URL (optional)</label>
+          <input
+            id="i-pay"
+            type="url"
+            value={paymentUrl}
+            onChange={(e) => setPaymentUrl(e.target.value)}
+            placeholder="https://buy.stripe.com/..."
+          />
           <button type="submit" disabled={submitting}>
             {submitting ? 'Creating…' : 'Create invoice'}
           </button>
@@ -153,6 +165,7 @@ export default function InvoicesSection({ projectId, customerId, customerName }:
           <thead>
             <tr>
               <th>#</th><th>Issued</th><th>Due</th><th>Amount</th><th>Status</th>
+              <th>{isAdmin ? '' : 'Pay'}</th>
               {isAdmin && <th></th>}
             </tr>
           </thead>
@@ -167,6 +180,20 @@ export default function InvoicesSection({ projectId, customerId, customerName }:
                   <span className={`badge badge-${inv.status.toLowerCase()}`}>
                     {inv.status.toLowerCase()}
                   </span>
+                </td>
+                <td>
+                  {inv.paymentUrl && inv.status !== 'PAID' && inv.status !== 'VOID' ? (
+                    <a
+                      className="button button-small"
+                      href={inv.paymentUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Pay now
+                    </a>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
                 </td>
                 {isAdmin && (
                   <td>

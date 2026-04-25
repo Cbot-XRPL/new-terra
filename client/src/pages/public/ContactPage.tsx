@@ -1,5 +1,6 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useCallback, useState } from 'react';
 import { ApiError, api } from '../../lib/api';
+import Turnstile from '../../components/Turnstile';
 
 export default function ContactPage() {
   const [name, setName] = useState('');
@@ -8,8 +9,11 @@ export default function ContactPage() {
   const [message, setMessage] = useState('');
   // Honeypot — must remain empty for the submission to be processed.
   const [website, setWebsite] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState<string | undefined>();
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
+
+  const onTurnstile = useCallback((token: string) => setTurnstileToken(token), []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -18,7 +22,7 @@ export default function ContactPage() {
     try {
       await api('/api/public/contact', {
         method: 'POST',
-        body: JSON.stringify({ name, email, phone, message, website }),
+        body: JSON.stringify({ name, email, phone, message, website, turnstileToken }),
       });
       setStatus('sent');
       setName('');
@@ -83,6 +87,8 @@ export default function ContactPage() {
               onChange={(e) => setWebsite(e.target.value)}
             />
           </div>
+
+          <Turnstile onToken={onTurnstile} />
 
           {error && <div className="form-error">{error}</div>}
 

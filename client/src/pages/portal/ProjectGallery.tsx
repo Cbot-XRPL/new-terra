@@ -6,6 +6,7 @@ import { formatDateTime } from '../../lib/format';
 interface ProjectImage {
   id: string;
   url: string;
+  thumbnailUrl: string | null;
   filename: string;
   caption: string | null;
   createdAt: string;
@@ -121,7 +122,11 @@ export default function ProjectGallery({ projectId }: { projectId: string }) {
           {images.map((img) => (
             <figure key={img.id} className="gallery-item">
               <a href={img.url} target="_blank" rel="noreferrer">
-                <img src={img.url} alt={img.caption ?? img.filename} loading="lazy" />
+                <img
+                  src={img.thumbnailUrl ?? img.url}
+                  alt={img.caption ?? img.filename}
+                  loading="lazy"
+                />
               </a>
               <figcaption>
                 {img.caption && <div>{img.caption}</div>}
