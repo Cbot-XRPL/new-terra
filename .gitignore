@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vscode/*
+!.vscode/settings.json
+client/dist/
+server/dist/
+server/uploads/
+server/prisma/migrations/dev.db*
+coverage/

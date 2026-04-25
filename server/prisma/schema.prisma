@@ -1,0 +1,200 @@
+// New Terra Construction — database schema
+// Run: npm run db:migrate
+// See server/prisma/seed.ts for the bootstrap admin.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  EMPLOYEE
+  SUBCONTRACTOR
+  CUSTOMER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  VOID
+}
+
+enum SelectionStatus {
+  PENDING
+  APPROVED
+  CHANGE_REQUESTED
+}
+
+enum MembershipTier {
+  STANDARD
+  PRIORITY
+  PREMIER
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String?
+  name          String
+  phone         String?
+  role          Role
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Customer-side relations
+  projects      Project[]       @relation("CustomerProjects")
+  invoices      Invoice[]
+  selections    Selection[]
+  membership    Membership?
+  receivedMessages ClientMessage[] @relation("MessagesToCustomer")
+
+  // Employee/sub-side relations
+  schedules     Schedule[]      @relation("AssignedSchedules")
+  uploadedImages ProjectImage[] @relation("UploadedImages")
+  logEntries    LogEntry[]
+  boardPosts    MessageBoardPost[]
+  sentMessages  ClientMessage[] @relation("MessagesFromStaff")
+  invitesIssued Invitation[]    @relation("InvitesIssued")
+}
+
+model Invitation {
+  id          String   @id @default(cuid())
+  email       String
+  role        Role
+  tokenHash   String   @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  invitedById String
+  invitedBy   User     @relation("InvitesIssued", fields: [invitedById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([email])
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  address     String?
+  description String?
+  customerId  String
+  customer    User     @relation("CustomerProjects", fields: [customerId], references: [id])
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  schedules   Schedule[]
+  invoices    Invoice[]
+  selections  Selection[]
+  images      ProjectImage[]
+  logEntries  LogEntry[]
+}
+
+model Schedule {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assigneeId  String?
+  assignee    User?    @relation("AssignedSchedules", fields: [assigneeId], references: [id])
+  title       String
+  notes       String?
+  startsAt    DateTime
+  endsAt      DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([startsAt])
+}
+
+model Invoice {
+  id          String        @id @default(cuid())
+  number      String        @unique
+  customerId  String
+  customer    User          @relation(fields: [customerId], references: [id])
+  projectId   String?
+  project     Project?      @relation(fields: [projectId], references: [id])
+  amountCents Int
+  status      InvoiceStatus @default(DRAFT)
+  issuedAt    DateTime      @default(now())
+  dueAt       DateTime?
+  paidAt      DateTime?
+  notes       String?
+  lineItems   Json?
+}
+
+model Selection {
+  id          String          @id @default(cuid())
+  projectId   String
+  project     Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  customerId  String
+  customer    User            @relation(fields: [customerId], references: [id])
+  category    String
+  option      String
+  notes       String?
+  status      SelectionStatus @default(PENDING)
+  decidedAt   DateTime?
+  createdAt   DateTime        @default(now())
+}
+
+model Membership {
+  id           String         @id @default(cuid())
+  customerId   String         @unique
+  customer     User           @relation(fields: [customerId], references: [id])
+  tier         MembershipTier @default(STANDARD)
+  startedAt    DateTime       @default(now())
+  renewsAt     DateTime?
+  active       Boolean        @default(true)
+}
+
+model ProjectImage {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy  User     @relation("UploadedImages", fields: [uploadedById], references: [id])
+  filename    String
+  url         String
+  caption     String?
+  createdAt   DateTime @default(now())
+}
+
+model LogEntry {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id])
+  body        String
+  createdAt   DateTime @default(now())
+}
+
+model MessageBoardPost {
+  id        String   @id @default(cuid())
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  title     String
+  body      String
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model ClientMessage {
+  id          String   @id @default(cuid())
+  fromStaffId String
+  fromStaff   User     @relation("MessagesFromStaff", fields: [fromStaffId], references: [id])
+  toCustomerId String
+  toCustomer  User     @relation("MessagesToCustomer", fields: [toCustomerId], references: [id])
+  subject     String?
+  body        String
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([toCustomerId])
+}

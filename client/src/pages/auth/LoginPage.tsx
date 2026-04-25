@@ -1,0 +1,62 @@
+import { type FormEvent, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../auth/AuthContext';
+import { ApiError } from '../../lib/api';
+
+export default function LoginPage() {
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await login(email, password);
+      navigate('/portal');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Sign in failed');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <section className="auth-page">
+      <div className="form-container">
+        <h2>Sign in to the portal</h2>
+        <p className="muted">
+          Employees, subcontractors, and customers — use the email associated with your invite.
+        </p>
+        <form onSubmit={onSubmit}>
+          <label htmlFor="email">Email</label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoComplete="username"
+          />
+          <label htmlFor="password">Password</label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            autoComplete="current-password"
+          />
+          {error && <div className="form-error">{error}</div>}
+          <button type="submit" disabled={submitting}>
+            {submitting ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+      </div>
+    </section>
+  );
+}
