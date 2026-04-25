@@ -7,15 +7,31 @@ import ProjectGallery from './ProjectGallery';
 import InvoicesSection from './InvoicesSection';
 import SelectionsSection from './SelectionsSection';
 import LogEntriesSection from './LogEntriesSection';
+import ProjectComments from './ProjectComments';
+
+type ProjectStatus = 'PLANNING' | 'AWAITING_CONTRACT' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETE' | 'CANCELLED';
+
+const STATUSES: ProjectStatus[] = ['PLANNING', 'AWAITING_CONTRACT', 'ACTIVE', 'ON_HOLD', 'COMPLETE', 'CANCELLED'];
+const STATUS_BADGE: Record<ProjectStatus, string> = {
+  PLANNING: 'badge-draft',
+  AWAITING_CONTRACT: 'badge-sent',
+  ACTIVE: 'badge-paid',
+  ON_HOLD: 'badge-void',
+  COMPLETE: 'badge-paid',
+  CANCELLED: 'badge-overdue',
+};
+function humanize(s: string) { return s.toLowerCase().replace(/_/g, ' '); }
 
 interface ProjectDetail {
   id: string;
   name: string;
   address: string | null;
   description: string | null;
+  status: ProjectStatus;
   startDate: string | null;
   endDate: string | null;
   customer: { id: string; name: string; email: string };
+  projectManager: { id: string; name: string; email: string } | null;
 }
 
 interface Schedule {
@@ -33,14 +49,24 @@ interface StaffOption {
   role: Role;
 }
 
+interface ProjectContract {
+  id: string;
+  templateNameSnapshot: string;
+  status: string;
+  sentAt: string | null;
+  signedAt: string | null;
+}
+
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
   const canAddSchedule = user?.role === 'ADMIN' || user?.role === 'EMPLOYEE';
 
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [staff, setStaff] = useState<StaffOption[]>([]);
+  const [contracts, setContracts] = useState<ProjectContract[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   // Schedule form state
@@ -69,12 +95,38 @@ export default function ProjectDetailPage() {
       setProject(project);
       setSchedules(schedules);
       setStaff(staffRes.users);
+
+      // Fetch contracts that mention this project. The contracts endpoint is
+      // role-scoped server-side (customers see their own; staff see all),
+      // so we just filter the page slice by projectId on the client.
+      try {
+        const cRes = await api<{ contracts: Array<ProjectContract & { project: { id: string } | null }> }>(
+          `/api/contracts?pageSize=100`,
+        );
+        setContracts(cRes.contracts.filter((c) => c.project?.id === project.id));
+      } catch {
+        // Customers without contract access (e.g. drafts only) just see no list.
+        setContracts([]);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load project');
     }
   }
 
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id]);
+
+  async function setStatus(next: ProjectStatus) {
+    if (!project) return;
+    try {
+      await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: next }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Status update failed');
+    }
+  }
 
   async function addSchedule(e: FormEvent) {
     e.preventDefault();
@@ -124,15 +176,40 @@ export default function ProjectDetailPage() {
     );
   }
 
+  const isPmOrAdmin = isAdmin || (user?.role === 'EMPLOYEE' && user.isProjectManager && project.projectManager?.id === user.id);
+
   return (
     <div className="dashboard">
       <header>
         <Link to="/portal/projects" className="muted">← All projects</Link>
-        <h1>{project.name}</h1>
-        <p className="muted">
-          Customer: {project.customer.name} · {project.address ?? 'No address'} ·{' '}
-          {project.startDate ? `Starts ${formatDate(project.startDate)}` : 'No start date'}
-        </p>
+        <div className="row-between" style={{ alignItems: 'flex-end' }}>
+          <div>
+            <h1 style={{ marginBottom: 4 }}>{project.name}</h1>
+            <p className="muted" style={{ margin: 0 }}>
+              <span className={`badge ${STATUS_BADGE[project.status]}`}>{humanize(project.status)}</span>
+              {' · '}Customer: <strong>{project.customer.name}</strong>
+              {' · '}PM:{' '}
+              {project.projectManager ? (
+                <strong>{project.projectManager.name}</strong>
+              ) : (
+                <span className="muted">unassigned</span>
+              )}
+              {project.address && <> · {project.address}</>}
+              {project.startDate && <> · starts {formatDate(project.startDate)}</>}
+            </p>
+          </div>
+          {isPmOrAdmin && (
+            <select
+              value={project.status}
+              onChange={(e) => setStatus(e.target.value as ProjectStatus)}
+              style={{ marginBottom: 0, minWidth: 200 }}
+            >
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>{humanize(s)}</option>
+              ))}
+            </select>
+          )}
+        </div>
       </header>
 
       {error && <div className="form-error">{error}</div>}
@@ -140,9 +217,11 @@ export default function ProjectDetailPage() {
       {project.description && (
         <section className="card">
           <h2>Overview</h2>
-          <p>{project.description}</p>
+          <p style={{ whiteSpace: 'pre-wrap' }}>{project.description}</p>
         </section>
       )}
+
+      <ProjectComments projectId={project.id} />
 
       <section className="card">
         <h2>Schedule</h2>
@@ -166,7 +245,7 @@ export default function ProjectDetailPage() {
                   {canAddSchedule && (
                     <button
                       type="button"
-                      className="button button-ghost"
+                      className="button button-ghost button-small"
                       onClick={() => deleteSchedule(s.id)}
                     >
                       Delete
@@ -184,6 +263,30 @@ export default function ProjectDetailPage() {
       <ProjectGallery projectId={project.id} />
 
       <SelectionsSection projectId={project.id} />
+
+      {/* Contracts attached to this project — visible to anyone who can read
+          the project, since the server scopes the underlying contracts list. */}
+      <section className="card">
+        <h2>Contracts</h2>
+        {contracts.length ? (
+          <ul className="list">
+            {contracts.map((c) => (
+              <li key={c.id}>
+                <Link to={`/portal/contracts/${c.id}`}>
+                  <strong>{c.templateNameSnapshot}</strong>
+                </Link>
+                <div className="muted">
+                  {c.status.toLowerCase()}
+                  {c.sentAt && ` · sent ${formatDate(c.sentAt)}`}
+                  {c.signedAt && ` · signed ${formatDate(c.signedAt)}`}
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">No contracts on this project.</p>
+        )}
+      </section>
 
       <InvoicesSection
         projectId={project.id}

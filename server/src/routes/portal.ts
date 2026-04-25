@@ -44,6 +44,21 @@ router.get('/customers', async (req, res, next) => {
   }
 });
 
+// Project-manager lookup — used by the project create/edit form. Returns the
+// EMPLOYEE users flagged as PM. Admin only since reassignment is admin-only.
+router.get('/staff/pms', requireRole(Role.ADMIN), async (_req, res, next) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { role: Role.EMPLOYEE, isProjectManager: true, isActive: true },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, email: true },
+    });
+    res.json({ users });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Staff lookup — used by project + schedule forms to populate assignee pickers.
 router.get(
   '/staff/users',

@@ -24,6 +24,12 @@ interface CustomerOption {
   email: string;
 }
 
+interface ProjectOption {
+  id: string;
+  name: string;
+  customer: { id: string };
+}
+
 function renderPreview(body: string, values: Record<string, string>): string {
   return body.replace(/\{\{\s*([a-zA-Z][a-zA-Z0-9_]*)\s*\}\}/g, (_m, key: string) => {
     return values[key] && values[key].length > 0 ? values[key] : `[${key}]`;
@@ -34,10 +40,12 @@ export default function NewContractPage() {
   const navigate = useNavigate();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const [templateId, setTemplateId] = useState('');
   const [customerId, setCustomerId] = useState('');
+  const [projectId, setProjectId] = useState('');
   const [values, setValues] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -45,13 +53,26 @@ export default function NewContractPage() {
     Promise.all([
       api<{ templates: Template[] }>('/api/contract-templates'),
       api<{ users: CustomerOption[] }>('/api/portal/customers'),
+      api<{ projects: ProjectOption[] }>('/api/projects'),
     ])
-      .then(([t, c]) => {
+      .then(([t, c, p]) => {
         setTemplates(t.templates);
         setCustomers(c.users);
+        setProjects(p.projects);
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load'));
   }, []);
+
+  // When the customer changes, drop a project selection that no longer applies.
+  useEffect(() => {
+    if (!customerId) {
+      setProjectId('');
+      return;
+    }
+    if (projectId && !projects.some((p) => p.id === projectId && p.customer.id === customerId)) {
+      setProjectId('');
+    }
+  }, [customerId, projectId, projects]);
 
   const template = templates.find((t) => t.id === templateId) ?? null;
 
@@ -86,6 +107,7 @@ export default function NewContractPage() {
         body: JSON.stringify({
           templateId: template.id,
           customerId,
+          projectId: projectId || undefined,
           variableValues: values,
         }),
       });
@@ -144,6 +166,25 @@ export default function NewContractPage() {
               </select>
             </div>
           </div>
+          {customerId && projects.some((p) => p.customer.id === customerId) && (
+            <>
+              <label htmlFor="ct-project">Project (optional)</label>
+              <select
+                id="ct-project"
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+              >
+                <option value="">— not tied to a project —</option>
+                {projects
+                  .filter((p) => p.customer.id === customerId)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+              </select>
+            </>
+          )}
 
           {template && template.variables.length > 0 && (
             <>

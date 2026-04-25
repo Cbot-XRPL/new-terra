@@ -31,6 +31,9 @@ interface VariableDef {
 const createSchema = z.object({
   templateId: z.string().min(1),
   customerId: z.string().min(1),
+  // Optional project link — surfaced on the project hub if set. Only valid
+  // when the project belongs to the same customer.
+  projectId: z.string().optional().nullable(),
   variableValues: z.record(z.string()).default({}),
 });
 
@@ -115,6 +118,7 @@ router.get('/', async (req, res, next) => {
           customer: { select: { id: true, name: true, email: true } },
           createdBy: { select: { id: true, name: true } },
           template: { select: { id: true, name: true } },
+          project: { select: { id: true, name: true } },
         },
       }),
       prisma.contract.count({ where }),
@@ -185,6 +189,15 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'customerId must reference a customer' });
     }
 
+    if (data.projectId) {
+      const proj = await prisma.project.findUnique({ where: { id: data.projectId } });
+      if (!proj || proj.customerId !== customer.id) {
+        return res
+          .status(400)
+          .json({ error: 'projectId must belong to the chosen customer' });
+      }
+    }
+
     const contract = await prisma.contract.create({
       data: {
         templateId: template.id,
@@ -193,10 +206,12 @@ router.post('/', async (req, res, next) => {
         variableValues: data.variableValues,
         customerId: customer.id,
         createdById: me.id,
+        projectId: data.projectId ?? null,
       },
       include: {
         customer: { select: { id: true, name: true, email: true } },
         createdBy: { select: { id: true, name: true } },
+        project: { select: { id: true, name: true } },
       },
     });
     res.status(201).json({ contract });

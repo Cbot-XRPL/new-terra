@@ -2,17 +2,20 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
-import { formatDate } from '../../lib/format';
+
+type ProjectStatus = 'PLANNING' | 'AWAITING_CONTRACT' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETE' | 'CANCELLED';
 
 interface ProjectListItem {
   id: string;
   name: string;
   address: string | null;
   description: string | null;
+  status: ProjectStatus;
   startDate: string | null;
   endDate: string | null;
   customer: { id: string; name: string; email: string };
-  _count: { schedules: number; invoices: number; images: number };
+  projectManager: { id: string; name: string; email: string } | null;
+  _count: { schedules: number; invoices: number; images: number; contracts: number };
 }
 
 interface CustomerOption {
@@ -21,12 +24,30 @@ interface CustomerOption {
   email: string;
 }
 
+interface PmOption {
+  id: string;
+  name: string;
+  email: string;
+}
+
+const STATUS_BADGE: Record<ProjectStatus, string> = {
+  PLANNING: 'badge-draft',
+  AWAITING_CONTRACT: 'badge-sent',
+  ACTIVE: 'badge-paid',
+  ON_HOLD: 'badge-void',
+  COMPLETE: 'badge-paid',
+  CANCELLED: 'badge-overdue',
+};
+
+function humanize(s: string) { return s.toLowerCase().replace(/_/g, ' '); }
+
 export default function ProjectsListPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
 
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [pms, setPms] = useState<PmOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
 
@@ -34,18 +55,23 @@ export default function ProjectsListPage() {
   const [customerId, setCustomerId] = useState('');
   const [address, setAddress] = useState('');
   const [description, setDescription] = useState('');
+  const [projectManagerId, setProjectManagerId] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   async function load() {
     try {
-      const [{ projects }, customerRes] = await Promise.all([
+      const [{ projects }, customerRes, pmRes] = await Promise.all([
         api<{ projects: ProjectListItem[] }>('/api/projects'),
         isAdmin
           ? api<{ users: CustomerOption[] }>('/api/admin/users?roles=CUSTOMER&active=true')
           : Promise.resolve({ users: [] }),
+        isAdmin
+          ? api<{ users: PmOption[] }>('/api/portal/staff/pms')
+          : Promise.resolve({ users: [] }),
       ]);
       setProjects(projects);
       setCustomers(customerRes.users);
+      setPms(pmRes.users);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load projects');
     }
@@ -65,12 +91,14 @@ export default function ProjectsListPage() {
           customerId,
           address: address || undefined,
           description: description || undefined,
+          projectManagerId: projectManagerId || null,
         }),
       });
       setName('');
       setCustomerId('');
       setAddress('');
       setDescription('');
+      setProjectManagerId('');
       setShowForm(false);
       await load();
     } catch (err) {
@@ -131,6 +159,16 @@ export default function ProjectsListPage() {
               onChange={(e) => setDescription(e.target.value)}
             />
 
+            <label htmlFor="p-pm">Project manager (optional)</label>
+            <select id="p-pm" value={projectManagerId} onChange={(e) => setProjectManagerId(e.target.value)}>
+              <option value="">Unassigned</option>
+              {pms.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.email})
+                </option>
+              ))}
+            </select>
+
             <button type="submit" disabled={submitting}>
               {submitting ? 'Creating…' : 'Create project'}
             </button>
@@ -144,11 +182,13 @@ export default function ProjectsListPage() {
             <thead>
               <tr>
                 <th>Project</th>
+                <th>Status</th>
                 <th>Customer</th>
+                <th>PM</th>
                 <th>Address</th>
-                <th>Start</th>
                 <th>Schedules</th>
                 <th>Invoices</th>
+                <th>Contracts</th>
                 <th></th>
               </tr>
             </thead>
@@ -156,11 +196,15 @@ export default function ProjectsListPage() {
               {projects.map((p) => (
                 <tr key={p.id}>
                   <td><strong>{p.name}</strong></td>
+                  <td>
+                    <span className={`badge ${STATUS_BADGE[p.status]}`}>{humanize(p.status)}</span>
+                  </td>
                   <td>{p.customer.name}</td>
+                  <td>{p.projectManager?.name ?? <span className="muted">unassigned</span>}</td>
                   <td>{p.address ?? '—'}</td>
-                  <td>{formatDate(p.startDate)}</td>
                   <td>{p._count.schedules}</td>
                   <td>{p._count.invoices}</td>
+                  <td>{p._count.contracts}</td>
                   <td>
                     <Link to={`/portal/projects/${p.id}`} className="button button-ghost">
                       Open
