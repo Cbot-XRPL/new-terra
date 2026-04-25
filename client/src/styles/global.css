@@ -350,6 +350,9 @@ input:focus, textarea:focus, select:focus {
 .badge-sent { background: rgba(138, 180, 248, 0.18); border-color: rgba(138, 180, 248, 0.4); color: var(--accent); }
 .badge-void { background: rgba(95, 99, 104, 0.25); color: var(--text-muted); }
 .badge-draft { background: var(--surface-strong); color: var(--text-muted); }
+.badge-pending { background: var(--surface-strong); color: var(--text-muted); }
+.badge-approved { background: rgba(129, 201, 149, 0.18); border-color: rgba(129, 201, 149, 0.4); color: var(--success); }
+.badge-change-requested { background: rgba(242, 139, 130, 0.18); border-color: rgba(242, 139, 130, 0.4); color: var(--error); }
 
 .invoice-form { display: flex; flex-direction: column; gap: 0; margin-bottom: 1rem; }
 .invoice-stats {

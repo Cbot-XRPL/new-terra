@@ -12,6 +12,7 @@ import schedulesRouter from './routes/schedules.js';
 import projectImagesRouter from './routes/projectImages.js';
 import invoicesRouter from './routes/invoices.js';
 import messagesRouter from './routes/messages.js';
+import selectionsRouter from './routes/selections.js';
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/portal', portalRouter);
 app.use('/api/projects', projectsRouter);
 app.use('/api/projects', projectImagesRouter);
+app.use('/api/projects', selectionsRouter);
 app.use('/api/schedules', schedulesRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/messages', messagesRouter);

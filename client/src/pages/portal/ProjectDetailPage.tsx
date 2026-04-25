@@ -5,6 +5,7 @@ import { useAuth, type Role } from '../../auth/AuthContext';
 import { formatDate, formatDateTime, toDatetimeLocal } from '../../lib/format';
 import ProjectGallery from './ProjectGallery';
 import InvoicesSection from './InvoicesSection';
+import SelectionsSection from './SelectionsSection';
 
 interface ProjectDetail {
   id: string;
@@ -180,6 +181,8 @@ export default function ProjectDetailPage() {
       </section>
 
       <ProjectGallery projectId={project.id} />
+
+      <SelectionsSection projectId={project.id} />
 
       <InvoicesSection
         projectId={project.id}
