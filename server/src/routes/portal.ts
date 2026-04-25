@@ -14,7 +14,23 @@ router.get('/customer/overview', requireRole(Role.CUSTOMER), async (req, res, ne
   try {
     const userId = req.user!.sub;
     const [projects, invoices, selections, membership] = await Promise.all([
-      prisma.project.findMany({ where: { customerId: userId }, orderBy: { createdAt: 'desc' } }),
+      // Explicit select keeps internal fields (budgetCents) out of the
+      // customer payload. Adding new business-only fields to Project should
+      // not auto-leak — they have to be added here intentionally.
+      prisma.project.findMany({
+        where: { customerId: userId },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          address: true,
+          description: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+          createdAt: true,
+        },
+      }),
       prisma.invoice.findMany({ where: { customerId: userId }, orderBy: { issuedAt: 'desc' } }),
       prisma.selection.findMany({ where: { customerId: userId }, orderBy: { createdAt: 'desc' } }),
       prisma.membership.findUnique({ where: { customerId: userId } }),

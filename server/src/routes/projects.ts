@@ -19,6 +19,19 @@ const projectInclude = {
   projectManager: { select: { id: true, name: true, email: true } },
 } as const;
 
+// Customers must never see the project's budget. Strip the field from any
+// project payload before returning it to a CUSTOMER role. Internal callers
+// (admin / PM / sales / accounting) always see the full record.
+function redactForCustomer<T extends { budgetCents?: number | null }>(
+  role: Role,
+  project: T,
+): T {
+  if (role !== Role.CUSTOMER) return project;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { budgetCents: _budgetCents, ...rest } = project;
+  return rest as T;
+}
+
 // Customers see only their own; admins see everything; project-manager
 // employees see only the projects they're assigned to; other staff fall back
 // to "all" so existing schedule + image flows keep working.
@@ -80,7 +93,7 @@ router.get('/', async (req, res, next) => {
         _count: { select: { schedules: true, invoices: true, images: true, contracts: true } },
       },
     });
-    res.json({ projects });
+    res.json({ projects: projects.map((p) => redactForCustomer(role, p)) });
   } catch (err) {
     next(err);
   }
@@ -126,7 +139,7 @@ router.get('/:id', async (req, res, next) => {
     const { sub, role } = req.user!;
     const project = await loadProjectForUser(req.params.id, sub, role);
     if (!project) return res.status(404).json({ error: 'Project not found' });
-    res.json({ project });
+    res.json({ project: redactForCustomer(role, project) });
   } catch (err) {
     next(err);
   }
@@ -276,6 +289,11 @@ router.get('/:id/job-cost', async (req, res, next) => {
     if (!project) return res.status(404).json({ error: 'Project not found' });
     if (!me) return res.status(401).json({ error: 'Unauthenticated' });
 
+    // Job costing exposes margin data — keep customers out even on their own
+    // project. Sales reps + PMs + accounting + admin see it.
+    if (me.role === Role.CUSTOMER) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
     const access = canManageProject(me, project).read || hasAccountingAccess(me);
     if (!access) return res.status(403).json({ error: 'Forbidden' });
 
@@ -380,6 +398,9 @@ router.get('/:id/budget-lines', async (req, res, next) => {
     const project = await prisma.project.findUnique({ where: { id: req.params.id } });
     if (!project) return res.status(404).json({ error: 'Project not found' });
     if (!me) return res.status(401).json({ error: 'Unauthenticated' });
+    if (me.role === Role.CUSTOMER) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
     if (!canManageProject(me, project).read && !hasAccountingAccess(me)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
