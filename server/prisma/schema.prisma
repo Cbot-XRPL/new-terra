@@ -82,6 +82,20 @@ enum ProjectStatus {
   CANCELLED
 }
 
+// LOCAL_ONLY — entered in our app, no external sync attempted (default).
+// QUEUED    — flagged for the next sync run (e.g. when QB OAuth is connected).
+// SYNCED    — round-tripped to the integration; qb*Id fields populated.
+// ERROR     — last sync attempt failed; lastSyncError holds the message.
+//
+// We never block expense entry on a sync — these states are advisory so the
+// finance dashboard can show pending vs. failed items without fragile coupling.
+enum ExpenseSyncStatus {
+  LOCAL_ONLY
+  QUEUED
+  SYNCED
+  ERROR
+}
+
 model User {
   id            String   @id @default(cuid())
   email         String   @unique
@@ -96,6 +110,9 @@ model User {
   // for the projects they're assigned to (status, schedule, photos, logs,
   // selections, invoices, comments). Toggleable by admin.
   isProjectManager Boolean @default(false)
+  // Employees flagged as accounting see the finance dashboard, all expenses,
+  // and can manage vendors + expense categories. Toggleable by admin.
+  isAccounting  Boolean  @default(false)
   isActive      Boolean  @default(true)
   // Profile picture — main display image (512px webp) and a small
   // thumbnail (96px webp) used in the nav bar and dense lists. Both URLs
@@ -135,6 +152,11 @@ model User {
   leadActivities   LeadActivity[]
   projectsManaging Project[]       @relation("ProjectsManaging")
   projectComments  ProjectComment[]
+
+  // Finance relations — kept here so expenses survive a user delete by
+  // SetNull, with the audit trail intact.
+  expensesPaid       Expense[] @relation("ExpensePaidBy")
+  expensesSubmitted  Expense[] @relation("ExpenseSubmittedBy")
 }
 
 model Invitation {
@@ -175,6 +197,7 @@ model Project {
   logEntries  LogEntry[]
   contracts   Contract[]
   comments    ProjectComment[]
+  expenses    Expense[]
 
   @@index([projectManagerId])
 }
@@ -422,4 +445,95 @@ model ProjectComment {
   createdAt DateTime @default(now())
 
   @@index([projectId])
+}
+
+// Vendor — a supplier or service provider an expense is paid to. Local-only
+// by default; qbVendorId is populated once the QB integration syncs the
+// record. Deleting a vendor sets the FK on its expenses to null instead of
+// cascading so historical expenses don't disappear.
+model Vendor {
+  id          String   @id @default(cuid())
+  name        String
+  email       String?
+  phone       String?
+  address     String?
+  notes       String?
+  active      Boolean  @default(true)
+  qbVendorId  String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  expenses    Expense[]
+
+  @@index([name])
+}
+
+// ExpenseCategory — a chart-of-accounts node. parentId allows a flat or
+// nested taxonomy ("Materials > Lumber"). qbAccountId is the QBO mapping,
+// only populated when integrated. Soft archive via active=false instead of
+// hard delete.
+model ExpenseCategory {
+  id          String   @id @default(cuid())
+  name        String
+  parentId    String?
+  parent      ExpenseCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    ExpenseCategory[] @relation("CategoryTree")
+  active      Boolean  @default(true)
+  qbAccountId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  expenses    Expense[]
+
+  @@index([parentId])
+}
+
+// Expense — every receipt, bill, or reimbursable. Receipt image is optional
+// because not every entry will have one (e.g. a recurring rent bill). The
+// integration columns (qb*) are nullable so the model works fine with no
+// QuickBooks connection ever.
+model Expense {
+  id          String   @id @default(cuid())
+  vendorId    String?
+  vendor      Vendor?  @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  categoryId  String?
+  category    ExpenseCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  // Optional links so expense rolls up under a project / lead in dashboards.
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  // Two user pointers — who paid out of pocket vs who entered the record.
+  // Both are nullable so a deleted user doesn't drop their expenses.
+  paidByUserId    String?
+  paidBy          User?  @relation("ExpensePaidBy", fields: [paidByUserId], references: [id], onDelete: SetNull)
+  submittedById   String?
+  submittedBy     User?  @relation("ExpenseSubmittedBy", fields: [submittedById], references: [id], onDelete: SetNull)
+
+  amountCents Int
+  date        DateTime
+  description String?
+  notes       String?
+  reimbursable Boolean @default(false)
+  reimbursedAt DateTime?
+
+  receiptUrl          String?
+  receiptThumbnailUrl String?
+
+  // Integration: tracks whether this expense has been pushed to an external
+  // accounting system. Always populated; default LOCAL_ONLY so the app works
+  // identically with or without a QB connection.
+  syncStatus     ExpenseSyncStatus @default(LOCAL_ONLY)
+  qbExpenseId    String?           @unique
+  lastSyncAttemptAt DateTime?
+  lastSyncError  String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([categoryId])
+  @@index([vendorId])
+  @@index([paidByUserId])
+  @@index([syncStatus])
 }

@@ -17,6 +17,26 @@ export function hasProjectManagerCapability(
   return user.role === 'ADMIN' || (user.role === 'EMPLOYEE' && user.isProjectManager);
 }
 
+// Finance / accounting capabilities. Admins always pass; otherwise the
+// EMPLOYEE must carry the isAccounting flag to see vendor + category
+// management and the company-wide expense view.
+export function hasAccountingAccess(
+  user: Pick<User, 'role' | 'isAccounting'>,
+): boolean {
+  return user.role === 'ADMIN' || (user.role === 'EMPLOYEE' && user.isAccounting);
+}
+
+// Project managers can submit receipts (their job-cost workflow). Anyone with
+// accounting access can also submit. Admins always pass.
+export function canSubmitExpense(
+  user: Pick<User, 'role' | 'isAccounting' | 'isProjectManager'>,
+): boolean {
+  return (
+    user.role === 'ADMIN' ||
+    (user.role === 'EMPLOYEE' && (user.isAccounting || user.isProjectManager))
+  );
+}
+
 /**
  * True if the user can see / edit project-level data for this specific project.
  * - ADMIN: every project, full write

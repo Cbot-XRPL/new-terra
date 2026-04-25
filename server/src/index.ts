@@ -26,6 +26,7 @@ import webhooksRouter from './routes/webhooks.js';
 import leadsRouter from './routes/leads.js';
 import projectCommentsRouter from './routes/projectComments.js';
 import meRouter from './routes/me.js';
+import financeRouter from './routes/finance.js';
 
 const app = express();
 
@@ -69,6 +70,7 @@ app.use('/api/admin/bulk', bulkImportRouter);
 app.use('/api/leads', leadsRouter);
 app.use('/api/projects', projectCommentsRouter);
 app.use('/api/me', meRouter);
+app.use('/api/finance', financeRouter);
 
 // In production, serve the built React client from this same process. The
 // SPA fallback comes after every /api route is registered so client routes

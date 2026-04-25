@@ -19,6 +19,7 @@ export interface AuthUser {
   phone?: string | null;
   isSales?: boolean;
   isProjectManager?: boolean;
+  isAccounting?: boolean;
   avatarUrl?: string | null;
   avatarThumbnailUrl?: string | null;
 }

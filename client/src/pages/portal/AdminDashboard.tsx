@@ -13,6 +13,7 @@ interface AdminUser {
   isActive: boolean;
   isSales: boolean;
   isProjectManager: boolean;
+  isAccounting: boolean;
   createdAt: string;
 }
 
@@ -111,6 +112,18 @@ export default function AdminDashboard() {
     }
   }
 
+  async function toggleAccounting(user: AdminUser) {
+    try {
+      await api(`/api/admin/users/${user.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isAccounting: !user.isAccounting }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Update failed');
+    }
+  }
+
   return (
     <div className="dashboard">
       <header className="row-between">
@@ -159,6 +172,7 @@ export default function AdminDashboard() {
               <th>Role</th>
               <th>Sales</th>
               <th>PM</th>
+              <th>Acct</th>
               <th>Status</th>
               <th></th>
             </tr>
@@ -190,6 +204,19 @@ export default function AdminDashboard() {
                       title={u.isProjectManager ? 'Remove PM access' : 'Grant PM access'}
                     >
                       {u.isProjectManager ? 'PM ✓' : 'Grant'}
+                    </button>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
+                <td>
+                  {u.role === 'EMPLOYEE' ? (
+                    <button
+                      className={`button-small ${u.isAccounting ? '' : 'button-ghost'}`}
+                      onClick={() => toggleAccounting(u)}
+                      title={u.isAccounting ? 'Remove accounting access' : 'Grant accounting access'}
+                    >
+                      {u.isAccounting ? 'Acct ✓' : 'Grant'}
                     </button>
                   ) : (
                     <span className="muted">—</span>

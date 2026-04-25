@@ -1,0 +1,297 @@
+import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ApiError, api } from '../../lib/api';
+
+const API_BASE = import.meta.env.VITE_API_URL ?? '';
+
+function authHeaders(): Record<string, string> {
+  const token = localStorage.getItem('nt_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+interface Vendor { id: string; name: string }
+interface Category { id: string; name: string; parent: { id: string; name: string } | null }
+interface ProjectRef { id: string; name: string }
+
+function todayISODate(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export default function NewExpensePage() {
+  const navigate = useNavigate();
+
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [projects, setProjects] = useState<ProjectRef[]>([]);
+
+  const [vendorId, setVendorId] = useState('');
+  const [newVendorName, setNewVendorName] = useState('');
+  const [creatingVendor, setCreatingVendor] = useState(false);
+
+  const [categoryId, setCategoryId] = useState('');
+  const [projectId, setProjectId] = useState('');
+
+  const [amount, setAmount] = useState('');
+  const [date, setDate] = useState(todayISODate());
+  const [description, setDescription] = useState('');
+  const [notes, setNotes] = useState('');
+  const [reimbursable, setReimbursable] = useState(false);
+
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([
+      api<{ vendors: Vendor[] }>('/api/finance/vendors'),
+      api<{ categories: Category[] }>('/api/finance/categories'),
+      api<{ projects: ProjectRef[] }>('/api/projects').catch(() => ({ projects: [] })),
+    ])
+      .then(([v, c, p]) => {
+        setVendors(v.vendors);
+        setCategories(c.categories);
+        setProjects(p.projects ?? []);
+      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load form data'));
+  }, []);
+
+  function pickReceipt(file: File | null) {
+    setReceiptFile(file);
+    if (receiptPreview) URL.revokeObjectURL(receiptPreview);
+    setReceiptPreview(file ? URL.createObjectURL(file) : null);
+  }
+
+  async function quickCreateVendor() {
+    if (!newVendorName.trim()) return;
+    setCreatingVendor(true);
+    setError(null);
+    try {
+      const { vendor } = await api<{ vendor: Vendor }>('/api/finance/vendors', {
+        method: 'POST',
+        body: JSON.stringify({ name: newVendorName.trim() }),
+      });
+      setVendors((v) => [...v, vendor].sort((a, b) => a.name.localeCompare(b.name)));
+      setVendorId(vendor.id);
+      setNewVendorName('');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to create vendor');
+    } finally {
+      setCreatingVendor(false);
+    }
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const cents = Math.round(Number(amount) * 100);
+    if (!Number.isFinite(cents) || cents < 0) {
+      setError('Enter a valid amount');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const form = new FormData();
+      if (vendorId) form.append('vendorId', vendorId);
+      if (categoryId) form.append('categoryId', categoryId);
+      if (projectId) form.append('projectId', projectId);
+      form.append('amountCents', String(cents));
+      form.append('date', new Date(date).toISOString());
+      if (description) form.append('description', description);
+      if (notes) form.append('notes', notes);
+      form.append('reimbursable', String(reimbursable));
+      if (receiptFile) form.append('receipt', receiptFile);
+
+      const res = await fetch(`${API_BASE}/api/finance/expenses`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: form,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new ApiError(res.status, data?.error ?? res.statusText, data);
+      navigate(`/portal/finance/expenses/${data.expense.id}`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to save expense');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="dashboard">
+      <header>
+        <Link to="/portal/finance" className="muted">← Finance</Link>
+        <h1>Add receipt</h1>
+        <p className="muted">
+          Snap a photo, fill in the basics. Tag the project so it shows up in job costing.
+        </p>
+      </header>
+
+      {error && <div className="form-error">{error}</div>}
+
+      <section className="card">
+        <form onSubmit={submit}>
+          <div className="form-row">
+            <div>
+              <label htmlFor="x-amount">Amount (USD)</label>
+              <input
+                id="x-amount"
+                type="number"
+                step="0.01"
+                min="0"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            <div>
+              <label htmlFor="x-date">Date</label>
+              <input
+                id="x-date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div>
+              <label htmlFor="x-vendor">Vendor</label>
+              <select id="x-vendor" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
+                <option value="">Select…</option>
+                {vendors.map((v) => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </select>
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                <input
+                  type="text"
+                  placeholder="Or add new vendor…"
+                  value={newVendorName}
+                  onChange={(e) => setNewVendorName(e.target.value)}
+                  style={{ marginBottom: 0 }}
+                />
+                <button
+                  type="button"
+                  className="button-ghost button-small"
+                  onClick={quickCreateVendor}
+                  disabled={creatingVendor || !newVendorName.trim()}
+                >
+                  {creatingVendor ? 'Adding…' : 'Add'}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label htmlFor="x-category">Category</label>
+              <select id="x-category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+                <option value="">Uncategorised</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.parent ? `${c.parent.name} › ` : ''}{c.name}
+                  </option>
+                ))}
+              </select>
+              {categories.length === 0 && (
+                <p className="muted" style={{ fontSize: '0.8rem' }}>
+                  No categories yet — accounting can add them under the finance section.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <label htmlFor="x-project">Project (optional)</label>
+          <select id="x-project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">— not tied to a project —</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+
+          <label htmlFor="x-desc">Description</label>
+          <input
+            id="x-desc"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="e.g. 8 sheets 3/4 plywood"
+          />
+
+          <label htmlFor="x-notes">Notes</label>
+          <textarea
+            id="x-notes"
+            rows={2}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <input
+              type="checkbox"
+              checked={reimbursable}
+              onChange={(e) => setReimbursable(e.target.checked)}
+              style={{ width: 'auto' }}
+            />
+            <span>Reimbursable — paid out of pocket</span>
+          </label>
+
+          <h3 style={{ marginTop: '1rem' }}>Receipt</h3>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            {receiptPreview && (
+              <img
+                src={receiptPreview}
+                alt="receipt preview"
+                style={{ maxWidth: 200, maxHeight: 240, borderRadius: 8, border: '1px solid var(--border)' }}
+              />
+            )}
+            <div>
+              <input
+                ref={fileInput}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{ display: 'none' }}
+                onChange={(e) => pickReceipt(e.target.files?.[0] ?? null)}
+              />
+              <button
+                type="button"
+                className="button-ghost"
+                onClick={() => fileInput.current?.click()}
+              >
+                {receiptFile ? 'Change photo' : 'Upload / take photo'}
+              </button>
+              {receiptFile && (
+                <button
+                  type="button"
+                  className="button-ghost button-small"
+                  onClick={() => pickReceipt(null)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  Remove
+                </button>
+              )}
+              <p className="muted" style={{ fontSize: '0.8rem', maxWidth: 320 }}>
+                Optional. We resize to 1600px and generate a 320px thumbnail. Up to 10 MB.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+            <button type="submit" disabled={submitting || !amount}>
+              {submitting ? 'Saving…' : 'Save expense'}
+            </button>
+            <Link to="/portal/finance" className="button-ghost button">
+              Cancel
+            </Link>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}

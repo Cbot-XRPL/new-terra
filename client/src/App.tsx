@@ -24,6 +24,10 @@ import BulkImportPage from './pages/portal/BulkImportPage';
 import LeadsPage from './pages/portal/LeadsPage';
 import LeadDetailPage from './pages/portal/LeadDetailPage';
 import ProfilePage from './pages/portal/ProfilePage';
+import FinanceOverviewPage from './pages/portal/FinanceOverviewPage';
+import ExpensesPage from './pages/portal/ExpensesPage';
+import NewExpensePage from './pages/portal/NewExpensePage';
+import ExpenseDetailPage from './pages/portal/ExpenseDetailPage';
 
 function PortalIndex() {
   const { user } = useAuth();
@@ -139,6 +143,38 @@ export default function App() {
           }
         />
         <Route path="profile" element={<ProfilePage />} />
+        <Route
+          path="finance"
+          element={
+            <RequireAuth submitExpense>
+              <FinanceOverviewPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="finance/expenses"
+          element={
+            <RequireAuth submitExpense>
+              <ExpensesPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="finance/expenses/new"
+          element={
+            <RequireAuth submitExpense>
+              <NewExpensePage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="finance/expenses/:id"
+          element={
+            <RequireAuth submitExpense>
+              <ExpenseDetailPage />
+            </RequireAuth>
+          }
+        />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

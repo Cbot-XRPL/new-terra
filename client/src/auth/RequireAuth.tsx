@@ -10,11 +10,19 @@ export function RequireAuth({
   salesAccess,
   // Same idea for project managers — admins always pass.
   pmAccess,
+  // Finance dashboard gate — admin or EMPLOYEE flagged isAccounting. PMs and
+  // sales reps reach the receipt-entry page through `submitExpense` instead.
+  accountingAccess,
+  // PM + accounting + admin can submit expenses (receipt uploads). Used for
+  // the new-expense form so PMs in the field aren't blocked.
+  submitExpense,
 }: {
   children: ReactNode;
   roles?: Role[];
   salesAccess?: boolean;
   pmAccess?: boolean;
+  accountingAccess?: boolean;
+  submitExpense?: boolean;
 }) {
   const { user, loading } = useAuth();
   const location = useLocation();
@@ -28,6 +36,21 @@ export function RequireAuth({
     return <Navigate to="/portal" replace />;
   }
   if (pmAccess && !(user.role === 'ADMIN' || (user.role === 'EMPLOYEE' && user.isProjectManager))) {
+    return <Navigate to="/portal" replace />;
+  }
+  if (
+    accountingAccess &&
+    !(user.role === 'ADMIN' || (user.role === 'EMPLOYEE' && user.isAccounting))
+  ) {
+    return <Navigate to="/portal" replace />;
+  }
+  if (
+    submitExpense &&
+    !(
+      user.role === 'ADMIN' ||
+      (user.role === 'EMPLOYEE' && (user.isAccounting || user.isProjectManager))
+    )
+  ) {
     return <Navigate to="/portal" replace />;
   }
   return <>{children}</>;

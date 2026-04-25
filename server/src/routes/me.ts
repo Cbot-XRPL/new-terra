@@ -39,6 +39,7 @@ const meSelect = {
   role: true,
   isSales: true,
   isProjectManager: true,
+  isAccounting: true,
   avatarUrl: true,
   avatarThumbnailUrl: true,
 } as const;
