@@ -35,6 +35,8 @@ interface VariableDef {
   multiline?: boolean;
 }
 
+type ContractDelivery = 'PORTAL' | 'DOCUSIGN';
+
 interface Contract {
   id: string;
   templateId: string | null;
@@ -48,6 +50,9 @@ interface Contract {
   declinedAt: string | null;
   signatureName: string | null;
   declineReason: string | null;
+  delivery: ContractDelivery;
+  docusignEnvelopeId: string | null;
+  docusignStatus: string | null;
   createdAt: string;
   customer: { id: string; name: string; email: string };
   createdBy: { id: string; name: string };
@@ -58,6 +63,7 @@ export default function ContractDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const [contract, setContract] = useState<Contract | null>(null);
+  const [docusignConfigured, setDocusignConfigured] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signatureName, setSignatureName] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -71,8 +77,11 @@ export default function ContractDetailPage() {
   async function load() {
     if (!id) return;
     try {
-      const { contract } = await api<{ contract: Contract }>(`/api/contracts/${id}`);
-      setContract(contract);
+      const data = await api<{ contract: Contract; docusignConfigured?: boolean }>(
+        `/api/contracts/${id}`,
+      );
+      setContract(data.contract);
+      setDocusignConfigured(Boolean(data.docusignConfigured));
       setEditValues(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load contract');
@@ -93,10 +102,17 @@ export default function ContractDetailPage() {
   const isCustomer = user?.role === 'CUSTOMER';
   const isOwner = contract.createdBy.id === user?.id || user?.role === 'ADMIN';
 
-  async function send() {
-    if (!confirm('Send this contract to the customer?')) return;
+  async function send(via: ContractDelivery) {
+    const message =
+      via === 'DOCUSIGN'
+        ? 'Send this contract via DocuSign? The customer will sign in DocuSign and the audit trail comes back via webhook.'
+        : 'Send this contract through the portal? The customer signs by typing their name.';
+    if (!confirm(message)) return;
     try {
-      await api(`/api/contracts/${contract!.id}/send`, { method: 'POST' });
+      await api(`/api/contracts/${contract!.id}/send`, {
+        method: 'POST',
+        body: JSON.stringify({ via }),
+      });
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Send failed');
@@ -206,9 +222,24 @@ export default function ContractDetailPage() {
             </button>
           )}
         </div>
+        <p className="muted" style={{ fontSize: '0.85rem' }}>
+          Delivery: {contract.delivery.toLowerCase()}
+          {contract.docusignEnvelopeId && (
+            <>
+              {' · DocuSign envelope '}
+              <code>{contract.docusignEnvelopeId}</code>
+              {contract.docusignStatus && ` (${contract.docusignStatus})`}
+            </>
+          )}
+        </p>
         <ul className="list">
           <li>Created {formatDateTime(contract.createdAt)} by {contract.createdBy.name}</li>
-          {contract.sentAt && <li>Sent {formatDateTime(contract.sentAt)}</li>}
+          {contract.sentAt && (
+            <li>
+              Sent {formatDateTime(contract.sentAt)}
+              {contract.delivery === 'DOCUSIGN' && ' via DocuSign'}
+            </li>
+          )}
           {contract.viewedAt && <li>Viewed by customer {formatDateTime(contract.viewedAt)}</li>}
           {contract.signedAt && (
             <li>
@@ -280,7 +311,20 @@ export default function ContractDetailPage() {
           <h2>Actions</h2>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             {contract.status === 'DRAFT' && isOwner && (
-              <button onClick={send}>Send to customer</button>
+              <>
+                <button onClick={() => send('PORTAL')}>Send via portal</button>
+                <button
+                  className="button-ghost"
+                  onClick={() => send('DOCUSIGN')}
+                  title={
+                    docusignConfigured
+                      ? 'Customer signs in DocuSign; status syncs back via webhook.'
+                      : 'DocuSign credentials not set on the server — runs in stub mode and logs to console.'
+                  }
+                >
+                  Send via DocuSign{docusignConfigured ? '' : ' (stub)'}
+                </button>
+              </>
             )}
             {(contract.status === 'SENT' || contract.status === 'VIEWED') && (
               <button className="button-ghost" onClick={voidContract}>Void</button>
@@ -292,7 +336,18 @@ export default function ContractDetailPage() {
         </section>
       )}
 
-      {isCustomer && (contract.status === 'SENT' || contract.status === 'VIEWED') && (
+      {isCustomer && contract.delivery === 'DOCUSIGN' && (contract.status === 'SENT' || contract.status === 'VIEWED') && (
+        <section className="card">
+          <h2>Signing in DocuSign</h2>
+          <p className="muted">
+            We sent this contract to your email through DocuSign. Open the invitation
+            (subject: <em>Please sign: {contract.templateNameSnapshot}</em>) to review and sign.
+            This page will update automatically once DocuSign notifies us that you've signed.
+          </p>
+        </section>
+      )}
+
+      {isCustomer && contract.delivery === 'PORTAL' && (contract.status === 'SENT' || contract.status === 'VIEWED') && (
         <section className="card">
           <h2>Sign or decline</h2>
           <p className="muted">

@@ -27,6 +27,7 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "multer": "^2.0.0",
+    "docusign-esign": "^7.0.0",
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.6",
     "pdfkit": "^0.15.0",

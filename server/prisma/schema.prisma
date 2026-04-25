@@ -47,6 +47,11 @@ enum ContractStatus {
   VOID
 }
 
+enum ContractDelivery {
+  PORTAL
+  DOCUSIGN
+}
+
 model User {
   id            String   @id @default(cuid())
   email         String   @unique
@@ -274,6 +279,14 @@ model Contract {
   // Last time we nudged the customer about this open contract — used to
   // throttle reminders so we don't email more than once per day.
   lastReminderAt DateTime?
+
+  // Delivery channel used to collect the customer's signature.
+  // PORTAL: typed-name signature inside our app (default).
+  // DOCUSIGN: contract is sent through a DocuSign envelope; status is
+  // updated by webhook events and the typed-name fields stay null.
+  delivery     ContractDelivery @default(PORTAL)
+  docusignEnvelopeId String?
+  docusignStatus     String?
 
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt

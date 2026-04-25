@@ -6,6 +6,8 @@ import { requireAuth } from '../middleware/auth.js';
 import { renderContractPdf } from '../lib/contractPdf.js';
 import { sendContractDecidedEmail, sendContractInviteEmail } from '../lib/mailer.js';
 import { remindStaleContracts } from '../lib/reminders.js';
+import { createEnvelopeForContract, isDocuSignConfigured } from '../lib/docusign.js';
+import { ContractDelivery } from '@prisma/client';
 
 const router = Router();
 router.use(requireAuth);
@@ -160,7 +162,7 @@ router.get('/:id', async (req, res, next) => {
     if (!isSalesOrAdmin(me.role, me.isSales)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
-    res.json({ contract });
+    res.json({ contract, docusignConfigured: isDocuSignConfigured() });
   } catch (err) {
     next(err);
   }
@@ -251,6 +253,10 @@ router.patch('/:id', async (req, res, next) => {
   }
 });
 
+const sendBodySchema = z.object({
+  via: z.nativeEnum(ContractDelivery).optional(),
+});
+
 router.post('/:id/send', async (req, res, next) => {
   try {
     const me = await loadMe(req.user!.sub);
@@ -282,26 +288,84 @@ router.post('/:id/send', async (req, res, next) => {
       }
     }
 
+    const { via } = sendBodySchema.parse(req.body ?? {});
+    const delivery = via ?? ContractDelivery.PORTAL;
+
+    let docusignEnvelopeId: string | null = null;
+    let docusignStatus: string | null = null;
+
+    if (delivery === ContractDelivery.DOCUSIGN) {
+      // Reuse the same PDF generator the customer would download.
+      const customerFull = await prisma.user.findUnique({
+        where: { id: contract.customerId },
+        select: { name: true, email: true },
+      });
+      if (!customerFull) return res.status(400).json({ error: 'Customer missing' });
+
+      const repFull = await prisma.user.findUnique({
+        where: { id: contract.createdById },
+        select: { name: true },
+      });
+
+      const pdf = await renderContractPdf({
+        contractId: contract.id,
+        templateName: contract.templateNameSnapshot,
+        body: contract.bodySnapshot,
+        customer: { name: customerFull.name, email: customerFull.email },
+        createdBy: { name: repFull?.name ?? 'Sales' },
+        status: ContractStatus.SENT,
+        createdAt: contract.createdAt,
+        sentAt: new Date(),
+        viewedAt: null,
+        signedAt: null,
+        declinedAt: null,
+        signatureName: null,
+        signatureIp: null,
+        declineReason: null,
+      });
+
+      const env = await createEnvelopeForContract({
+        pdf,
+        customerEmail: customerFull.email,
+        customerName: customerFull.name,
+        contractName: contract.templateNameSnapshot,
+        contractId: contract.id,
+      });
+      docusignEnvelopeId = env.envelopeId;
+      docusignStatus = env.status;
+    }
+
     const updated = await prisma.contract.update({
       where: { id: contract.id },
-      data: { status: ContractStatus.SENT, sentAt: new Date() },
+      data: {
+        status: ContractStatus.SENT,
+        sentAt: new Date(),
+        delivery,
+        docusignEnvelopeId,
+        docusignStatus,
+      },
       include: {
         customer: { select: { id: true, name: true, email: true } },
         createdBy: { select: { id: true, name: true } },
       },
     });
 
-    // Email is best-effort — failure here shouldn't roll back the send.
-    // Logged to the server console (and the dev mailer) for visibility.
-    sendContractInviteEmail({
-      to: updated.customer.email,
-      customerName: updated.customer.name,
-      contractName: updated.templateNameSnapshot,
-      contractId: updated.id,
-      sentByName: updated.createdBy.name,
-    }).catch((err) => console.warn('[contracts] invite email failed', err));
+    // Only email our own portal-flow invite when delivery is PORTAL —
+    // DocuSign sends its own signing email and we don't want to double-up.
+    if (delivery === ContractDelivery.PORTAL) {
+      sendContractInviteEmail({
+        to: updated.customer.email,
+        customerName: updated.customer.name,
+        contractName: updated.templateNameSnapshot,
+        contractId: updated.id,
+        sentByName: updated.createdBy.name,
+      }).catch((err) => console.warn('[contracts] invite email failed', err));
+    }
 
-    res.json({ contract: updated });
+    res.json({
+      contract: updated,
+      docusignConfigured: isDocuSignConfigured(),
+    });
   } catch (err) {
     next(err);
   }

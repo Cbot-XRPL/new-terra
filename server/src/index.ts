@@ -22,6 +22,7 @@ import publicRouter from './routes/public.js';
 import contractTemplatesRouter from './routes/contractTemplates.js';
 import contractsRouter from './routes/contracts.js';
 import bulkImportRouter from './routes/bulkImport.js';
+import webhooksRouter from './routes/webhooks.js';
 
 const app = express();
 
@@ -31,6 +32,12 @@ const app = express();
 if (env.nodeEnv === 'production') app.set('trust proxy', 1);
 
 app.use(cors({ origin: env.appUrl, credentials: true }));
+
+// Webhook endpoints need the raw request body so they can verify signatures
+// against the exact bytes the sender signed. Mount them BEFORE express.json
+// so the JSON parser doesn't consume the stream first.
+app.use('/api/webhooks', webhooksRouter);
+
 app.use(express.json({ limit: '2mb' }));
 app.use(morgan(env.nodeEnv === 'production' ? 'combined' : 'dev'));
 
