@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAuth, type Role } from '../../auth/AuthContext';
 import { formatDate, formatDateTime, toDatetimeLocal } from '../../lib/format';
+import ProjectGallery from './ProjectGallery';
 
 interface ProjectDetail {
   id: string;
@@ -176,6 +177,8 @@ export default function ProjectDetailPage() {
           <p className="muted">Nothing scheduled yet.</p>
         )}
       </section>
+
+      <ProjectGallery projectId={project.id} />
 
       {canAddSchedule && (
         <section className="card">
