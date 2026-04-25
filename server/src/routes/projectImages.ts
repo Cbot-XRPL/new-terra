@@ -1,32 +1,18 @@
 import { Router } from 'express';
 import multer from 'multer';
-import path from 'node:path';
-import fs from 'node:fs';
 import { z } from 'zod';
 import { Role } from '@prisma/client';
 import { prisma } from '../db.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
+import { createStorage } from '../lib/storage.js';
 
 const router = Router();
 router.use(requireAuth);
 
-const UPLOAD_ROOT = path.resolve(process.cwd(), 'uploads', 'projects');
-fs.mkdirSync(UPLOAD_ROOT, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination(req, _file, cb) {
-    const dir = path.join(UPLOAD_ROOT, req.params.id);
-    fs.mkdir(dir, { recursive: true }, (err) => cb(err, dir));
-  },
-  filename(_req, file, cb) {
-    const stamp = Date.now();
-    const safe = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    cb(null, `${stamp}-${safe}`);
-  },
-});
+const storage = createStorage();
 
 const upload = multer({
-  storage,
+  storage: storage.engine,
   limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB cap
   fileFilter(_req, file, cb) {
     if (!file.mimetype.startsWith('image/')) {
@@ -67,21 +53,23 @@ router.post(
       const project = await prisma.project.findUnique({ where: { id: req.params.id } });
       if (!project) return res.status(404).json({ error: 'Project not found' });
 
-      const files = (req.files as Express.Multer.File[]) ?? [];
+      const files = (req.files as Array<Express.Multer.File & { key?: string }>) ?? [];
       const caption = typeof req.body.caption === 'string' ? req.body.caption : undefined;
 
       const created = await prisma.$transaction(
-        files.map((f) =>
-          prisma.projectImage.create({
+        files.map((f) => {
+          // disk storage exposes filename; multer-s3 exposes key — handle both.
+          const filename = (f as Express.Multer.File).filename ?? f.key?.split('/').pop() ?? f.originalname;
+          return prisma.projectImage.create({
             data: {
               projectId: project.id,
               uploadedById: req.user!.sub,
               filename: f.originalname,
-              url: `/uploads/projects/${project.id}/${path.basename(f.path)}`,
+              url: storage.publicUrl(project.id, filename),
               caption,
             },
-          }),
-        ),
+          });
+        }),
       );
       res.status(201).json({ images: created });
     } catch (err) {
@@ -103,11 +91,7 @@ router.delete(
         return res.status(404).json({ error: 'Image not found' });
       }
       await prisma.projectImage.delete({ where: { id: imageId } });
-
-      // Best-effort delete from disk; missing files are not an error.
-      const filePath = path.join(process.cwd(), image.url.replace(/^\/+/, ''));
-      fs.unlink(filePath, () => {});
-
+      await storage.remove(image.url);
       res.status(204).end();
     } catch (err) {
       next(err);

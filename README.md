@@ -59,26 +59,39 @@ client/                    React + Vite app
   src/
     auth/                  AuthContext, route guards
     layouts/               Public + portal layouts
-    lib/                   API client
+    lib/                   API client + formatters
     pages/
       auth/                Login, accept-invite
-      portal/              Customer / Staff / Admin dashboards
+      portal/              Dashboards + Projects, Invoices, Messages,
+                           Message Board pages
       public/              Marketing pages (Home, Contact)
     styles/global.css
 
 server/                    Express API
   prisma/
-    schema.prisma          Users, invitations, projects, invoices, selections,
-                           memberships, schedules, project images, log entries,
-                           message board, client messages
+    schema.prisma          Users, invitations, projects, schedules, invoices,
+                           selections, memberships, project images, log entries,
+                           message board, messages
     seed.ts                Creates the bootstrap admin
   src/
     routes/
       auth.ts              login, /me, accept-invite, invite lookup
-      admin.ts             invitations CRUD, user management
-      portal.ts            customer + staff overview endpoints
+      admin.ts             invitations + user management
+      portal.ts            customer + staff overview + staff lookup
+      public.ts            unauthenticated contact form (rate-limited)
+      projects.ts          projects + nested schedules
+      projectImages.ts     project image upload + gallery
+      schedules.ts         schedule update / delete
+      invoices.ts          admin issue + status transitions
+      selections.ts        per-project, customer approval workflow
+      memberships.ts       admin assigns tier + renewal
+      logEntries.ts        per-project site notes
+      board.ts             company message board (staff-only)
+      messages.ts          bidirectional staff ↔ customer messaging
     middleware/            requireAuth, requireRole, error handler
-    lib/                   JWT, password hashing, mailer
+    lib/                   JWT, password hashing, mailer, storage
+  Dockerfile               Multi-stage build of API + SPA
+render.yaml                Render blueprint
 ```
 
 ## Whitelist invite flow
@@ -89,13 +102,40 @@ server/                    Express API
 3. The recipient opens the link, sets their name + password, and the account is
    created with the role from the invite. The token is single-use and expires in 7 days.
 
-## What's next
+## Deploying
 
-This commit is the scaffold. Features to build out:
+A `render.yaml` blueprint at the repo root provisions the app on
+[Render](https://render.com): one Docker web service + a managed Postgres
+database + a 5 GB persistent disk for uploads.
 
-- Project + schedule CRUD endpoints (admin/staff)
-- Image upload endpoint (multer is already a dependency; wire to S3 or local disk)
-- Invoice creation + PDF download
-- Customer ↔ staff messaging (real-time via SSE or polling)
-- Public contact form → backend (with rate limiting + spam protection)
-- Production deployment config (Docker / Render / etc.)
+```bash
+# After connecting the repo on Render and the first deploy completes:
+APP_URL=https://<your-render-host>     # Set this in the Render dashboard
+SEED_ADMIN_EMAIL=...                   # then run db:seed once via Shell
+```
+
+The Dockerfile in `server/` is multi-stage and produces a single image that
+serves both the API and the React build (the SPA is served by Express in
+`NODE_ENV=production`).
+
+### Image storage
+
+Uploads default to local disk at `server/uploads`. To swap to S3:
+
+1. `npm install @aws-sdk/client-s3 multer-s3`
+2. Set `STORAGE_DRIVER=s3` plus `S3_REGION`, `S3_BUCKET`, `S3_PUBLIC_URL`
+3. Uncomment the `s3Storage()` branch in `server/src/lib/storage.ts`
+
+### Email
+
+When `SMTP_HOST` is unset (local dev) the mailer logs invitation links and
+contact-form submissions to the server console. Set the SMTP vars in prod
+to actually send mail. The contact form's recipient is `INQUIRY_TO`.
+
+## What's still on the list
+
+- Realtime messaging (currently 10–15s polling)
+- Invoice PDF generation + Stripe / ACH payment links
+- Project image thumbnails (currently full-size with lazy loading)
+- Staff-side calendar view (currently a list)
+- Cloudflare Turnstile or hCaptcha on the public contact form

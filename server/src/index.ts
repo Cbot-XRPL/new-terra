@@ -49,6 +49,17 @@ app.use('/api/schedules', schedulesRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/messages', messagesRouter);
 
+// In production, serve the built React client from this same process. The
+// SPA fallback comes after every /api route is registered so client routes
+// never shadow the API.
+if (env.nodeEnv === 'production') {
+  const clientDist = path.resolve(process.cwd(), '..', 'client', 'dist');
+  app.use(express.static(clientDist));
+  app.get(/^\/(?!api|uploads).*/, (_req, res) => {
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+}
+
 app.use(errorHandler);
 
 app.listen(env.port, () => {
