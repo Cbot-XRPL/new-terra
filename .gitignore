@@ -13,3 +13,4 @@ server/dist/
 server/uploads/
 server/prisma/migrations/dev.db*
 coverage/
+*.tsbuildinfo
