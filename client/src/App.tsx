@@ -21,6 +21,8 @@ import ContractsPage from './pages/portal/ContractsPage';
 import NewContractPage from './pages/portal/NewContractPage';
 import ContractDetailPage from './pages/portal/ContractDetailPage';
 import BulkImportPage from './pages/portal/BulkImportPage';
+import LeadsPage from './pages/portal/LeadsPage';
+import LeadDetailPage from './pages/portal/LeadDetailPage';
 
 function PortalIndex() {
   const { user } = useAuth();
@@ -116,6 +118,22 @@ export default function App() {
           element={
             <RequireAuth roles={['ADMIN']}>
               <BulkImportPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="leads"
+          element={
+            <RequireAuth salesAccess>
+              <LeadsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="leads/:id"
+          element={
+            <RequireAuth salesAccess>
+              <LeadDetailPage />
             </RequireAuth>
           }
         />

@@ -23,6 +23,7 @@ import contractTemplatesRouter from './routes/contractTemplates.js';
 import contractsRouter from './routes/contracts.js';
 import bulkImportRouter from './routes/bulkImport.js';
 import webhooksRouter from './routes/webhooks.js';
+import leadsRouter from './routes/leads.js';
 
 const app = express();
 
@@ -63,6 +64,7 @@ app.use('/api/messages', messagesRouter);
 app.use('/api/contract-templates', contractTemplatesRouter);
 app.use('/api/contracts', contractsRouter);
 app.use('/api/admin/bulk', bulkImportRouter);
+app.use('/api/leads', leadsRouter);
 
 // In production, serve the built React client from this same process. The
 // SPA fallback comes after every /api route is registered so client routes

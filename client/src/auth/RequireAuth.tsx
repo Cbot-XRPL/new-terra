@@ -8,10 +8,13 @@ export function RequireAuth({
   // When true, the page is only accessible to ADMINs and EMPLOYEEs flagged
   // as sales. Use this for the contract portal.
   salesAccess,
+  // Same idea for project managers — admins always pass.
+  pmAccess,
 }: {
   children: ReactNode;
   roles?: Role[];
   salesAccess?: boolean;
+  pmAccess?: boolean;
 }) {
   const { user, loading } = useAuth();
   const location = useLocation();
@@ -22,6 +25,9 @@ export function RequireAuth({
     return <Navigate to="/portal" replace />;
   }
   if (salesAccess && !(user.role === 'ADMIN' || (user.role === 'EMPLOYEE' && user.isSales))) {
+    return <Navigate to="/portal" replace />;
+  }
+  if (pmAccess && !(user.role === 'ADMIN' || (user.role === 'EMPLOYEE' && user.isProjectManager))) {
     return <Navigate to="/portal" replace />;
   }
   return <>{children}</>;

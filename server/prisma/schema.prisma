@@ -52,6 +52,36 @@ enum ContractDelivery {
   DOCUSIGN
 }
 
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  QUOTE_SENT
+  WON
+  LOST
+  ON_HOLD
+}
+
+enum LeadSource {
+  WEBSITE_FORM
+  REFERRAL
+  REPEAT_CUSTOMER
+  GOOGLE
+  ANGI
+  HOME_DEPOT
+  WALK_IN
+  OTHER
+}
+
+enum ProjectStatus {
+  PLANNING
+  AWAITING_CONTRACT
+  ACTIVE
+  ON_HOLD
+  COMPLETE
+  CANCELLED
+}
+
 model User {
   id            String   @id @default(cuid())
   email         String   @unique
@@ -62,6 +92,10 @@ model User {
   // Employees flagged as sales get access to the contract portal in addition
   // to their normal employee permissions. Toggleable by admin.
   isSales       Boolean  @default(false)
+  // Employees flagged as project managers see a richer project workspace
+  // for the projects they're assigned to (status, schedule, photos, logs,
+  // selections, invoices, comments). Toggleable by admin.
+  isProjectManager Boolean @default(false)
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -88,6 +122,14 @@ model User {
   contractTemplates ContractTemplate[] @relation("TemplateAuthor")
   contractsSent     Contract[]         @relation("ContractsCreated")
   contractsReceived Contract[]         @relation("ContractsForCustomer")
+
+  // CRM / project management relations
+  leadsOwned       Lead[]          @relation("LeadOwner")
+  leadsCreated     Lead[]          @relation("LeadCreator")
+  leadsConvertedTo Lead[]          @relation("LeadConvertedCustomer")
+  leadActivities   LeadActivity[]
+  projectsManaging Project[]       @relation("ProjectsManaging")
+  projectComments  ProjectComment[]
 }
 
 model Invitation {
@@ -109,8 +151,13 @@ model Project {
   name        String
   address     String?
   description String?
+  status      ProjectStatus @default(PLANNING)
   customerId  String
   customer    User     @relation("CustomerProjects", fields: [customerId], references: [id])
+  // Optional assigned PM. Cleared (SetNull) if the PM user is deleted so the
+  // project record stays intact.
+  projectManagerId String?
+  projectManager   User?  @relation("ProjectsManaging", fields: [projectManagerId], references: [id], onDelete: SetNull)
   startDate   DateTime?
   endDate     DateTime?
   createdAt   DateTime @default(now())
@@ -121,6 +168,10 @@ model Project {
   selections  Selection[]
   images      ProjectImage[]
   logEntries  LogEntry[]
+  contracts   Contract[]
+  comments    ProjectComment[]
+
+  @@index([projectManagerId])
 }
 
 model Schedule {
@@ -251,6 +302,12 @@ model Contract {
   templateId   String?
   template     ContractTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
+  // Optional link back to the project this contract is for. Lets us list
+  // signed contracts on the project hub and audit which agreements gate
+  // which work. SetNull on project delete to preserve the contract record.
+  projectId    String?
+  project      Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
   // Snapshots — preserved when the underlying template changes or is deleted
   // so what the customer signed is the body that was sent, regardless of
   // future template edits.
@@ -294,4 +351,70 @@ model Contract {
   @@index([customerId])
   @@index([createdById])
   @@index([status])
+}
+
+model Lead {
+  id            String     @id @default(cuid())
+  name          String
+  email         String?
+  phone         String?
+  address       String?
+  // Brief description of what they want done, scope of work, etc.
+  scope         String?
+  estimatedValueCents Int?
+  status        LeadStatus @default(NEW)
+  source        LeadSource @default(OTHER)
+
+  // Sales rep this lead is assigned to. Optional so freshly imported leads
+  // can sit in the pool until someone claims them.
+  ownerId       String?
+  owner         User?      @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  createdById   String
+  createdBy     User       @relation("LeadCreator", fields: [createdById], references: [id])
+
+  // Set when the lead is converted to a customer account (via invitation).
+  convertedAt           DateTime?
+  convertedToCustomerId String?
+  convertedToCustomer   User?     @relation("LeadConvertedCustomer", fields: [convertedToCustomerId], references: [id])
+
+  notes         String?
+  activities    LeadActivity[]
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([status])
+  @@index([ownerId])
+}
+
+model LeadActivity {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  // Free-form type tag: "note", "call", "email", "meeting", "status_change".
+  // Keeping as string instead of an enum so the team can add new categories
+  // without a migration.
+  type      String
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+}
+
+// Project-level threaded discussion visible to the customer + assigned PM
+// + admin. Distinct from one-to-one Messages because the audience is the
+// project participants rather than two specific users.
+model ProjectComment {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
 }

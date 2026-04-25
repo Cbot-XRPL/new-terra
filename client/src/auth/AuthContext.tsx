@@ -17,6 +17,7 @@ export interface AuthUser {
   name: string;
   role: Role;
   isSales?: boolean;
+  isProjectManager?: boolean;
 }
 
 interface AuthContextValue {

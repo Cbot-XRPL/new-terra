@@ -98,6 +98,7 @@ router.get('/users', async (req, res, next) => {
         role: true,
         isActive: true,
         isSales: true,
+        isProjectManager: true,
         createdAt: true,
       },
     });
@@ -111,6 +112,7 @@ const updateUserSchema = z.object({
   isActive: z.boolean().optional(),
   role: z.nativeEnum(Role).optional(),
   isSales: z.boolean().optional(),
+  isProjectManager: z.boolean().optional(),
 });
 
 router.patch('/users/:id', async (req, res, next) => {
@@ -127,6 +129,7 @@ router.patch('/users/:id', async (req, res, next) => {
         role: true,
         isActive: true,
         isSales: true,
+        isProjectManager: true,
       },
     });
     res.json({ user: updated });

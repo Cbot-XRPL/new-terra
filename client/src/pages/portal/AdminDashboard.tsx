@@ -12,6 +12,7 @@ interface AdminUser {
   role: Role;
   isActive: boolean;
   isSales: boolean;
+  isProjectManager: boolean;
   createdAt: string;
 }
 
@@ -98,6 +99,18 @@ export default function AdminDashboard() {
     }
   }
 
+  async function togglePm(user: AdminUser) {
+    try {
+      await api(`/api/admin/users/${user.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isProjectManager: !user.isProjectManager }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Update failed');
+    }
+  }
+
   return (
     <div className="dashboard">
       <header className="row-between">
@@ -145,6 +158,7 @@ export default function AdminDashboard() {
               <th>Email</th>
               <th>Role</th>
               <th>Sales</th>
+              <th>PM</th>
               <th>Status</th>
               <th></th>
             </tr>
@@ -163,6 +177,19 @@ export default function AdminDashboard() {
                       title={u.isSales ? 'Remove sales access' : 'Grant sales access'}
                     >
                       {u.isSales ? 'Sales ✓' : 'Grant'}
+                    </button>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
+                <td>
+                  {u.role === 'EMPLOYEE' ? (
+                    <button
+                      className={`button-small ${u.isProjectManager ? '' : 'button-ghost'}`}
+                      onClick={() => togglePm(u)}
+                      title={u.isProjectManager ? 'Remove PM access' : 'Grant PM access'}
+                    >
+                      {u.isProjectManager ? 'PM ✓' : 'Grant'}
                     </button>
                   ) : (
                     <span className="muted">—</span>
