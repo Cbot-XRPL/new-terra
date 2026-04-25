@@ -157,6 +157,10 @@ model User {
   // SetNull, with the audit trail intact.
   expensesPaid       Expense[] @relation("ExpensePaidBy")
   expensesSubmitted  Expense[] @relation("ExpenseSubmittedBy")
+
+  // QuickBooks connections this user authorised (audit only — connection
+  // can survive the user's deletion via SetNull).
+  qbConnectionsConnected QbConnection[] @relation("QbConnectionsConnected")
 }
 
 model Invitation {
@@ -559,4 +563,25 @@ model ProjectBudgetLine {
 
   @@unique([projectId, categoryId])
   @@index([projectId])
+}
+
+// QuickBooks Online connection. Singleton in practice (one per company),
+// but no DB-level uniqueness enforced — the route layer always uses the
+// most-recent active row. Tokens are stored in plaintext; you should
+// migrate to KMS-encrypted columns before going to production.
+model QbConnection {
+  id                  String   @id @default(cuid())
+  realmId             String   @unique
+  accessToken         String
+  refreshToken        String
+  // Both expirations come from Intuit at exchange time. The access token
+  // typically lasts 1 hour and the refresh token rolls every 100 days.
+  accessTokenExpiresAt  DateTime
+  refreshTokenExpiresAt DateTime
+  scope               String?
+  connectedById       String?
+  connectedBy         User?    @relation("QbConnectionsConnected", fields: [connectedById], references: [id], onDelete: SetNull)
+  lastError           String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
