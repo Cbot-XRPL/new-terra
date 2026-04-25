@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
+import Avatar from '../components/Avatar';
 
 export default function PortalLayout() {
   const { user, logout } = useAuth();
@@ -72,8 +73,17 @@ export default function PortalLayout() {
           {user?.role === 'ADMIN' && <NavLink to="/portal/admin">Admin</NavLink>}
         </nav>
         <div className="portal-user">
-          <div className="portal-user-name">{user?.name}</div>
-          <div className="portal-user-role">{user?.role.toLowerCase()}</div>
+          <Link to="/portal/profile" className="user-chip" style={{ marginBottom: '0.5rem' }}>
+            <Avatar
+              name={user?.name ?? ''}
+              url={user?.avatarThumbnailUrl ?? user?.avatarUrl}
+              size={44}
+            />
+            <span className="user-chip-meta">
+              <span className="user-chip-name">{user?.name}</span>
+              <span className="user-chip-role">{user?.role.toLowerCase()}</span>
+            </span>
+          </Link>
           <button onClick={handleLogout} className="button button-ghost">
             Sign out
           </button>

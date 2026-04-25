@@ -1,0 +1,199 @@
+import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { ApiError, api } from '../../lib/api';
+import { useAuth, type AuthUser } from '../../auth/AuthContext';
+import Avatar from '../../components/Avatar';
+
+const API_BASE = import.meta.env.VITE_API_URL ?? '';
+
+function authHeaders(): Record<string, string> {
+  const token = localStorage.getItem('nt_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export default function ProfilePage() {
+  const { user, refreshUser } = useAuth();
+
+  const [name, setName] = useState(user?.name ?? '');
+  const [email, setEmail] = useState(user?.email ?? '');
+  const [phone, setPhone] = useState(user?.phone ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  // Keep the form in sync if the cached user object changes (e.g. after an
+  // avatar upload triggers refreshUser).
+  useEffect(() => {
+    if (!user) return;
+    setName(user.name);
+    setEmail(user.email);
+    setPhone(user.phone ?? '');
+  }, [user]);
+
+  if (!user) return null;
+
+  async function saveProfile(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const { user: updated } = await api<{ user: AuthUser }>('/api/me/profile', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name,
+          email,
+          phone: phone ? phone : null,
+        }),
+      });
+      await refreshUser(updated);
+      setSuccess('Profile saved.');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function uploadAvatar(file: File) {
+    setUploading(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`${API_BASE}/api/me/avatar`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: form,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new ApiError(res.status, data?.error ?? res.statusText, data);
+      await refreshUser(data.user as AuthUser);
+      setSuccess('Profile picture updated.');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+      if (fileInput.current) fileInput.current.value = '';
+    }
+  }
+
+  async function removeAvatar() {
+    if (!confirm('Remove your profile picture?')) return;
+    setError(null);
+    setSuccess(null);
+    try {
+      const { user: updated } = await api<{ user: AuthUser }>('/api/me/avatar', { method: 'DELETE' });
+      await refreshUser(updated);
+      setSuccess('Profile picture removed.');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Remove failed');
+    }
+  }
+
+  return (
+    <div className="dashboard">
+      <header>
+        <h1>Your profile</h1>
+        <p className="muted">Update how the rest of the team sees you.</p>
+      </header>
+
+      {error && <div className="form-error">{error}</div>}
+      {success && <div className="form-success">{success}</div>}
+
+      <section className="card">
+        <h2>Profile picture</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
+          <Avatar name={user.name} url={user.avatarUrl} size={96} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => fileInput.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? 'Uploading…' : user.avatarUrl ? 'Change photo' : 'Upload photo'}
+              </button>
+              {user.avatarUrl && (
+                <button type="button" className="button-ghost" onClick={removeAvatar} disabled={uploading}>
+                  Remove
+                </button>
+              )}
+            </div>
+            <p className="muted" style={{ fontSize: '0.85rem', margin: 0 }}>
+              We resize to 512px and generate a 96px thumbnail for the nav. JPEG or PNG up to 8 MB.
+            </p>
+          </div>
+        </div>
+        <input
+          ref={fileInput}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) uploadAvatar(f);
+          }}
+        />
+      </section>
+
+      <section className="card">
+        <h2>Details</h2>
+        <form onSubmit={saveProfile}>
+          <label htmlFor="p-name">Full name</label>
+          <input id="p-name" value={name} onChange={(e) => setName(e.target.value)} required />
+
+          <label htmlFor="p-email">Email</label>
+          <input
+            id="p-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoComplete="email"
+          />
+          <p className="muted" style={{ fontSize: '0.8rem', margin: '-0.5rem 0 1rem' }}>
+            Used to sign in. Changing it takes effect immediately — no confirmation email yet.
+          </p>
+
+          <label htmlFor="p-phone">Phone</label>
+          <input
+            id="p-phone"
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="(555) 123-4567"
+            autoComplete="tel"
+          />
+
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button type="submit" disabled={saving}>
+              {saving ? 'Saving…' : 'Save changes'}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section className="card">
+        <h2>Account</h2>
+        <dl className="kv">
+          <dt>Role</dt>
+          <dd>{user.role.toLowerCase()}</dd>
+          {(user.isSales || user.isProjectManager) && (
+            <>
+              <dt>Capabilities</dt>
+              <dd>
+                {[user.isSales ? 'sales' : null, user.isProjectManager ? 'project manager' : null]
+                  .filter(Boolean)
+                  .join(', ')}
+              </dd>
+            </>
+          )}
+        </dl>
+      </section>
+    </div>
+  );
+}

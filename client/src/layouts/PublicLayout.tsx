@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import Avatar from '../components/Avatar';
 
 export default function PublicLayout() {
   const { user } = useAuth();
@@ -28,8 +29,16 @@ export default function PublicLayout() {
           </li>
           <li>
             {user ? (
-              <Link to="/portal" className="button button-ghost">
-                Portal
+              <Link to="/portal/profile" className="user-chip" title="Open your portal">
+                <Avatar
+                  name={user.name}
+                  url={user.avatarThumbnailUrl ?? user.avatarUrl}
+                  size={36}
+                />
+                <span className="user-chip-meta">
+                  <span className="user-chip-name">{user.name.split(' ')[0]}</span>
+                  <span className="user-chip-role">{user.role.toLowerCase()}</span>
+                </span>
               </Link>
             ) : (
               <Link to="/login" className="button button-ghost">

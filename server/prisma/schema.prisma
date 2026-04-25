@@ -97,6 +97,11 @@ model User {
   // selections, invoices, comments). Toggleable by admin.
   isProjectManager Boolean @default(false)
   isActive      Boolean  @default(true)
+  // Profile picture — main display image (512px webp) and a small
+  // thumbnail (96px webp) used in the nav bar and dense lists. Both URLs
+  // are produced by the avatar upload pipeline (sharp resize).
+  avatarUrl     String?
+  avatarThumbnailUrl String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

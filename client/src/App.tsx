@@ -23,6 +23,7 @@ import ContractDetailPage from './pages/portal/ContractDetailPage';
 import BulkImportPage from './pages/portal/BulkImportPage';
 import LeadsPage from './pages/portal/LeadsPage';
 import LeadDetailPage from './pages/portal/LeadDetailPage';
+import ProfilePage from './pages/portal/ProfilePage';
 
 function PortalIndex() {
   const { user } = useAuth();
@@ -137,6 +138,7 @@ export default function App() {
             </RequireAuth>
           }
         />
+        <Route path="profile" element={<ProfilePage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

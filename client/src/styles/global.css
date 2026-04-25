@@ -290,6 +290,45 @@ input:focus, textarea:focus, select:focus {
 }
 .cta-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem; }
 
+/* Avatars */
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  overflow: hidden;
+  flex-shrink: 0;
+  font-weight: 600;
+  user-select: none;
+  border: 1px solid rgba(95, 99, 104, 0.32);
+}
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  text-decoration: none;
+  color: var(--text);
+}
+.user-chip:hover { color: var(--accent); }
+.user-chip-meta { display: flex; flex-direction: column; line-height: 1.15; }
+.user-chip-name { font-size: 0.9rem; font-weight: 600; }
+.user-chip-role { font-size: 0.75rem; color: var(--text-muted); text-transform: capitalize; }
+
+.kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.4rem 1.25rem;
+  margin: 0;
+}
+.kv dt { color: var(--text-muted); }
+.kv dd { margin: 0; }
+
 /* Honeypot — kept in the DOM but moved off-screen so bots see it and
    humans don't. */
 .hp-field {

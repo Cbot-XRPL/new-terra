@@ -31,6 +31,8 @@ router.post('/login', async (req, res, next) => {
         role: user.role,
         isSales: user.isSales,
         isProjectManager: user.isProjectManager,
+        avatarUrl: user.avatarUrl,
+        avatarThumbnailUrl: user.avatarThumbnailUrl,
       },
     });
   } catch (err) {
@@ -50,6 +52,8 @@ router.get('/me', requireAuth, async (req, res, next) => {
         phone: true,
         isSales: true,
         isProjectManager: true,
+        avatarUrl: true,
+        avatarThumbnailUrl: true,
       },
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -109,6 +113,8 @@ router.post('/accept-invite', async (req, res, next) => {
         role: user.role,
         isSales: user.isSales,
         isProjectManager: user.isProjectManager,
+        avatarUrl: user.avatarUrl,
+        avatarThumbnailUrl: user.avatarThumbnailUrl,
       },
     });
   } catch (err) {

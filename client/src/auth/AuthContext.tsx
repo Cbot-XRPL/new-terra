@@ -16,8 +16,11 @@ export interface AuthUser {
   email: string;
   name: string;
   role: Role;
+  phone?: string | null;
   isSales?: boolean;
   isProjectManager?: boolean;
+  avatarUrl?: string | null;
+  avatarThumbnailUrl?: string | null;
 }
 
 interface AuthContextValue {
@@ -31,6 +34,9 @@ interface AuthContextValue {
     phone?: string;
   }) => Promise<AuthUser>;
   logout: () => void;
+  // Profile + avatar updates call this so the cached user (and derived UI like
+  // the nav avatar) updates without a full page reload.
+  refreshUser: (next?: AuthUser) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -78,9 +84,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const refreshUser = useCallback<AuthContextValue['refreshUser']>(async (next) => {
+    if (next) {
+      setUser(next);
+      return;
+    }
+    try {
+      const data = await api<{ user: AuthUser }>('/api/auth/me');
+      setUser(data.user);
+    } catch {
+      // ignored — fetch failure leaves the cached user in place
+    }
+  }, []);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ user, loading, login, acceptInvite, logout }),
-    [user, loading, login, acceptInvite, logout],
+    () => ({ user, loading, login, acceptInvite, logout, refreshUser }),
+    [user, loading, login, acceptInvite, logout, refreshUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
