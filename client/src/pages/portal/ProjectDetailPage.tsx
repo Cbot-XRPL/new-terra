@@ -6,6 +6,7 @@ import { formatDate, formatDateTime, toDatetimeLocal } from '../../lib/format';
 import ProjectGallery from './ProjectGallery';
 import InvoicesSection from './InvoicesSection';
 import SelectionsSection from './SelectionsSection';
+import LogEntriesSection from './LogEntriesSection';
 
 interface ProjectDetail {
   id: string;
@@ -189,6 +190,8 @@ export default function ProjectDetailPage() {
         customerId={project.customer.id}
         customerName={project.customer.name}
       />
+
+      <LogEntriesSection projectId={project.id} />
 
       {canAddSchedule && (
         <section className="card">

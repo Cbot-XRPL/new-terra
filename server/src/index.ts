@@ -13,6 +13,8 @@ import projectImagesRouter from './routes/projectImages.js';
 import invoicesRouter from './routes/invoices.js';
 import messagesRouter from './routes/messages.js';
 import selectionsRouter from './routes/selections.js';
+import membershipsRouter from './routes/memberships.js';
+import logEntriesRouter from './routes/logEntries.js';
 
 const app = express();
 
@@ -32,6 +34,8 @@ app.use('/api/portal', portalRouter);
 app.use('/api/projects', projectsRouter);
 app.use('/api/projects', projectImagesRouter);
 app.use('/api/projects', selectionsRouter);
+app.use('/api/projects', logEntriesRouter);
+app.use('/api/memberships', membershipsRouter);
 app.use('/api/schedules', schedulesRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/messages', messagesRouter);

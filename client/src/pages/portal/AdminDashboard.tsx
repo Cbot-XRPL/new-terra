@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import type { Role } from '../../auth/AuthContext';
+import MembershipsAdmin from './MembershipsAdmin';
 
 interface AdminUser {
   id: string;
@@ -138,6 +139,8 @@ export default function AdminDashboard() {
           </tbody>
         </table>
       </section>
+
+      <MembershipsAdmin />
 
       <section className="card">
         <h2>Pending invitations</h2>
