@@ -1,9 +1,31 @@
+import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { api } from '../lib/api';
 
 export default function PortalLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [unread, setUnread] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    async function load() {
+      try {
+        const { count } = await api<{ count: number }>('/api/messages/unread-count');
+        if (!cancelled) setUnread(count);
+      } catch {
+        // Ignore — endpoint may be unavailable; nav badge is non-critical.
+      }
+    }
+    load();
+    const id = setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [user]);
 
   function handleLogout() {
     logout();
@@ -26,6 +48,10 @@ export default function PortalLayout() {
             user?.role === 'ADMIN') && <NavLink to="/portal/staff">Staff</NavLink>}
           <NavLink to="/portal/projects">Projects</NavLink>
           <NavLink to="/portal/invoices">Invoices</NavLink>
+          <NavLink to="/portal/messages">
+            Messages
+            {unread > 0 && <span className="unread-dot" style={{ marginLeft: 8 }}>{unread}</span>}
+          </NavLink>
           {user?.role === 'ADMIN' && <NavLink to="/portal/admin">Admin</NavLink>}
         </nav>
         <div className="portal-user">

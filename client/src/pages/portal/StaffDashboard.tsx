@@ -90,9 +90,8 @@ export default function StaffDashboard() {
       <section className="card">
         <h2>Coming soon</h2>
         <ul>
-          <li>Upload site photos to a project</li>
           <li>Add log entries to a project</li>
-          <li>Message a customer directly</li>
+          <li>Calendar view of company-wide schedules</li>
         </ul>
       </section>
     </div>

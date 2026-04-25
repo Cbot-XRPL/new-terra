@@ -54,14 +54,17 @@ model User {
   invoices      Invoice[]
   selections    Selection[]
   membership    Membership?
-  receivedMessages ClientMessage[] @relation("MessagesToCustomer")
+
+  // Bidirectional messaging — staff can message customers and vice versa.
+  // Cross-role permission (no customer↔customer) is enforced in the route.
+  messagesSent     Message[] @relation("MessagesFromUser")
+  messagesReceived Message[] @relation("MessagesToUser")
 
   // Employee/sub-side relations
   schedules     Schedule[]      @relation("AssignedSchedules")
   uploadedImages ProjectImage[] @relation("UploadedImages")
   logEntries    LogEntry[]
   boardPosts    MessageBoardPost[]
-  sentMessages  ClientMessage[] @relation("MessagesFromStaff")
   invitesIssued Invitation[]    @relation("InvitesIssued")
 }
 
@@ -185,16 +188,17 @@ model MessageBoardPost {
   createdAt DateTime @default(now())
 }
 
-model ClientMessage {
+model Message {
   id          String   @id @default(cuid())
-  fromStaffId String
-  fromStaff   User     @relation("MessagesFromStaff", fields: [fromStaffId], references: [id])
-  toCustomerId String
-  toCustomer  User     @relation("MessagesToCustomer", fields: [toCustomerId], references: [id])
+  fromUserId  String
+  fromUser    User     @relation("MessagesFromUser", fields: [fromUserId], references: [id])
+  toUserId    String
+  toUser      User     @relation("MessagesToUser", fields: [toUserId], references: [id])
   subject     String?
   body        String
   readAt      DateTime?
   createdAt   DateTime @default(now())
 
-  @@index([toCustomerId])
+  @@index([toUserId])
+  @@index([fromUserId])
 }

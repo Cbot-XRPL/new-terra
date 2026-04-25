@@ -13,6 +13,7 @@ import AdminDashboard from './pages/portal/AdminDashboard';
 import ProjectsListPage from './pages/portal/ProjectsListPage';
 import ProjectDetailPage from './pages/portal/ProjectDetailPage';
 import InvoicesPage from './pages/portal/InvoicesPage';
+import MessagesPage from './pages/portal/MessagesPage';
 
 function PortalIndex() {
   const { user } = useAuth();
@@ -68,6 +69,7 @@ export default function App() {
         <Route path="projects" element={<ProjectsListPage />} />
         <Route path="projects/:id" element={<ProjectDetailPage />} />
         <Route path="invoices" element={<InvoicesPage />} />
+        <Route path="messages" element={<MessagesPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
