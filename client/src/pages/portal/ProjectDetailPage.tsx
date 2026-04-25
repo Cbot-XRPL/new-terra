@@ -4,6 +4,7 @@ import { ApiError, api } from '../../lib/api';
 import { useAuth, type Role } from '../../auth/AuthContext';
 import { formatDate, formatDateTime, toDatetimeLocal } from '../../lib/format';
 import ProjectGallery from './ProjectGallery';
+import InvoicesSection from './InvoicesSection';
 
 interface ProjectDetail {
   id: string;
@@ -179,6 +180,12 @@ export default function ProjectDetailPage() {
       </section>
 
       <ProjectGallery projectId={project.id} />
+
+      <InvoicesSection
+        projectId={project.id}
+        customerId={project.customer.id}
+        customerName={project.customer.name}
+      />
 
       {canAddSchedule && (
         <section className="card">

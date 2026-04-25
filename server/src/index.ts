@@ -10,6 +10,7 @@ import portalRouter from './routes/portal.js';
 import projectsRouter from './routes/projects.js';
 import schedulesRouter from './routes/schedules.js';
 import projectImagesRouter from './routes/projectImages.js';
+import invoicesRouter from './routes/invoices.js';
 
 const app = express();
 
@@ -29,6 +30,7 @@ app.use('/api/portal', portalRouter);
 app.use('/api/projects', projectsRouter);
 app.use('/api/projects', projectImagesRouter);
 app.use('/api/schedules', schedulesRouter);
+app.use('/api/invoices', invoicesRouter);
 
 app.use(errorHandler);
 
