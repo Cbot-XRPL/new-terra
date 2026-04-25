@@ -48,6 +48,42 @@ export async function sendContractInviteEmail(input: {
   await transporter.sendMail({ to: input.to, from: env.smtp.from, subject, text });
 }
 
+export async function sendContractDecidedEmail(input: {
+  to: string;
+  repName: string;
+  customerName: string;
+  contractName: string;
+  contractId: string;
+  outcome: 'signed' | 'declined';
+  declineReason?: string | null;
+}) {
+  const url = `${env.appUrl}/portal/contracts/${input.contractId}`;
+  const subject =
+    input.outcome === 'signed'
+      ? `${input.customerName} signed: ${input.contractName}`
+      : `${input.customerName} declined: ${input.contractName}`;
+  const lines = [
+    `Hi ${input.repName},`,
+    '',
+    `${input.customerName} has ${input.outcome} the contract "${input.contractName}".`,
+    input.outcome === 'declined' && input.declineReason
+      ? `Reason given: ${input.declineReason}`
+      : null,
+    '',
+    `View the audit trail: ${url}`,
+    '',
+    '— New Terra Construction',
+  ].filter((l): l is string => l !== null);
+  const text = lines.join('\n');
+
+  if (!transporter) {
+    console.log('[mailer:dev] Contract', input.outcome, 'notice to', input.to);
+    console.log('[mailer:dev]', url);
+    return;
+  }
+  await transporter.sendMail({ to: input.to, from: env.smtp.from, subject, text });
+}
+
 export async function sendContractReminderEmail(input: {
   to: string;
   customerName: string;

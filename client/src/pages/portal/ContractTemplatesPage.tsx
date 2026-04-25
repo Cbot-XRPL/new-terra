@@ -7,6 +7,7 @@ interface VariableDef {
   label: string;
   required?: boolean;
   multiline?: boolean;
+  defaultValue?: string;
 }
 
 interface Template {
@@ -27,6 +28,7 @@ interface DraftVariable {
   label: string;
   required: boolean;
   multiline: boolean;
+  defaultValue: string;
 }
 
 const DEFAULT_BODY = `AGREEMENT BETWEEN NEW TERRA CONSTRUCTION AND {{customer_name}}
@@ -96,6 +98,7 @@ export default function ContractTemplatesPage() {
         label: humanize(k),
         required: true,
         multiline: k === 'scope',
+        defaultValue: '',
       })),
     );
     setShowForm(true);
@@ -112,6 +115,7 @@ export default function ContractTemplatesPage() {
         label: v.label,
         required: !!v.required,
         multiline: !!v.multiline,
+        defaultValue: v.defaultValue ?? '',
       })),
     );
     setShowForm(true);
@@ -121,7 +125,14 @@ export default function ContractTemplatesPage() {
     const keys = extractVarKeys(body);
     const byKey = new Map(variables.map((v) => [v.key, v]));
     const next = keys.map(
-      (k) => byKey.get(k) ?? { key: k, label: humanize(k), required: true, multiline: false },
+      (k) =>
+        byKey.get(k) ?? {
+          key: k,
+          label: humanize(k),
+          required: true,
+          multiline: false,
+          defaultValue: '',
+        },
     );
     setVariables(next);
   }
@@ -131,7 +142,14 @@ export default function ContractTemplatesPage() {
     setError(null);
     setSubmitting(true);
     try {
-      const payload = { name, description: description || undefined, body, variables };
+      // Strip empty default strings so they aren't persisted as "" (cleaner JSON
+      // and lets us treat absence the same as "no default" elsewhere).
+      const trimmedVars = variables.map((v) => {
+        const out: DraftVariable & { defaultValue?: string } = { ...v };
+        if (!v.defaultValue) delete (out as { defaultValue?: string }).defaultValue;
+        return out;
+      });
+      const payload = { name, description: description || undefined, body, variables: trimmedVars };
       if (editing) {
         await api(`/api/contract-templates/${editing.id}`, {
           method: 'PATCH',
@@ -235,7 +253,13 @@ export default function ContractTemplatesPage() {
             ) : (
               <table className="table" style={{ marginBottom: '1rem' }}>
                 <thead>
-                  <tr><th>Key</th><th>Label</th><th>Required</th><th>Multiline</th></tr>
+                  <tr>
+                    <th>Key</th>
+                    <th>Label</th>
+                    <th>Required</th>
+                    <th>Multiline</th>
+                    <th>Default</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {variables.map((v, i) => (
@@ -274,6 +298,18 @@ export default function ContractTemplatesPage() {
                             setVariables(next);
                           }}
                           style={{ width: 'auto' }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          value={v.defaultValue}
+                          onChange={(e) => {
+                            const next = [...variables];
+                            next[i] = { ...v, defaultValue: e.target.value };
+                            setVariables(next);
+                          }}
+                          placeholder="(none)"
+                          style={{ marginBottom: 0 }}
                         />
                       </td>
                     </tr>

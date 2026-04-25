@@ -4,7 +4,7 @@ import { ContractStatus, Role, type Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { renderContractPdf } from '../lib/contractPdf.js';
-import { sendContractInviteEmail } from '../lib/mailer.js';
+import { sendContractDecidedEmail, sendContractInviteEmail } from '../lib/mailer.js';
 import { remindStaleContracts } from '../lib/reminders.js';
 
 const router = Router();
@@ -380,7 +380,19 @@ router.post('/:id/sign', async (req, res, next) => {
         signatureName: data.signatureName,
         signatureIp: req.ip ?? null,
       },
+      include: {
+        customer: { select: { name: true } },
+        createdBy: { select: { name: true, email: true } },
+      },
     });
+    sendContractDecidedEmail({
+      to: updated.createdBy.email,
+      repName: updated.createdBy.name,
+      customerName: updated.customer.name,
+      contractName: updated.templateNameSnapshot,
+      contractId: updated.id,
+      outcome: 'signed',
+    }).catch((err) => console.warn('[contracts] sign notice failed', err));
     res.json({ contract: updated });
   } catch (err) {
     next(err);
@@ -409,7 +421,20 @@ router.post('/:id/decline', async (req, res, next) => {
         declinedAt: new Date(),
         declineReason: data.reason,
       },
+      include: {
+        customer: { select: { name: true } },
+        createdBy: { select: { name: true, email: true } },
+      },
     });
+    sendContractDecidedEmail({
+      to: updated.createdBy.email,
+      repName: updated.createdBy.name,
+      customerName: updated.customer.name,
+      contractName: updated.templateNameSnapshot,
+      contractId: updated.id,
+      outcome: 'declined',
+      declineReason: updated.declineReason,
+    }).catch((err) => console.warn('[contracts] decline notice failed', err));
     res.json({ contract: updated });
   } catch (err) {
     next(err);

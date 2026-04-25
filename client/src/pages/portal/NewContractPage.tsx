@@ -7,6 +7,7 @@ interface VariableDef {
   label: string;
   required?: boolean;
   multiline?: boolean;
+  defaultValue?: string;
 }
 
 interface Template {
@@ -54,14 +55,17 @@ export default function NewContractPage() {
 
   const template = templates.find((t) => t.id === templateId) ?? null;
 
-  // Reset variable values when template changes.
+  // Reset variable values when template changes — prefill from defaults so
+  // sales reps don't re-type boilerplate (payment terms, signoff line, etc.).
   useEffect(() => {
     if (!template) {
       setValues({});
       return;
     }
     const next: Record<string, string> = {};
-    for (const v of template.variables) next[v.key] = values[v.key] ?? '';
+    for (const v of template.variables) {
+      next[v.key] = values[v.key] ?? v.defaultValue ?? '';
+    }
     setValues(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateId]);

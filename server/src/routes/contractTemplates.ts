@@ -16,6 +16,8 @@ const variableSchema = z.object({
   label: z.string().min(1).max(120),
   required: z.boolean().optional(),
   multiline: z.boolean().optional(),
+  // Optional default — sales reps see this prefilled when drafting a contract.
+  defaultValue: z.string().max(2000).optional(),
 });
 
 const createSchema = z.object({

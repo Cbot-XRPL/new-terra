@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { formatDate } from '../../lib/format';
@@ -43,49 +43,62 @@ export default function ContractsPage() {
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  // Query state — kept in component for now; URL sync is a follow-up.
-  const [status, setStatus] = useState<'ALL' | ContractStatus>('ALL');
-  const [sort, setSort] = useState<SortField>('createdAt');
-  const [dir, setDir] = useState<'asc' | 'desc'>('desc');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
-  const [q, setQ] = useState('');
-  const [qDebounced, setQDebounced] = useState('');
+  // Filter state lives in the URL so the back button + bookmarks + shared
+  // links all work. Defaults come from the URL or fall back to sensible
+  // values (newest first, page 1, 25/page).
+  const [params, setParams] = useSearchParams();
+  const status = (params.get('status') ?? 'ALL') as 'ALL' | ContractStatus;
+  const sort = (params.get('sort') as SortField) || 'createdAt';
+  const dir = (params.get('dir') as 'asc' | 'desc') || 'desc';
+  const page = Math.max(1, Number(params.get('page')) || 1);
+  const pageSize = Math.max(1, Number(params.get('pageSize')) || 25);
+  const q = params.get('q') ?? '';
 
-  // Debounce the search box so we don't fetch on every keystroke.
+  // Setter helpers — patch one (or many) keys without losing the others.
+  function patchParams(patch: Record<string, string | null>, options?: { resetPage?: boolean }) {
+    const next = new URLSearchParams(params);
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null || value === '' || value === 'ALL') next.delete(key);
+      else next.set(key, value);
+    }
+    if (options?.resetPage) next.delete('page');
+    setParams(next, { replace: true });
+  }
+
+  // Debounced search — input typed locally, written to the URL after 300ms.
+  const [qInput, setQInput] = useState(q);
+  useEffect(() => { setQInput(q); /* sync if URL changes externally */ }, [q]);
   useEffect(() => {
-    const t = setTimeout(() => setQDebounced(q), 300);
+    if (qInput === q) return;
+    const t = setTimeout(() => patchParams({ q: qInput || null }, { resetPage: true }), 300);
     return () => clearTimeout(t);
-  }, [q]);
-
-  // Reset to page 1 when filters change.
-  useEffect(() => { setPage(1); }, [status, sort, dir, qDebounced, pageSize]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qInput]);
 
   useEffect(() => {
-    const params = new URLSearchParams({
+    const search = new URLSearchParams({
       page: String(page),
       pageSize: String(pageSize),
       sort,
       dir,
     });
-    if (status !== 'ALL') params.set('status', status);
-    if (qDebounced) params.set('q', qDebounced);
-    api<ListResponse>(`/api/contracts?${params.toString()}`)
+    if (status !== 'ALL') search.set('status', status);
+    if (q) search.set('q', q);
+    api<ListResponse>(`/api/contracts?${search.toString()}`)
       .then((d) => {
         setContracts(d.contracts);
         setTotal(d.total);
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load'));
-  }, [page, pageSize, sort, dir, status, qDebounced]);
+  }, [page, pageSize, sort, dir, status, q]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   function toggleSort(field: SortField) {
     if (sort === field) {
-      setDir(dir === 'asc' ? 'desc' : 'asc');
+      patchParams({ dir: dir === 'asc' ? 'desc' : 'asc' });
     } else {
-      setSort(field);
-      setDir('desc');
+      patchParams({ sort: field, dir: 'desc' });
     }
   }
 
@@ -111,13 +124,15 @@ export default function ContractsPage() {
           <input
             type="search"
             placeholder="Search…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
+            value={qInput}
+            onChange={(e) => setQInput(e.target.value)}
             style={{ marginBottom: 0, minWidth: 180 }}
           />
           <select
             value={status}
-            onChange={(e) => setStatus(e.target.value as 'ALL' | ContractStatus)}
+            onChange={(e) =>
+              patchParams({ status: e.target.value === 'ALL' ? null : e.target.value }, { resetPage: true })
+            }
             style={{ marginBottom: 0, minWidth: 140 }}
           >
             <option value="ALL">All statuses</option>
@@ -188,7 +203,7 @@ export default function ContractsPage() {
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <select
                   value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  onChange={(e) => patchParams({ pageSize: e.target.value }, { resetPage: true })}
                   style={{ marginBottom: 0 }}
                 >
                   {[10, 25, 50, 100].map((n) => (
@@ -198,7 +213,7 @@ export default function ContractsPage() {
                 <button
                   className="button-ghost button-small"
                   disabled={page <= 1}
-                  onClick={() => setPage((p) => p - 1)}
+                  onClick={() => patchParams({ page: String(page - 1) })}
                 >
                   ◀ Prev
                 </button>
@@ -206,7 +221,7 @@ export default function ContractsPage() {
                 <button
                   className="button-ghost button-small"
                   disabled={page >= totalPages}
-                  onClick={() => setPage((p) => p + 1)}
+                  onClick={() => patchParams({ page: String(page + 1) })}
                 >
                   Next ▶
                 </button>
@@ -216,7 +231,7 @@ export default function ContractsPage() {
         ) : (
           <p className="muted">
             No contracts{status !== 'ALL' ? ` with status ${status.toLowerCase()}` : ''}
-            {qDebounced ? ` matching "${qDebounced}"` : ''}.
+            {q ? ` matching "${q}"` : ''}.
           </p>
         )}
       </section>
