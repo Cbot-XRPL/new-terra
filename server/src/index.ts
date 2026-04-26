@@ -31,6 +31,7 @@ import financeRouter from './routes/finance.js';
 import quickbooksRouter from './routes/quickbooks.js';
 import estimateTemplatesRouter from './routes/estimateTemplates.js';
 import estimatesRouter from './routes/estimates.js';
+import catalogRouter from './routes/catalog.js';
 
 const app = express();
 
@@ -91,6 +92,7 @@ app.use('/api/finance', financeRouter);
 app.use('/api/integrations/quickbooks', quickbooksRouter);
 app.use('/api/estimate-templates', estimateTemplatesRouter);
 app.use('/api/estimates', estimatesRouter);
+app.use('/api/catalog', catalogRouter);
 
 // In production, serve the built React client from this same process. The
 // SPA fallback comes after every /api route is registered so client routes

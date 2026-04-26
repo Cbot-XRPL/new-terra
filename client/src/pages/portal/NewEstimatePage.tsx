@@ -6,6 +6,28 @@ import { formatCents } from '../../lib/format';
 interface CustomerOption { id: string; name: string; email: string }
 interface LeadOption { id: string; name: string; email: string | null }
 
+interface ProductRef {
+  id: string;
+  name: string;
+  unit: string | null;
+  defaultUnitPriceCents: number;
+  category: string | null;
+  kind: string;
+}
+interface AssemblyRef {
+  id: string;
+  name: string;
+  category: string | null;
+}
+interface AssemblyPreviewLine {
+  description: string;
+  quantity: number;
+  unit: string | null;
+  unitPriceCents: number;
+  totalCents: number;
+  category: string | null;
+}
+
 interface TemplateLine {
   id: string;
   description: string;
@@ -85,7 +107,17 @@ export default function NewEstimatePage() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [leads, setLeads] = useState<LeadOption[]>([]);
+  const [products, setProducts] = useState<ProductRef[]>([]);
+  const [assemblies, setAssemblies] = useState<AssemblyRef[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Catalog picker state
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalogTab, setCatalogTab] = useState<'products' | 'assemblies'>('products');
+  const [catalogQuery, setCatalogQuery] = useState('');
+  const [assemblyPreview, setAssemblyPreview] = useState<{
+    id: string; name: string; lines: AssemblyPreviewLine[]; totalCents: number; quantity: number;
+  } | null>(null);
 
   const [templateId, setTemplateId] = useState('');
   const [customerId, setCustomerId] = useState('');
@@ -108,14 +140,70 @@ export default function NewEstimatePage() {
       api<{ templates: Template[] }>('/api/estimate-templates'),
       api<{ users: CustomerOption[] }>('/api/portal/customers'),
       api<{ leads: LeadOption[] }>('/api/leads?pageSize=200').catch(() => ({ leads: [] as LeadOption[] })),
+      api<{ products: ProductRef[] }>('/api/catalog/products').catch(() => ({ products: [] as ProductRef[] })),
+      api<{ assemblies: AssemblyRef[] }>('/api/catalog/assemblies').catch(() => ({ assemblies: [] as AssemblyRef[] })),
     ])
-      .then(([t, c, l]) => {
+      .then(([t, c, l, p, a]) => {
         setTemplates(t.templates);
         setCustomers(c.users);
         setLeads(l.leads ?? []);
+        setProducts(p.products ?? []);
+        setAssemblies(a.assemblies ?? []);
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load form data'));
   }, []);
+
+  function addProductLine(p: ProductRef) {
+    setLines((cur) => [
+      ...cur,
+      {
+        description: p.name,
+        quantity: 1,
+        unit: p.unit ?? '',
+        unitPriceCents: p.defaultUnitPriceCents,
+        category: p.category ?? 'Materials',
+        notes: '',
+        position: cur.length,
+      },
+    ]);
+  }
+
+  async function previewAssembly(a: AssemblyRef) {
+    try {
+      const { lines: pl, totalCents } = await api<{ lines: AssemblyPreviewLine[]; totalCents: number }>(
+        `/api/catalog/assemblies/${a.id}/preview`,
+      );
+      setAssemblyPreview({ id: a.id, name: a.name, lines: pl, totalCents, quantity: 1 });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to preview');
+    }
+  }
+
+  function addAssemblyLines() {
+    if (!assemblyPreview) return;
+    const qty = assemblyPreview.quantity || 1;
+    setLines((cur) => [
+      ...cur,
+      ...assemblyPreview.lines.map((l, idx) => ({
+        description: l.description,
+        quantity: l.quantity * qty,
+        unit: l.unit ?? '',
+        unitPriceCents: l.unitPriceCents,
+        category: l.category ?? '',
+        notes: '',
+        position: cur.length + idx,
+      })),
+    ]);
+    setAssemblyPreview(null);
+    setCatalogOpen(false);
+  }
+
+  const filteredProducts = products.filter((p) =>
+    !catalogQuery || p.name.toLowerCase().includes(catalogQuery.toLowerCase()),
+  );
+  const filteredAssemblies = assemblies.filter((a) =>
+    !catalogQuery || a.name.toLowerCase().includes(catalogQuery.toLowerCase()),
+  );
 
   // Apply a template — replaces lines and prefills title if blank.
   function applyTemplate(id: string) {
@@ -283,10 +371,124 @@ export default function NewEstimatePage() {
       <section className="card">
         <div className="row-between">
           <h2>Line items</h2>
-          <button type="button" className="button-ghost button-small" onClick={addLine}>
-            + Add line
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button type="button" className="button-ghost button-small" onClick={() => setCatalogOpen((v) => !v)}>
+              {catalogOpen ? 'Close catalog' : '+ Add from catalog'}
+            </button>
+            <button type="button" className="button-ghost button-small" onClick={addLine}>
+              + Blank line
+            </button>
+          </div>
         </div>
+
+        {catalogOpen && (
+          <div className="card" style={{ marginBottom: '1rem' }}>
+            <div className="row-between">
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button type="button" className={catalogTab === 'products' ? '' : 'button-ghost'} onClick={() => setCatalogTab('products')}>
+                  Products ({filteredProducts.length})
+                </button>
+                <button type="button" className={catalogTab === 'assemblies' ? '' : 'button-ghost'} onClick={() => setCatalogTab('assemblies')}>
+                  Assemblies ({filteredAssemblies.length})
+                </button>
+              </div>
+              <input
+                type="search"
+                placeholder="Filter…"
+                value={catalogQuery}
+                onChange={(e) => setCatalogQuery(e.target.value)}
+                style={{ marginBottom: 0, minWidth: 200 }}
+              />
+            </div>
+
+            {catalogTab === 'products' && (
+              <table className="table" style={{ marginTop: '0.75rem' }}>
+                <thead><tr><th>Name</th><th>Category</th><th>Unit</th><th>Price</th><th></th></tr></thead>
+                <tbody>
+                  {filteredProducts.map((p) => (
+                    <tr key={p.id}>
+                      <td>{p.name}</td>
+                      <td>{p.category ?? <span className="muted">—</span>}</td>
+                      <td>{p.unit ?? '—'}</td>
+                      <td>{formatCents(p.defaultUnitPriceCents)}</td>
+                      <td>
+                        <button type="button" className="button-small" onClick={() => addProductLine(p)}>
+                          Add
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredProducts.length === 0 && (
+                    <tr><td colSpan={5} className="muted">No products. Admin can add them under /portal/catalog.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+
+            {catalogTab === 'assemblies' && (
+              <>
+                <table className="table" style={{ marginTop: '0.75rem' }}>
+                  <thead><tr><th>Name</th><th>Category</th><th></th></tr></thead>
+                  <tbody>
+                    {filteredAssemblies.map((a) => (
+                      <tr key={a.id}>
+                        <td>{a.name}</td>
+                        <td>{a.category ?? <span className="muted">—</span>}</td>
+                        <td>
+                          <button type="button" className="button-small" onClick={() => previewAssembly(a)}>
+                            Preview
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredAssemblies.length === 0 && (
+                      <tr><td colSpan={3} className="muted">No assemblies yet.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+
+                {assemblyPreview && (
+                  <div style={{ marginTop: '1rem' }}>
+                    <h3>{assemblyPreview.name}</h3>
+                    <div className="form-row" style={{ gridTemplateColumns: '120px 1fr' }}>
+                      <div>
+                        <label>Quantity</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0.1"
+                          value={assemblyPreview.quantity}
+                          onChange={(e) =>
+                            setAssemblyPreview({ ...assemblyPreview, quantity: Number(e.target.value) || 1 })
+                          }
+                        />
+                      </div>
+                      <div style={{ alignSelf: 'end' }}>
+                        <button type="button" onClick={addAssemblyLines}>
+                          + Add {assemblyPreview.lines.length} lines ({formatCents(assemblyPreview.totalCents * assemblyPreview.quantity)})
+                        </button>
+                      </div>
+                    </div>
+                    <table className="table" style={{ marginTop: '0.5rem' }}>
+                      <thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Price</th><th>Total</th></tr></thead>
+                      <tbody>
+                        {assemblyPreview.lines.map((l, i) => (
+                          <tr key={i}>
+                            <td>{l.description}</td>
+                            <td>{(l.quantity * assemblyPreview.quantity).toFixed(2)}</td>
+                            <td>{l.unit ?? '—'}</td>
+                            <td>{formatCents(l.unitPriceCents)}</td>
+                            <td>{formatCents(l.totalCents * assemblyPreview.quantity)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         <table className="table estimate-lines">
           <thead>

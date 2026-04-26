@@ -12,6 +12,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { hasSalesAccess } from '../lib/permissions.js';
 import { audit } from '../lib/audit.js';
 import { sendContractInviteEmail } from '../lib/mailer.js';
+import { expandAssembly } from '../lib/assemblies.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -593,6 +594,77 @@ router.post('/:id/convert', async (req, res, next) => {
     }).catch(() => undefined);
 
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Expand an assembly and append its lines to a DRAFT estimate. Returns the
+// updated estimate with re-totalled subtotal/tax/total.
+router.post('/:id/add-assembly', async (req, res, next) => {
+  try {
+    const me = await loadMe(req.user!.sub);
+    if (!me || !hasSalesAccess(me)) return res.status(403).json({ error: 'Forbidden' });
+
+    const body = z
+      .object({ assemblyId: z.string().min(1), quantity: z.number().nonnegative().default(1) })
+      .parse(req.body);
+
+    const existing = await prisma.estimate.findUnique({
+      where: { id: req.params.id },
+      include: { lines: true },
+    });
+    if (!existing) return res.status(404).json({ error: 'Estimate not found' });
+    if (existing.status !== EstimateStatus.DRAFT) {
+      return res.status(409).json({ error: 'Only DRAFT estimates can be edited' });
+    }
+    if (me.role !== Role.ADMIN && existing.createdById !== me.id) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    let expanded;
+    try {
+      expanded = await expandAssembly(body.assemblyId, { qtyMultiplier: body.quantity });
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith('Assembly cycle')) {
+        return res.status(400).json({ error: err.message });
+      }
+      throw err;
+    }
+
+    const startPos = existing.lines.length;
+    const newLines = expanded.map((l, idx) => ({
+      estimateId: existing.id,
+      description: l.description,
+      quantity: l.quantity,
+      unit: l.unit,
+      unitPriceCents: l.unitPriceCents,
+      totalCents: l.totalCents,
+      category: l.category,
+      notes: l.notes,
+      position: startPos + idx,
+    }));
+
+    const allLines = [...existing.lines, ...newLines];
+    const totals = recalcTotals(
+      allLines.map((l) => ({ totalCents: l.totalCents })),
+      existing.taxRateBps,
+    );
+
+    const updated = await prisma.$transaction(async (tx) => {
+      if (newLines.length > 0) {
+        await tx.estimateLine.createMany({ data: newLines });
+      }
+      await tx.estimate.update({ where: { id: existing.id }, data: totals });
+      return tx.estimate.findUnique({
+        where: { id: existing.id },
+        include: {
+          lines: { orderBy: { position: 'asc' } },
+          customer: { select: { id: true, name: true, email: true } },
+        },
+      });
+    });
+    res.json({ estimate: updated, addedLines: newLines.length });
   } catch (err) {
     next(err);
   }

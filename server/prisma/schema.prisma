@@ -497,6 +497,7 @@ model Vendor {
   updatedAt   DateTime @updatedAt
 
   expenses    Expense[]
+  products    Product[]
 
   @@index([name])
 }
@@ -773,4 +774,94 @@ model EstimateLine {
   category    String?
   notes       String?
   position    Int @default(0)
+}
+
+// Product — a single SKU in the catalog. Materials, labor units, fees, etc.
+// Sales reps and PMs reach for these when building an estimate; admin curates.
+// Optional vendor link surfaces vendor-specific pricing later.
+model Product {
+  id              String   @id @default(cuid())
+  // SKU is optional for simple internal items; unique when provided.
+  sku             String?  @unique
+  name            String
+  description     String?
+  // What this product *is*. Free-form so the catalog isn't wedged into a
+  // fixed enum; common values: "material", "labor", "fee", "subcontract".
+  kind            String   @default("material")
+  unit            String?  // "ea", "lf", "sqft", "cuyd", "hr", "lump"
+  defaultUnitPriceCents Int @default(0)
+  // Optional category mirrors ExpenseCategory naming so estimate→budget
+  // flow groups cleanly.
+  category        String?
+  vendorId        String?
+  vendor          Vendor?  @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  active          Boolean  @default(true)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  assemblyLines   AssemblyLine[]
+
+  @@index([category])
+  @@index([kind])
+}
+
+// Assembly — a named bundle of products (or sub-assemblies) that maps to a
+// real-world scope: "Composite deck install — 16x20", "Bathroom rough-in",
+// "Hardscape patio — 200 sqft pavers". Sales reps drop an assembly onto an
+// estimate and get all its line items at once.
+//
+// Distinct from EstimateTemplate: a template is a whole-estimate skeleton
+// (header + lines + terms), an assembly is a reusable group of lines that
+// can be inserted into multiple templates or directly into a draft estimate.
+model Assembly {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  category    String?  // "Decks", "Bathrooms", "Hardscape" — same taxonomy as templates
+  active      Boolean  @default(true)
+  // Optional cover image for the catalog UI (a thumbnail in the picker).
+  imageUrl    String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lines       AssemblyLine[]
+  // Lines that reference this assembly as a sub-assembly.
+  parentLines AssemblyLine[] @relation("AssemblySubLines")
+
+  @@index([category])
+}
+
+// AssemblyLine — one entry in an assembly. Discriminated by the *Id columns:
+//   * productId set, subAssemblyId null  → product line
+//   * productId null,  subAssemblyId set  → nested assembly (expanded recursively
+//                                            at insertion time)
+//   * both null                          → freeform line (description + price)
+//
+// Cycle prevention is the route layer's job.
+model AssemblyLine {
+  id            String   @id @default(cuid())
+  assemblyId    String
+  assembly      Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  productId     String?
+  product       Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  subAssemblyId String?
+  subAssembly   Assembly? @relation("AssemblySubLines", fields: [subAssemblyId], references: [id], onDelete: SetNull)
+
+  // For product lines: quantity multiplies product.defaultUnitPriceCents.
+  // For sub-assembly lines: quantity multiplies the rolled-up sub total.
+  // For freeform lines: quantity * unitPriceOverrideCents.
+  quantity      Decimal @db.Decimal(12, 3) @default(0)
+  // Optional override so a particular assembly can carry a different price
+  // than the catalog default (e.g. negotiated bulk rate for a recurring scope).
+  unitPriceOverrideCents Int?
+  // Freeform lines need their own description; product/sub lines fall back
+  // to the referenced row's name when this is null.
+  description   String?
+  category      String?  // overrides the product/assembly's default category
+  notes         String?
+  position      Int @default(0)
+
+  @@index([assemblyId])
 }
