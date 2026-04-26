@@ -445,7 +445,17 @@ model ProjectImage {
   url         String
   thumbnailUrl String?
   caption     String?
+  // Optional phase tag so the timeline view can group photos by stage.
+  // Free of an enum so the team can add their own (e.g. "PUNCH").
+  phase       String?
+  // Optional taken-at timestamp distinct from createdAt — admin can edit
+  // this when uploading older photos so the timeline reflects when the
+  // shot was taken, not when it was uploaded. Defaults to createdAt at
+  // read time when null.
+  takenAt     DateTime?
   createdAt   DateTime @default(now())
+
+  @@index([projectId, takenAt])
 }
 
 model LogEntry {

@@ -36,6 +36,7 @@ import NewEstimatePage from './pages/portal/NewEstimatePage';
 import EstimateDetailPage from './pages/portal/EstimateDetailPage';
 import EstimatorVisualPage from './pages/portal/EstimatorVisualPage';
 import CompanySettingsPage from './pages/portal/CompanySettingsPage';
+import ProjectTimelinePage from './pages/portal/ProjectTimelinePage';
 import CalculatorsPage from './pages/portal/CalculatorsPage';
 import CatalogPage from './pages/portal/CatalogPage';
 import TimePage from './pages/portal/TimePage';
@@ -103,6 +104,7 @@ export default function App() {
         />
         <Route path="projects" element={<ProjectsListPage />} />
         <Route path="projects/:id" element={<ProjectDetailPage />} />
+        <Route path="projects/:id/timeline" element={<ProjectTimelinePage />} />
         <Route path="invoices" element={<InvoicesPage />} />
         <Route path="messages" element={<MessagesPage />} />
         <Route

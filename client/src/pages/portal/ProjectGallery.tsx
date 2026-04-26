@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ApiError } from '../../lib/api';
 import { useAuth, type Role } from '../../auth/AuthContext';
 import { formatDateTime } from '../../lib/format';
@@ -9,6 +10,8 @@ interface ProjectImage {
   thumbnailUrl: string | null;
   filename: string;
   caption: string | null;
+  phase: string | null;
+  takenAt: string | null;
   createdAt: string;
   uploadedBy: { id: string; name: string; role: Role };
 }
@@ -31,10 +34,16 @@ async function jsonRequest<T>(url: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
-async function uploadFiles(projectId: string, files: FileList, caption: string) {
+async function uploadFiles(
+  projectId: string,
+  files: FileList,
+  meta: { caption: string; phase: string; takenAt: string },
+) {
   const form = new FormData();
   for (const f of Array.from(files)) form.append('files', f);
-  if (caption) form.append('caption', caption);
+  if (meta.caption) form.append('caption', meta.caption);
+  if (meta.phase) form.append('phase', meta.phase);
+  if (meta.takenAt) form.append('takenAt', new Date(meta.takenAt).toISOString());
   const res = await fetch(`${API_BASE}/api/projects/${projectId}/images`, {
     method: 'POST',
     headers: authHeaders(),
@@ -53,6 +62,8 @@ export default function ProjectGallery({ projectId }: { projectId: string }) {
   const [images, setImages] = useState<ProjectImage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
+  const [phase, setPhase] = useState('');
+  const [takenAt, setTakenAt] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -76,8 +87,10 @@ export default function ProjectGallery({ projectId }: { projectId: string }) {
     setSubmitting(true);
     setError(null);
     try {
-      await uploadFiles(projectId, files, caption);
+      await uploadFiles(projectId, files, { caption, phase, takenAt });
       setCaption('');
+      setPhase('');
+      setTakenAt('');
       if (fileInputRef.current) fileInputRef.current.value = '';
       await load();
     } catch (err) {
@@ -99,7 +112,12 @@ export default function ProjectGallery({ projectId }: { projectId: string }) {
 
   return (
     <section className="card">
-      <h2>Photos</h2>
+      <div className="row-between">
+        <h2>Photos</h2>
+        <Link to={`/portal/projects/${projectId}/timeline`} className="button-ghost button-small">
+          View timeline →
+        </Link>
+      </div>
       {error && <div className="form-error">{error}</div>}
 
       {canUpload && (
@@ -110,6 +128,30 @@ export default function ProjectGallery({ projectId }: { projectId: string }) {
             placeholder="Caption (optional)"
             value={caption}
             onChange={(e) => setCaption(e.target.value)}
+          />
+          <input
+            type="text"
+            list="phase-suggestions"
+            placeholder="Phase (e.g. before, framing, final)"
+            value={phase}
+            onChange={(e) => setPhase(e.target.value)}
+            style={{ width: 200 }}
+          />
+          <datalist id="phase-suggestions">
+            <option value="before" />
+            <option value="demo" />
+            <option value="framing" />
+            <option value="rough-in" />
+            <option value="finish" />
+            <option value="punch" />
+            <option value="after" />
+          </datalist>
+          <input
+            type="date"
+            value={takenAt}
+            onChange={(e) => setTakenAt(e.target.value)}
+            title="Date the photo was taken (defaults to today)"
+            style={{ width: 160 }}
           />
           <button type="submit" disabled={submitting}>
             {submitting ? 'Uploading…' : 'Upload'}

@@ -702,6 +702,17 @@ input:focus, textarea:focus, select:focus {
 .portal-user-role { font-size: 0.85rem; color: var(--text-muted); text-transform: capitalize; }
 .portal-main { padding: 2rem; overflow-x: auto; }
 
+/* Photo timeline phase chips */
+.phase-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.phase-chips .is-active {
+  background: var(--surface-strong);
+  color: var(--accent);
+}
+
 /* Catalog bulk-edit toolbar */
 .bulk-toolbar {
   display: flex;

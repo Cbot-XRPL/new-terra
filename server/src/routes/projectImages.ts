@@ -47,6 +47,87 @@ router.get('/:id/images', async (req, res, next) => {
   }
 });
 
+// Chronological timeline grouped by year-month, oldest first. Each image
+// carries a resolved `at` (takenAt ?? createdAt) so the client doesn't have
+// to reapply that fallback. Also surfaces a phase-summary count so the UI
+// can render quick filters without a second round-trip.
+router.get('/:id/images/timeline', async (req, res, next) => {
+  try {
+    const project = await loadProjectAccessible(req.params.id, req.user!.sub, req.user!.role);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const images = await prisma.projectImage.findMany({
+      where: { projectId: project.id },
+      orderBy: [{ takenAt: 'asc' }, { createdAt: 'asc' }],
+      include: { uploadedBy: { select: { id: true, name: true } } },
+    });
+
+    type Decorated = (typeof images)[number] & { at: Date };
+    const decorated: Decorated[] = images.map((img) => ({ ...img, at: img.takenAt ?? img.createdAt }));
+
+    // Bucket by YYYY-MM. Insertion order is the iteration order so we end
+    // up with months oldest → newest.
+    const groups = new Map<string, Decorated[]>();
+    for (const img of decorated) {
+      const key = `${img.at.getUTCFullYear()}-${String(img.at.getUTCMonth() + 1).padStart(2, '0')}`;
+      const arr = groups.get(key) ?? [];
+      arr.push(img);
+      groups.set(key, arr);
+    }
+
+    // Phase counts (case-sensitive — matches what was stored).
+    const phaseCounts: Record<string, number> = {};
+    for (const img of decorated) {
+      const k = img.phase ?? '__unphased__';
+      phaseCounts[k] = (phaseCounts[k] ?? 0) + 1;
+    }
+
+    res.json({
+      months: [...groups.entries()].map(([month, items]) => ({ month, items })),
+      total: images.length,
+      phaseCounts,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const patchSchema = z.object({
+  caption: z.string().max(500).nullable().optional(),
+  phase: z.string().max(40).nullable().optional(),
+  takenAt: z.string().datetime().nullable().optional(),
+});
+
+router.patch(
+  '/:id/images/:imageId',
+  requireRole(Role.ADMIN, Role.EMPLOYEE),
+  async (req, res, next) => {
+    try {
+      const data = patchSchema.parse(req.body);
+      const image = await prisma.projectImage.findUnique({ where: { id: req.params.imageId } });
+      if (!image || image.projectId !== req.params.id) {
+        return res.status(404).json({ error: 'Image not found' });
+      }
+      const updated = await prisma.projectImage.update({
+        where: { id: image.id },
+        data: {
+          caption: data.caption === undefined ? undefined : data.caption,
+          phase: data.phase === undefined ? undefined : data.phase,
+          takenAt:
+            data.takenAt === undefined
+              ? undefined
+              : data.takenAt === null
+                ? null
+                : new Date(data.takenAt),
+        },
+      });
+      res.json({ image: updated });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 router.post(
   '/:id/images',
   requireRole(Role.ADMIN, Role.EMPLOYEE, Role.SUBCONTRACTOR),
@@ -58,6 +139,13 @@ router.post(
 
       const files = (req.files as Array<Express.Multer.File & { key?: string }>) ?? [];
       const caption = typeof req.body.caption === 'string' ? req.body.caption : undefined;
+      const phase = typeof req.body.phase === 'string' && req.body.phase.trim()
+        ? req.body.phase.trim().slice(0, 40)
+        : null;
+      // takenAt may be a YYYY-MM-DD or full ISO string; both parse via Date.
+      const takenAt = typeof req.body.takenAt === 'string' && req.body.takenAt
+        ? new Date(req.body.takenAt)
+        : null;
 
       // Generate thumbnails sequentially so a single big image doesn't peg the
       // event loop. Failures are non-fatal — we fall back to no thumbnail.
@@ -105,6 +193,8 @@ router.post(
               url: r.url,
               thumbnailUrl: r.thumbnailUrl,
               caption,
+              phase,
+              takenAt: takenAt && !Number.isNaN(takenAt.valueOf()) ? takenAt : null,
             },
           }),
         ),
