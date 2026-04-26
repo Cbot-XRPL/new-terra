@@ -2,7 +2,7 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAuth, type Role } from '../../auth/AuthContext';
-import { formatDate, formatDateTime, toDatetimeLocal } from '../../lib/format';
+import { formatCents, formatDate, formatDateTime, toDatetimeLocal } from '../../lib/format';
 import ProjectGallery from './ProjectGallery';
 import ProjectDocuments from './ProjectDocuments';
 import PunchListSection from './PunchListSection';
@@ -39,6 +39,8 @@ interface ProjectDetail {
   budgetCents?: number | null;
   showBudgetToCustomer?: boolean;
   reviewRequestSentAt?: string | null;
+  laborBudgetCents?: number | null;
+  laborAlertSentAt?: string | null;
   customer: { id: string; name: string; email: string };
   projectManager: { id: string; name: string; email: string } | null;
 }
@@ -134,6 +136,37 @@ export default function ProjectDetailPage() {
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Status update failed');
+    }
+  }
+
+  async function editLaborBudget() {
+    if (!project) return;
+    const current = project.laborBudgetCents != null ? (project.laborBudgetCents / 100).toFixed(2) : '';
+    const raw = prompt(
+      `Labor budget (USD). Leave blank to clear and disable alerts.\nWe email the PM when closed time-entry cost crosses 80% of this number.`,
+      current,
+    );
+    if (raw == null) return;
+    const trimmed = raw.trim();
+    let body: { laborBudgetCents: number | null };
+    if (trimmed === '') {
+      body = { laborBudgetCents: null };
+    } else {
+      const cents = Math.round(Number(trimmed) * 100);
+      if (!Number.isFinite(cents) || cents < 0) {
+        setError('Invalid amount');
+        return;
+      }
+      body = { laborBudgetCents: cents };
+    }
+    try {
+      await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Update failed');
     }
   }
 
@@ -235,6 +268,29 @@ export default function ProjectDetailPage() {
       </header>
 
       {error && <div className="form-error">{error}</div>}
+
+      {isPmOrAdmin && (
+        <section className="card">
+          <div className="row-between">
+            <p className="muted" style={{ margin: 0 }}>
+              Labor budget:{' '}
+              {project.laborBudgetCents != null ? (
+                <strong>{formatCents(project.laborBudgetCents)}</strong>
+              ) : (
+                <em>not set</em>
+              )}
+              {project.laborAlertSentAt && (
+                <span style={{ marginLeft: '0.5rem', color: 'var(--accent)' }}>
+                  · 80% alert sent {formatDate(project.laborAlertSentAt)}
+                </span>
+              )}
+            </p>
+            <button type="button" className="button-ghost button-small" onClick={editLaborBudget}>
+              {project.laborBudgetCents != null ? 'Edit labor budget' : 'Set labor budget'}
+            </button>
+          </div>
+        </section>
+      )}
 
       {isPmOrAdmin && project.status === 'COMPLETE' && (
         <section className="card">

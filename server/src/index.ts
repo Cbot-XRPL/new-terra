@@ -4,6 +4,7 @@ import { createApp } from './app.js';
 import { notifyStaleLeads, remindInvoices, remindStaleContracts } from './lib/reminders.js';
 import { runRecurringInvoices } from './lib/recurringInvoices.js';
 import { runSatisfactionSurveys } from './lib/satisfactionSurveys.js';
+import { runLaborBudgetAlerts } from './lib/laborBudgetAlerts.js';
 
 const app = createApp();
 
@@ -59,6 +60,23 @@ if (recurringSchedule) {
     console.log(`[cron] recurring invoices scheduled "${recurringSchedule}"`);
   } else {
     console.warn(`[cron] RECURRING_INVOICE_CRON="${recurringSchedule}" is not a valid expression; skipping`);
+  }
+}
+
+// Labor-budget alerts — emails the assigned PM when closed time-entry cost
+// crosses 80% of the project's labor budget. Cheap enough to run hourly;
+// the helper short-circuits via laborAlertSentAt so once-only per project.
+const laborAlertSchedule = process.env.LABOR_ALERT_CRON;
+if (laborAlertSchedule) {
+  if (cron.validate(laborAlertSchedule)) {
+    cron.schedule(laborAlertSchedule, () => {
+      runLaborBudgetAlerts()
+        .then((r) => console.log('[cron:labor-alerts]', r))
+        .catch((err) => console.warn('[cron:labor-alerts] failed', err));
+    });
+    console.log(`[cron] labor-budget alerts scheduled "${laborAlertSchedule}"`);
+  } else {
+    console.warn(`[cron] LABOR_ALERT_CRON="${laborAlertSchedule}" is not a valid expression; skipping`);
   }
 }
 

@@ -249,6 +249,15 @@ model Project {
   // is marked COMPLETE. Null = never sent. Keeps us from double-sending
   // when admin toggles status back and forth.
   reviewRequestSentAt DateTime?
+  // Labor-budget cap (cents). When closed time-entry cost on this project
+  // crosses 80% of this number we email the PM. Set independently from
+  // budgetCents because labor is typically only a slice of the total.
+  // Null = no labor budget tracked (alerts skip).
+  laborBudgetCents     Int?
+  // Stamps once the 80%-of-labor alert has fired so we don't email every
+  // time someone punches in. Manually clear via the project detail page
+  // to re-arm the alert (e.g. admin raised the labor budget).
+  laborAlertSentAt     DateTime?
   // Soft-archive timestamp. Archived projects fall out of default lists but
   // keep all their data; admins can unarchive at any time.
   archivedAt  DateTime?

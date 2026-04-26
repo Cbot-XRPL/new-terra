@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { canManageProject, hasProjectManagerCapability, hasAccountingAccess } from '../lib/permissions.js';
 import { sendReviewRequestEmail } from '../lib/mailer.js';
 import { getCompanySettings } from '../lib/companySettings.js';
+import { runLaborBudgetAlerts } from '../lib/laborBudgetAlerts.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -67,6 +68,7 @@ const createProjectSchema = z.object({
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
   budgetCents: z.number().int().nonnegative().nullable().optional(),
+  laborBudgetCents: z.number().int().nonnegative().nullable().optional(),
   showBudgetToCustomer: z.boolean().optional(),
 });
 
@@ -147,6 +149,7 @@ router.post('/', requireRole(Role.ADMIN), async (req, res, next) => {
         startDate: data.startDate ? new Date(data.startDate) : undefined,
         endDate: data.endDate ? new Date(data.endDate) : undefined,
         budgetCents: data.budgetCents ?? null,
+        laborBudgetCents: data.laborBudgetCents ?? null,
         showBudgetToCustomer: data.showBudgetToCustomer ?? false,
       },
       include: projectInclude,
@@ -207,6 +210,13 @@ router.patch('/:id', async (req, res, next) => {
         startDate: data.startDate ? new Date(data.startDate) : undefined,
         endDate: data.endDate ? new Date(data.endDate) : undefined,
         budgetCents: data.budgetCents === null ? null : data.budgetCents,
+        // When admin moves the labor budget we clear the alert stamp so a
+        // bumped budget can re-trigger the alert later without a manual
+        // reset. Setting to null also clears it.
+        laborBudgetCents: data.laborBudgetCents === undefined
+          ? undefined
+          : data.laborBudgetCents,
+        laborAlertSentAt: data.laborBudgetCents !== undefined ? null : undefined,
         showBudgetToCustomer: data.showBudgetToCustomer,
       },
       include: projectInclude,
@@ -250,6 +260,16 @@ router.patch('/:id', async (req, res, next) => {
 // Manual re-send of the review-request email. Useful when admin wants to
 // nudge a customer who didn't get the auto-send (or the auto-send failed
 // silently). Always re-stamps reviewRequestSentAt.
+// Admin manual run of the labor-budget alerts cron.
+router.post('/_admin/run-labor-alerts', requireRole(Role.ADMIN), async (_req, res, next) => {
+  try {
+    const result = await runLaborBudgetAlerts();
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/:id/request-review', requireRole(Role.ADMIN, Role.EMPLOYEE), async (req, res, next) => {
   try {
     const project = await prisma.project.findUnique({

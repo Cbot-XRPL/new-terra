@@ -175,6 +175,25 @@ export async function sendInvoiceReminderEmail(input: {
   await transporter.sendMail({ to: input.to, from: env.smtp.from, subject, text: body });
 }
 
+export async function sendLaborBudgetAlertEmail(input: {
+  to: string;
+  pmName: string;
+  projectName: string;
+  projectId: string;
+  laborSpentCents: number;
+  laborBudgetCents: number;
+}) {
+  const pct = Math.round((input.laborSpentCents / input.laborBudgetCents) * 100);
+  const url = `${env.appUrl}/portal/projects/${input.projectId}`;
+  const subject = `Labor-budget alert: ${input.projectName} at ${pct}%`;
+  const text = `Hi ${input.pmName},\n\nLabor cost on ${input.projectName} just crossed 80% of the labor budget:\n\n  Spent:  $${(input.laborSpentCents / 100).toFixed(2)}\n  Budget: $${(input.laborBudgetCents / 100).toFixed(2)}  (${pct}%)\n\nProject: ${url}\n\nMight be a good time to glance at outstanding tasks before hours blow past 100%.\n\n— New Terra Construction`;
+  if (!transporter) {
+    console.log('[mailer:dev] Labor-budget alert to', input.to, '·', input.projectName, `(${pct}%)`);
+    return;
+  }
+  await transporter.sendMail({ to: input.to, from: env.smtp.from, subject, text });
+}
+
 export async function sendSatisfactionSurveyEmail(input: {
   to: string;
   customerName: string;
