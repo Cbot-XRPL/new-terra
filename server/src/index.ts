@@ -5,6 +5,7 @@ import { notifyStaleLeads, remindInvoices, remindStaleContracts } from './lib/re
 import { runRecurringInvoices } from './lib/recurringInvoices.js';
 import { runSatisfactionSurveys } from './lib/satisfactionSurveys.js';
 import { runLaborBudgetAlerts } from './lib/laborBudgetAlerts.js';
+import { runUploadJanitor } from './lib/uploadJanitor.js';
 
 const app = createApp();
 
@@ -77,6 +78,24 @@ if (laborAlertSchedule) {
     console.log(`[cron] labor-budget alerts scheduled "${laborAlertSchedule}"`);
   } else {
     console.warn(`[cron] LABOR_ALERT_CRON="${laborAlertSchedule}" is not a valid expression; skipping`);
+  }
+}
+
+// Orphaned-upload janitor — sweeps the uploads/ tree and removes files
+// whose URL is no longer referenced by any DB row. Cheap (just two
+// findMany per bucket) but disk-bound, so daily-overnight is plenty.
+// Example: "0 3 * * *" runs every day at 3am.
+const janitorSchedule = process.env.UPLOAD_JANITOR_CRON;
+if (janitorSchedule) {
+  if (cron.validate(janitorSchedule)) {
+    cron.schedule(janitorSchedule, () => {
+      runUploadJanitor()
+        .then((r) => console.log('[cron:upload-janitor]', r))
+        .catch((err) => console.warn('[cron:upload-janitor] failed', err));
+    });
+    console.log(`[cron] upload janitor scheduled "${janitorSchedule}"`);
+  } else {
+    console.warn(`[cron] UPLOAD_JANITOR_CRON="${janitorSchedule}" is not a valid expression; skipping`);
   }
 }
 

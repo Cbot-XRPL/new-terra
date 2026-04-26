@@ -7,10 +7,25 @@ import { generateInviteToken } from '../lib/auth.js';
 import { sendInviteEmail } from '../lib/mailer.js';
 import { env } from '../env.js';
 import { audit } from '../lib/audit.js';
+import { runUploadJanitor } from '../lib/uploadJanitor.js';
 
 const router = Router();
 
 router.use(requireAuth, requireRole(Role.ADMIN));
+
+// Manual run of the orphaned-upload janitor. Pass ?dryRun=true to see
+// candidates without deleting anything. Returns a per-bucket summary.
+router.post('/janitor/uploads', async (req, res, next) => {
+  try {
+    const dryRun = req.query.dryRun === 'true';
+    const results = await runUploadJanitor({ dryRun });
+    audit(req, {
+      action: 'admin.janitor_run',
+      meta: { dryRun, totalRemoved: results.reduce((s, r) => s + r.orphanedRemoved, 0) },
+    }).catch(() => undefined);
+    res.json({ dryRun, results });
+  } catch (err) { next(err); }
+});
 
 const inviteSchema = z.object({
   email: z.string().email(),
