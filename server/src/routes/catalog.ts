@@ -298,4 +298,128 @@ router.delete('/assemblies/:id', requireRole(Role.ADMIN), async (req, res, next)
   }
 });
 
+// ----- Bulk edit -----
+//
+// Single endpoint per resource with a discriminated `action` so the admin UI
+// can roll up many tiny edits into one round trip. Every action runs inside
+// a transaction so a half-finished bump can't leave the catalog inconsistent.
+
+const productBulkSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('priceBump'),
+    ids: z.array(z.string().min(1)).min(1),
+    // Percent change as a signed decimal: 5 = +5%, -10 = -10%. We round
+    // half-away-from-zero to whole cents.
+    percent: z.number().refine((n) => Number.isFinite(n) && n > -100 && n < 1000, {
+      message: 'percent must be between -100 and 1000',
+    }),
+  }),
+  z.object({
+    action: z.literal('setCategory'),
+    ids: z.array(z.string().min(1)).min(1),
+    category: z.string().max(80).nullable(),
+  }),
+  z.object({
+    action: z.literal('setVendor'),
+    ids: z.array(z.string().min(1)).min(1),
+    vendorId: z.string().min(1).nullable(),
+  }),
+  z.object({
+    action: z.literal('archive'),
+    ids: z.array(z.string().min(1)).min(1),
+    active: z.boolean(),
+  }),
+]);
+
+router.post('/products/_bulk', requireRole(Role.ADMIN), async (req, res, next) => {
+  try {
+    const body = productBulkSchema.parse(req.body);
+
+    if (body.action === 'priceBump') {
+      // Pull current prices, multiply, write back. We round each row
+      // independently so $9.99 + 5% lands on $10.49 instead of accumulating
+      // floating-point fuzz across the set.
+      const factor = 1 + body.percent / 100;
+      const updated = await prisma.$transaction(async (tx) => {
+        const rows = await tx.product.findMany({
+          where: { id: { in: body.ids } },
+          select: { id: true, defaultUnitPriceCents: true },
+        });
+        for (const r of rows) {
+          await tx.product.update({
+            where: { id: r.id },
+            data: { defaultUnitPriceCents: Math.max(0, Math.round(r.defaultUnitPriceCents * factor)) },
+          });
+        }
+        return rows.length;
+      });
+      return res.json({ action: body.action, updated });
+    }
+
+    if (body.action === 'setCategory') {
+      const r = await prisma.product.updateMany({
+        where: { id: { in: body.ids } },
+        data: { category: body.category },
+      });
+      return res.json({ action: body.action, updated: r.count });
+    }
+
+    if (body.action === 'setVendor') {
+      // Validate the vendor exists so a typo doesn't orphan a product. Null
+      // clears the relationship.
+      if (body.vendorId) {
+        const exists = await prisma.vendor.findUnique({ where: { id: body.vendorId } });
+        if (!exists) return res.status(400).json({ error: 'Vendor not found' });
+      }
+      const r = await prisma.product.updateMany({
+        where: { id: { in: body.ids } },
+        data: { vendorId: body.vendorId },
+      });
+      return res.json({ action: body.action, updated: r.count });
+    }
+
+    // archive / unarchive
+    const r = await prisma.product.updateMany({
+      where: { id: { in: body.ids } },
+      data: { active: body.active },
+    });
+    return res.json({ action: body.action, updated: r.count });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const assemblyBulkSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('setCategory'),
+    ids: z.array(z.string().min(1)).min(1),
+    category: z.string().max(80).nullable(),
+  }),
+  z.object({
+    action: z.literal('archive'),
+    ids: z.array(z.string().min(1)).min(1),
+    active: z.boolean(),
+  }),
+]);
+
+router.post('/assemblies/_bulk', requireRole(Role.ADMIN), async (req, res, next) => {
+  try {
+    const body = assemblyBulkSchema.parse(req.body);
+    if (body.action === 'setCategory') {
+      const r = await prisma.assembly.updateMany({
+        where: { id: { in: body.ids } },
+        data: { category: body.category },
+      });
+      return res.json({ action: body.action, updated: r.count });
+    }
+    const r = await prisma.assembly.updateMany({
+      where: { id: { in: body.ids } },
+      data: { active: body.active },
+    });
+    return res.json({ action: body.action, updated: r.count });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

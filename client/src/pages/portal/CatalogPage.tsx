@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { ApiError, api } from '../../lib/api';
+import { useAuth } from '../../auth/AuthContext';
 import { formatCents } from '../../lib/format';
 
 interface Product {
@@ -48,12 +49,26 @@ interface PreviewLine {
 }
 
 export default function CatalogPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
   const [tab, setTab] = useState<'products' | 'assemblies'>('products');
   const [products, setProducts] = useState<Product[]>([]);
   const [assemblies, setAssemblies] = useState<Assembly[]>([]);
   const [openAssembly, setOpenAssembly] = useState<AssemblyDetail | null>(null);
   const [preview, setPreview] = useState<{ lines: PreviewLine[]; totalCents: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  // Bulk-select state — Set keyed by id so toggle is O(1).
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  const [selectedAssemblies, setSelectedAssemblies] = useState<Set<string>>(new Set());
+
+  function toggleId(set: Set<string>, id: string): Set<string> {
+    const next = new Set(set);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  }
 
   // Quick-create form for products
   const [pName, setPName] = useState('');
@@ -65,9 +80,12 @@ export default function CatalogPage() {
 
   async function load() {
     try {
+      // Admin sees archived rows so bulk unarchive is reachable; everyone
+      // else gets the active-only default the API returns.
+      const qs = isAdmin ? '?archived=true' : '';
       const [p, a] = await Promise.all([
-        api<{ products: Product[] }>('/api/catalog/products'),
-        api<{ assemblies: Assembly[] }>('/api/catalog/assemblies'),
+        api<{ products: Product[] }>(`/api/catalog/products${qs}`),
+        api<{ assemblies: Assembly[] }>(`/api/catalog/assemblies${qs}`),
       ]);
       setProducts(p.products);
       setAssemblies(a.assemblies);
@@ -75,7 +93,7 @@ export default function CatalogPage() {
       setError(err instanceof ApiError ? err.message : 'Failed to load catalog');
     }
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [isAdmin]);
 
   async function createProduct(e: FormEvent) {
     e.preventDefault();
@@ -98,6 +116,60 @@ export default function CatalogPage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Create failed');
     }
+  }
+
+  // Wrap each bulk action so the toolbar handlers stay one-liners.
+  async function bulkProducts(payload: Record<string, unknown>) {
+    setError(null);
+    setInfo(null);
+    try {
+      const r = await api<{ updated: number; action: string }>(
+        '/api/catalog/products/_bulk',
+        { method: 'POST', body: JSON.stringify(payload) },
+      );
+      setInfo(`${r.action}: updated ${r.updated} product${r.updated === 1 ? '' : 's'}`);
+      setSelectedProducts(new Set());
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Bulk update failed');
+    }
+  }
+  async function bulkAssemblies(payload: Record<string, unknown>) {
+    setError(null);
+    setInfo(null);
+    try {
+      const r = await api<{ updated: number; action: string }>(
+        '/api/catalog/assemblies/_bulk',
+        { method: 'POST', body: JSON.stringify(payload) },
+      );
+      setInfo(`${r.action}: updated ${r.updated} assembl${r.updated === 1 ? 'y' : 'ies'}`);
+      setSelectedAssemblies(new Set());
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Bulk update failed');
+    }
+  }
+
+  function promptPriceBump() {
+    const ids = Array.from(selectedProducts);
+    if (ids.length === 0) return;
+    const raw = prompt(`Bump price by what % (e.g. 5 for +5%, -10 for -10%) on ${ids.length} product(s)?`);
+    if (raw == null || raw.trim() === '') return;
+    const pct = Number(raw);
+    if (!Number.isFinite(pct)) {
+      setError('Enter a number');
+      return;
+    }
+    void bulkProducts({ action: 'priceBump', ids, percent: pct });
+  }
+  function promptCategory(target: 'products' | 'assemblies') {
+    const ids = target === 'products' ? Array.from(selectedProducts) : Array.from(selectedAssemblies);
+    if (ids.length === 0) return;
+    const cat = prompt(`Set category on ${ids.length} item(s) (leave blank to clear):`);
+    if (cat == null) return;
+    const payload = { action: 'setCategory', ids, category: cat.trim() || null };
+    if (target === 'products') void bulkProducts(payload);
+    else void bulkAssemblies(payload);
   }
 
   async function openDetail(a: Assembly) {
@@ -127,6 +199,7 @@ export default function CatalogPage() {
       </header>
 
       {error && <div className="form-error">{error}</div>}
+      {info && <div className="form-success">{info}</div>}
 
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
         <button
@@ -190,19 +263,82 @@ export default function CatalogPage() {
           </section>
 
           <section className="card">
-            <h2>Products</h2>
+            <div className="row-between">
+              <h2>Products</h2>
+              {isAdmin && selectedProducts.size > 0 && (
+                <div className="bulk-toolbar">
+                  <span className="muted">{selectedProducts.size} selected</span>
+                  <button type="button" className="button-ghost button-small" onClick={promptPriceBump}>
+                    Price bump %
+                  </button>
+                  <button type="button" className="button-ghost button-small" onClick={() => promptCategory('products')}>
+                    Set category
+                  </button>
+                  <button
+                    type="button"
+                    className="button-ghost button-small"
+                    onClick={() => bulkProducts({ action: 'archive', ids: Array.from(selectedProducts), active: false })}
+                  >
+                    Archive
+                  </button>
+                  <button
+                    type="button"
+                    className="button-ghost button-small"
+                    onClick={() => bulkProducts({ action: 'archive', ids: Array.from(selectedProducts), active: true })}
+                  >
+                    Unarchive
+                  </button>
+                  <button
+                    type="button"
+                    className="button-ghost button-small"
+                    onClick={() => setSelectedProducts(new Set())}
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+            </div>
             {products.length ? (
               <table className="table">
-                <thead><tr><th>Name</th><th>SKU</th><th>Kind</th><th>Unit</th><th>Price</th><th>Category</th></tr></thead>
+                <thead>
+                  <tr>
+                    {isAdmin && (
+                      <th style={{ width: 32 }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedProducts.size === products.length && products.length > 0}
+                          onChange={(e) =>
+                            setSelectedProducts(
+                              e.target.checked ? new Set(products.map((p) => p.id)) : new Set(),
+                            )
+                          }
+                          aria-label="Select all products"
+                        />
+                      </th>
+                    )}
+                    <th>Name</th><th>SKU</th><th>Kind</th><th>Unit</th><th>Price</th><th>Category</th><th>Status</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {products.map((p) => (
-                    <tr key={p.id}>
+                    <tr key={p.id} style={{ opacity: p.active ? 1 : 0.55 }}>
+                      {isAdmin && (
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selectedProducts.has(p.id)}
+                            onChange={() => setSelectedProducts((s) => toggleId(s, p.id))}
+                            aria-label={`Select ${p.name}`}
+                          />
+                        </td>
+                      )}
                       <td><strong>{p.name}</strong></td>
                       <td>{p.sku ?? <span className="muted">—</span>}</td>
                       <td>{p.kind}</td>
                       <td>{p.unit ?? '—'}</td>
                       <td>{formatCents(p.defaultUnitPriceCents)}</td>
                       <td>{p.category ?? <span className="muted">—</span>}</td>
+                      <td>{p.active ? <span className="muted">active</span> : <em className="muted">archived</em>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -217,20 +353,80 @@ export default function CatalogPage() {
       {tab === 'assemblies' && (
         <>
           <section className="card">
-            <h2>Assemblies</h2>
+            <div className="row-between">
+              <h2>Assemblies</h2>
+              {isAdmin && selectedAssemblies.size > 0 && (
+                <div className="bulk-toolbar">
+                  <span className="muted">{selectedAssemblies.size} selected</span>
+                  <button type="button" className="button-ghost button-small" onClick={() => promptCategory('assemblies')}>
+                    Set category
+                  </button>
+                  <button
+                    type="button"
+                    className="button-ghost button-small"
+                    onClick={() => bulkAssemblies({ action: 'archive', ids: Array.from(selectedAssemblies), active: false })}
+                  >
+                    Archive
+                  </button>
+                  <button
+                    type="button"
+                    className="button-ghost button-small"
+                    onClick={() => bulkAssemblies({ action: 'archive', ids: Array.from(selectedAssemblies), active: true })}
+                  >
+                    Unarchive
+                  </button>
+                  <button
+                    type="button"
+                    className="button-ghost button-small"
+                    onClick={() => setSelectedAssemblies(new Set())}
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+            </div>
             <p className="muted" style={{ fontSize: '0.85rem' }}>
               Build assemblies via the API for now (see <code>POST /api/catalog/assemblies</code>) — a richer
               builder UI is on the roadmap. Click an assembly to preview its expanded line items.
             </p>
             {assemblies.length ? (
               <table className="table">
-                <thead><tr><th>Name</th><th>Category</th><th>Lines</th><th></th></tr></thead>
+                <thead>
+                  <tr>
+                    {isAdmin && (
+                      <th style={{ width: 32 }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedAssemblies.size === assemblies.length && assemblies.length > 0}
+                          onChange={(e) =>
+                            setSelectedAssemblies(
+                              e.target.checked ? new Set(assemblies.map((a) => a.id)) : new Set(),
+                            )
+                          }
+                          aria-label="Select all assemblies"
+                        />
+                      </th>
+                    )}
+                    <th>Name</th><th>Category</th><th>Lines</th><th>Status</th><th></th>
+                  </tr>
+                </thead>
                 <tbody>
                   {assemblies.map((a) => (
-                    <tr key={a.id}>
+                    <tr key={a.id} style={{ opacity: a.active ? 1 : 0.55 }}>
+                      {isAdmin && (
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selectedAssemblies.has(a.id)}
+                            onChange={() => setSelectedAssemblies((s) => toggleId(s, a.id))}
+                            aria-label={`Select ${a.name}`}
+                          />
+                        </td>
+                      )}
                       <td><strong>{a.name}</strong></td>
                       <td>{a.category ?? <span className="muted">—</span>}</td>
                       <td>{a._count.lines}</td>
+                      <td>{a.active ? <span className="muted">active</span> : <em className="muted">archived</em>}</td>
                       <td>
                         <button className="button-ghost button-small" onClick={() => openDetail(a)}>Preview</button>
                       </td>
