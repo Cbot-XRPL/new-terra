@@ -42,6 +42,7 @@ import punchListRouter from './routes/punchList.js';
 import galleryShareRouter from './routes/galleryShares.js';
 import satisfactionSurveyRouter from './routes/satisfactionSurveys.js';
 import inventoryRouter from './routes/inventory.js';
+import searchRouter from './routes/search.js';
 
 // Builds an express app without binding to a port. The listen() call lives
 // in index.ts so the test suite can import this factory and hand the app to
@@ -124,6 +125,7 @@ export function createApp(): Express {
   app.use('/api', galleryShareRouter);
   app.use('/api', satisfactionSurveyRouter);
   app.use('/api/inventory', inventoryRouter);
+  app.use('/api/search', searchRouter);
 
   // In production, serve the built React client from this same process. The
   // SPA fallback comes after every /api route is registered so client routes

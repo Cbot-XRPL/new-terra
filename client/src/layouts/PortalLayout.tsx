@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import Avatar from '../components/Avatar';
+import GlobalSearch from '../components/GlobalSearch';
 
 export default function PortalLayout() {
   const { user, logout } = useAuth();
@@ -124,6 +125,7 @@ export default function PortalLayout() {
       <main className="portal-main">
         <Outlet />
       </main>
+      <GlobalSearch />
     </div>
   );
 }
