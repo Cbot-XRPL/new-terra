@@ -33,6 +33,30 @@ interface ProjectStub {
   customer: { name: string };
 }
 
+// Auth-required zip download — fetch as blob and click an anchor so the
+// browser saves it with the right filename.
+async function downloadZip(projectId: string, projectName: string) {
+  const apiBase = import.meta.env.VITE_API_URL ?? '';
+  const token = localStorage.getItem('nt_token');
+  const res = await fetch(`${apiBase}/api/projects/${projectId}/photos.zip`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    alert('Could not download photos zip');
+    return;
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const slug = projectName.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'project';
+  a.download = `${slug}-photos.zip`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 function monthLabel(ym: string): string {
   // ym is "YYYY-MM" — render as "April 2026" without timezone gymnastics.
   const [y, m] = ym.split('-').map((n) => Number(n));
@@ -83,6 +107,16 @@ export default function ProjectTimelinePage() {
             {' '}<Link to={`/portal/projects/${id}`}>← back to project</Link>
           </p>
         </div>
+        {data.total > 0 && (
+          <button
+            type="button"
+            className="button-ghost"
+            onClick={() => downloadZip(id!, project.name)}
+            title="Bundle every photo on this project into a single zip"
+          >
+            Download all (.zip)
+          </button>
+        )}
       </header>
 
       {phaseChips.length > 0 && (

@@ -3,6 +3,7 @@ import multer from 'multer';
 import sharp from 'sharp';
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import archiver from 'archiver';
 import { z } from 'zod';
 import { Role } from '@prisma/client';
 import { prisma } from '../db.js';
@@ -87,6 +88,75 @@ router.get('/:id/images/timeline', async (req, res, next) => {
       total: images.length,
       phaseCounts,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Bundle every photo on a project into a single zip the customer (or staff)
+// can download in one click. Streams straight from disk so a 200-photo
+// project doesn't blow up the heap. Local-disk storage only — when the S3
+// path is wired in later we'll fan out via streamed S3 GETs here.
+router.get('/:id/photos.zip', async (req, res, next) => {
+  try {
+    const project = await loadProjectAccessible(req.params.id, req.user!.sub, req.user!.role);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const images = await prisma.projectImage.findMany({
+      where: { projectId: project.id },
+      orderBy: [{ takenAt: 'asc' }, { createdAt: 'asc' }],
+    });
+    if (images.length === 0) {
+      return res.status(404).json({ error: 'No photos to download' });
+    }
+
+    // Filename gets the project name slugified + a date stamp so multiple
+    // downloads stay distinguishable on the customer's machine.
+    const slug = project.name.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'project';
+    const stamp = new Date().toISOString().slice(0, 10);
+    const filename = `${slug}-photos-${stamp}.zip`;
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    const zip = archiver('zip', { zlib: { level: 6 } });
+    zip.on('warning', (err) => {
+      if ((err as { code?: string }).code !== 'ENOENT') console.warn('[zip] warning', err);
+    });
+    zip.on('error', (err) => {
+      console.warn('[zip] failed', err);
+      // Headers are already sent; best we can do is destroy the response.
+      if (!res.headersSent) res.status(500).end();
+      else res.destroy(err);
+    });
+    zip.pipe(res);
+
+    // Skip files we can't resolve to disk so a single missing file doesn't
+    // abort the whole download. Numeric prefix preserves chronological
+    // ordering inside the zip.
+    let idx = 0;
+    for (const img of images) {
+      idx += 1;
+      if (!img.url.startsWith('/uploads/')) {
+        // S3 / external URL — skip until we wire S3 streaming.
+        continue;
+      }
+      const diskPath = path.join(process.cwd(), img.url.replace(/^\/+/, ''));
+      try {
+        await fs.access(diskPath);
+      } catch {
+        continue;
+      }
+      const prefix = String(idx).padStart(3, '0');
+      const phaseTag = img.phase ? `-${img.phase}` : '';
+      const ext = path.extname(img.filename) || path.extname(img.url) || '.jpg';
+      const baseName = path.basename(img.filename, path.extname(img.filename))
+        .replace(/[^a-zA-Z0-9.\-_]/g, '_')
+        .slice(0, 60);
+      zip.file(diskPath, { name: `${prefix}${phaseTag}-${baseName}${ext}` });
+    }
+
+    await zip.finalize();
   } catch (err) {
     next(err);
   }

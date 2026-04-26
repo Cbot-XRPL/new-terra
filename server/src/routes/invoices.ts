@@ -8,6 +8,7 @@ import { createPaymentLinkForInvoice, isStripeConfigured } from '../lib/stripe.j
 import { ALL_PAYMENT_METHODS, computeTotals, recomputeInvoiceStatus } from '../lib/payments.js';
 import { remindInvoices } from '../lib/reminders.js';
 import { buildReceiptForPayment } from '../lib/receiptPdf.js';
+import { buildInvoicePdf } from '../lib/invoicePdf.js';
 import { sendPaymentReceiptEmail } from '../lib/mailer.js';
 
 const router = Router();
@@ -357,6 +358,29 @@ router.delete('/:id/payments/:paymentId', async (req, res, next) => {
       balanceCents: totals.balanceCents,
       status: totals.status,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Streamed PDF of the invoice itself (separate from receipt PDFs which
+// are per-payment). Customers can pull their own; staff can pull any.
+router.get('/:id/invoice.pdf', async (req, res, next) => {
+  try {
+    const { sub, role } = req.user!;
+    const meta = await prisma.invoice.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, customerId: true },
+    });
+    if (!meta) return res.status(404).json({ error: 'Invoice not found' });
+    if (role === Role.CUSTOMER && meta.customerId !== sub) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+    const built = await buildInvoicePdf(meta.id);
+    if (!built) return res.status(404).json({ error: 'Invoice not found' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${built.filename}"`);
+    res.send(built.pdf);
   } catch (err) {
     next(err);
   }

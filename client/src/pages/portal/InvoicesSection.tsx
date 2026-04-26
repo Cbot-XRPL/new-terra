@@ -119,6 +119,33 @@ export default function InvoicesSection({ projectId, customerId, customerName }:
     }
   }
 
+  // Invoice PDFs need the bearer token, so we fetch as a blob and open
+  // the result in a new tab.
+  async function downloadInvoicePdf(id: string, number: string) {
+    const apiBase = import.meta.env.VITE_API_URL ?? '';
+    const token = localStorage.getItem('nt_token');
+    try {
+      const res = await fetch(`${apiBase}/api/invoices/${id}/invoice.pdf`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        setError('Could not download invoice PDF');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${number}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'PDF download failed');
+    }
+  }
+
   async function setStatus(id: string, status: InvoiceStatus) {
     try {
       await api(`/api/invoices/${id}`, {
@@ -388,6 +415,15 @@ export default function InvoicesSection({ projectId, customerId, customerName }:
                       onClick={() => setOpenPayments(openPayments === inv.id ? null : inv.id)}
                     >
                       {openPayments === inv.id ? 'Hide' : 'Payments'}
+                    </button>
+                    <button
+                      type="button"
+                      className="button-ghost button-small"
+                      style={{ marginLeft: '0.4rem' }}
+                      onClick={() => downloadInvoicePdf(inv.id, inv.number)}
+                      title="Download a PDF of this invoice"
+                    >
+                      PDF
                     </button>
                   </td>
                   <td>
