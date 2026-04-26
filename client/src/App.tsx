@@ -6,6 +6,7 @@ import PortalLayout from './layouts/PortalLayout';
 import HomePage from './pages/public/HomePage';
 import ContactPage from './pages/public/ContactPage';
 import PublicGalleryPage from './pages/public/PublicGalleryPage';
+import SurveyPage from './pages/public/SurveyPage';
 import LoginPage from './pages/auth/LoginPage';
 import AcceptInvitePage from './pages/auth/AcceptInvitePage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
@@ -47,6 +48,7 @@ import AssetsLiabilitiesPage from './pages/portal/AssetsLiabilitiesPage';
 import ReportsPage from './pages/portal/ReportsPage';
 import Form1099Page from './pages/portal/Form1099Page';
 import MileagePage from './pages/portal/MileagePage';
+import SatisfactionDashboardPage from './pages/portal/SatisfactionDashboardPage';
 import CalculatorsPage from './pages/portal/CalculatorsPage';
 import CatalogPage from './pages/portal/CatalogPage';
 import TimePage from './pages/portal/TimePage';
@@ -66,6 +68,7 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/g/:token" element={<PublicGalleryPage />} />
+        <Route path="/survey/:token" element={<SurveyPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/accept-invite" element={<AcceptInvitePage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -186,6 +189,14 @@ export default function App() {
           element={
             <RequireAuth roles={['ADMIN', 'EMPLOYEE']}>
               <MileagePage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="finance/satisfaction"
+          element={
+            <RequireAuth accountingAccess>
+              <SatisfactionDashboardPage />
             </RequireAuth>
           }
         />

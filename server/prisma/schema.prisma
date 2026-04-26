@@ -157,6 +157,7 @@ model User {
   mileageEntries        MileageEntry[] @relation("MileageDriver")
   punchListItems        PunchListItem[] @relation("PunchListAuthor")
   galleryShares         GalleryShare[]  @relation("GalleryShareAuthor")
+  satisfactionSurveys   SatisfactionSurvey[] @relation("SatisfactionSurveyCustomer")
 
   // Bidirectional messaging — staff can message customers and vice versa.
   // Cross-role permission (no customer↔customer) is enforced in the route.
@@ -273,6 +274,7 @@ model Project {
   mileageEntries     MileageEntry[]
   punchListItems     PunchListItem[]
   galleryShares      GalleryShare[]
+  satisfactionSurvey SatisfactionSurvey?
 
   @@index([projectManagerId])
 }
@@ -807,6 +809,36 @@ model ProjectImage {
   createdAt   DateTime @default(now())
 
   @@index([projectId, takenAt])
+}
+
+// Customer satisfaction survey — one auto-issued ~14 days after a project
+// flips to COMPLETE. The customer follows a token URL (no portal login
+// required) and submits an NPS-style 0–10 score + optional comments.
+// Admin sees responses on a finance/satisfaction dashboard. Surveys
+// without a score yet show as 'pending'.
+model SatisfactionSurvey {
+  id          String    @id @default(cuid())
+  projectId   String    @unique
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  customerId  String
+  customer    User      @relation("SatisfactionSurveyCustomer", fields: [customerId], references: [id])
+  // SHA-256 of the link token; raw value lives in the URL only.
+  tokenHash   String    @unique
+  // Set when the cron emails the customer.
+  sentAt      DateTime?
+  // Customer-supplied fields. score is 0–10 NPS; nps category derived in
+  // the rollup, not stored.
+  score       Int?
+  comments    String?
+  // What can we do better — separate field so positive/negative split
+  // stays legible for admin.
+  improvements String?
+  submittedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([sentAt])
+  @@index([submittedAt])
 }
 
 // Time-limited public share link for a project's photo gallery. Customer

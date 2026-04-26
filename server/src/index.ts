@@ -3,6 +3,7 @@ import { env } from './env.js';
 import { createApp } from './app.js';
 import { notifyStaleLeads, remindInvoices, remindStaleContracts } from './lib/reminders.js';
 import { runRecurringInvoices } from './lib/recurringInvoices.js';
+import { runSatisfactionSurveys } from './lib/satisfactionSurveys.js';
 
 const app = createApp();
 
@@ -58,6 +59,23 @@ if (recurringSchedule) {
     console.log(`[cron] recurring invoices scheduled "${recurringSchedule}"`);
   } else {
     console.warn(`[cron] RECURRING_INVOICE_CRON="${recurringSchedule}" is not a valid expression; skipping`);
+  }
+}
+
+// Customer satisfaction survey — fires for projects that flipped to
+// COMPLETE more than 14 days ago without a survey row yet. Same env-var
+// cron pattern as the others; off by default in dev.
+const surveySchedule = process.env.SATISFACTION_SURVEY_CRON;
+if (surveySchedule) {
+  if (cron.validate(surveySchedule)) {
+    cron.schedule(surveySchedule, () => {
+      runSatisfactionSurveys()
+        .then((r) => console.log('[cron:satisfaction-surveys]', r))
+        .catch((err) => console.warn('[cron:satisfaction-surveys] failed', err));
+    });
+    console.log(`[cron] satisfaction surveys scheduled "${surveySchedule}"`);
+  } else {
+    console.warn(`[cron] SATISFACTION_SURVEY_CRON="${surveySchedule}" is not a valid expression; skipping`);
   }
 }
 

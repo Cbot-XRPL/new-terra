@@ -175,6 +175,22 @@ export async function sendInvoiceReminderEmail(input: {
   await transporter.sendMail({ to: input.to, from: env.smtp.from, subject, text: body });
 }
 
+export async function sendSatisfactionSurveyEmail(input: {
+  to: string;
+  customerName: string;
+  projectName: string;
+  surveyUrl: string;
+}) {
+  const subject = `How did we do on ${input.projectName}? Quick 30-sec survey`;
+  const text = `Hi ${input.customerName},\n\nIt's been a couple weeks since we wrapped ${input.projectName}, and we'd love to know how it's holding up.\n\nWould you take 30 seconds to drop a score (0–10) and any feedback?\n\n${input.surveyUrl}\n\nWe read every response. Thanks for trusting us.\n\n— New Terra Construction`;
+  if (!transporter) {
+    console.log('[mailer:dev] Satisfaction survey to', input.to, '·', input.projectName);
+    console.log('[mailer:dev]', input.surveyUrl);
+    return;
+  }
+  await transporter.sendMail({ to: input.to, from: env.smtp.from, subject, text });
+}
+
 export async function sendReviewRequestEmail(input: {
   to: string;
   customerName: string;
