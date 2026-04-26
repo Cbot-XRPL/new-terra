@@ -713,6 +713,42 @@ input:focus, textarea:focus, select:focus {
   color: var(--accent);
 }
 
+/* Print stylesheet — gives Cmd-P from any portal page a clean output
+   without the dedicated PDF endpoints. Strips the sidebar nav, action
+   buttons, and form controls so the customer-facing tables (invoices,
+   payments, punch list) print as plain documents. */
+@media print {
+  .portal-sidebar,
+  .nav-menu,
+  .navbar,
+  .global-search-backdrop,
+  button,
+  .button,
+  .button-ghost,
+  input[type="checkbox"],
+  select,
+  .form-row,
+  .form-actions { display: none !important; }
+  body, .portal-shell { background: #fff !important; color: #000 !important; }
+  .portal-main { padding: 0 !important; }
+  .card {
+    background: #fff !important;
+    border: none !important;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+  }
+  .table th, .table td {
+    color: #000 !important;
+    border-color: #999 !important;
+  }
+  .badge { border: 1px solid #666 !important; background: transparent !important; color: #000 !important; }
+  /* Prevent .muted from washing out under print contrast. */
+  .muted { color: #444 !important; }
+  /* Show URLs after links for documentation purposes. */
+  a[href]::after { content: " (" attr(href) ")"; font-size: 0.8em; color: #666; }
+  a[href^="/"]::after, a[href^="#"]::after { content: ""; } /* skip relative */
+}
+
 /* Global ⌘K search modal */
 .global-search-backdrop {
   position: fixed;
