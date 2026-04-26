@@ -3,7 +3,7 @@ import { ApiError, api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { formatCents, formatDate } from '../../lib/format';
 
-type Status = 'DRAFT' | 'SENT' | 'ACCEPTED' | 'DECLINED' | 'VOID';
+type Status = 'REQUESTED' | 'DRAFT' | 'SENT' | 'ACCEPTED' | 'DECLINED' | 'VOID';
 
 interface ChangeOrder {
   id: string;
@@ -28,6 +28,7 @@ interface Props {
 }
 
 const STATUS_BADGE: Record<Status, string> = {
+  REQUESTED: 'badge-sent',
   DRAFT: 'badge-draft',
   SENT: 'badge-sent',
   ACCEPTED: 'badge-paid',
@@ -71,21 +72,26 @@ export default function ChangeOrdersSection({ projectId, customerName }: Props) 
   async function create(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const cents = Math.round(Number(amount) * 100);
-    if (!Number.isFinite(cents) || cents === 0) {
-      setError('Enter a non-zero amount (use a negative number for a credit)');
-      return;
-    }
     setSubmitting(true);
     try {
+      const body: Record<string, unknown> = {
+        projectId,
+        title,
+        description: description || null,
+      };
+      // Customer-initiated requests omit amount — admin will quote it.
+      if (!isCustomer) {
+        const cents = Math.round(Number(amount) * 100);
+        if (!Number.isFinite(cents) || cents === 0) {
+          setError('Enter a non-zero amount (use a negative number for a credit)');
+          setSubmitting(false);
+          return;
+        }
+        body.amountCents = cents;
+      }
       await api('/api/change-orders', {
         method: 'POST',
-        body: JSON.stringify({
-          projectId,
-          title,
-          description: description || null,
-          amountCents: cents,
-        }),
+        body: JSON.stringify(body),
       });
       setTitle('');
       setDescription('');
@@ -96,6 +102,22 @@ export default function ChangeOrdersSection({ projectId, customerName }: Props) 
       setError(err instanceof ApiError ? err.message : 'Could not create change order');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function quote(id: string) {
+    const raw = prompt('Quote price for this change request (USD, negative for credit):');
+    if (raw == null) return;
+    const cents = Math.round(Number(raw) * 100);
+    if (!Number.isFinite(cents) || cents === 0) { setError('Invalid amount'); return; }
+    try {
+      await api(`/api/change-orders/${id}/quote`, {
+        method: 'POST',
+        body: JSON.stringify({ amountCents: cents }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Quote failed');
     }
   }
 
@@ -157,22 +179,27 @@ export default function ChangeOrdersSection({ projectId, customerName }: Props) 
         <div>
           <h2>Change orders</h2>
           <p className="muted" style={{ marginBottom: '0.5rem', fontSize: '0.9rem' }}>
-            Signed addendums to the contract. Positive amount = additional bill, negative = credit.
-            Accepting one auto-issues a draft invoice for the change amount.
+            {isCustomer
+              ? 'Request a change to the scope. We\'ll quote it and send it back for your sign-off.'
+              : 'Signed addendums to the contract. Positive amount = additional bill, negative = credit. Accepting one auto-issues a draft invoice for the change amount.'}
           </p>
         </div>
-        {canAuthor && (
+        {(canAuthor || isCustomer) && (
           <button onClick={() => setShowForm((v) => !v)}>
-            {showForm ? 'Cancel' : 'New change order'}
+            {showForm ? 'Cancel' : isCustomer ? 'Request a change' : 'New change order'}
           </button>
         )}
       </div>
 
       {error && <div className="form-error">{error}</div>}
 
-      {canAuthor && showForm && (
+      {(canAuthor || isCustomer) && showForm && (
         <form onSubmit={create} className="invoice-form">
-          <p className="muted">Change order for {customerName}</p>
+          <p className="muted">
+            {isCustomer
+              ? 'Tell us what you want changed and we\'ll quote it.'
+              : `Change order for ${customerName}`}
+          </p>
           <label htmlFor="co-title">Title</label>
           <input
             id="co-title"
@@ -181,7 +208,9 @@ export default function ChangeOrdersSection({ projectId, customerName }: Props) 
             required
             placeholder="e.g. Add screen porch enclosure"
           />
-          <label htmlFor="co-amt">Amount (USD, negative for credit)</label>
+          {!isCustomer && (
+            <>
+              <label htmlFor="co-amt">Amount (USD, negative for credit)</label>
           <input
             id="co-amt"
             type="number"
@@ -190,16 +219,20 @@ export default function ChangeOrdersSection({ projectId, customerName }: Props) 
             onChange={(e) => setAmount(e.target.value)}
             required
           />
+            </>
+          )}
           <label htmlFor="co-desc">Description</label>
           <textarea
             id="co-desc"
             rows={4}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Scope of the change, materials, delays, etc."
+            placeholder={isCustomer
+              ? 'What are you asking us to add, change, or remove?'
+              : 'Scope of the change, materials, delays, etc.'}
           />
           <button type="submit" disabled={submitting}>
-            {submitting ? 'Saving…' : 'Create draft'}
+            {submitting ? 'Saving…' : isCustomer ? 'Submit request' : 'Create draft'}
           </button>
         </form>
       )}
@@ -250,6 +283,26 @@ export default function ChangeOrdersSection({ projectId, customerName }: Props) 
                     : <span className="muted">—</span>}
                 </td>
                 <td>
+                  {canAuthor && co.status === 'REQUESTED' && (
+                    <>
+                      <button
+                        type="button"
+                        className="button-small"
+                        onClick={() => quote(co.id)}
+                        title="Set price → flips to DRAFT for review/send"
+                      >
+                        Quote
+                      </button>
+                      <button
+                        type="button"
+                        className="button-ghost button-small"
+                        style={{ marginLeft: '0.4rem' }}
+                        onClick={() => voidCo(co.id)}
+                      >
+                        Void
+                      </button>
+                    </>
+                  )}
                   {canAuthor && co.status === 'DRAFT' && (
                     <>
                       <button

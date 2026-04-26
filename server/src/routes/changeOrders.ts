@@ -60,8 +60,9 @@ const createSchema = z.object({
   contractId: z.string().min(1).nullable().optional(),
   title: z.string().min(1).max(160),
   description: z.string().max(4000).nullable().optional(),
-  // Signed integer cents. Negative = credit.
-  amountCents: z.number().int(),
+  // Signed integer cents. Negative = credit. Optional so customer-initiated
+  // requests can omit it (admin quotes the price later).
+  amountCents: z.number().int().optional(),
 });
 
 router.get('/', async (req, res, next) => {
@@ -123,10 +124,32 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const me = await loadActor(req.user!.sub);
-    if (!me || !hasSalesAccess(me)) return res.status(403).json({ error: 'Forbidden' });
+    if (!me) return res.status(401).json({ error: 'Unauthenticated' });
     const data = createSchema.parse(req.body);
     const project = await prisma.project.findUnique({ where: { id: data.projectId } });
     if (!project) return res.status(400).json({ error: 'Project not found' });
+
+    // Customer-initiated requests: only on their own project, status starts
+    // as REQUESTED, amountCents defaults to 0 (admin will quote it).
+    let status: ChangeOrderStatus;
+    let amountCents: number;
+    if (me.role === Role.CUSTOMER) {
+      if (project.customerId !== me.id) {
+        return res.status(403).json({ error: 'Cannot request a change on another customer\'s project' });
+      }
+      status = ChangeOrderStatus.REQUESTED;
+      amountCents = 0;
+    } else if (hasSalesAccess(me)) {
+      status = ChangeOrderStatus.DRAFT;
+      // Staff-authored draft must include an amount.
+      if (data.amountCents === undefined) {
+        return res.status(400).json({ error: 'amountCents is required when authored by staff' });
+      }
+      amountCents = data.amountCents;
+    } else {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
     if (data.contractId) {
       const contract = await prisma.contract.findUnique({ where: { id: data.contractId } });
       if (!contract || contract.projectId !== data.projectId) {
@@ -141,18 +164,56 @@ router.post('/', async (req, res, next) => {
         contractId: data.contractId ?? null,
         title: data.title,
         description: data.description ?? null,
-        amountCents: data.amountCents,
-        status: ChangeOrderStatus.DRAFT,
+        amountCents,
+        status,
         createdById: me.id,
       },
     });
     audit(req, {
-      action: 'changeOrder.created',
+      action: status === ChangeOrderStatus.REQUESTED ? 'changeOrder.requested' : 'changeOrder.created',
       resourceType: 'changeOrder',
       resourceId: co.id,
-      meta: { projectId: data.projectId, amountCents: data.amountCents },
+      meta: { projectId: data.projectId, amountCents, requestedByCustomer: me.role === Role.CUSTOMER },
     }).catch(() => undefined);
     res.status(201).json({ changeOrder: co });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Admin/sales endpoint: take a customer-REQUESTED change order, set the
+// price + (optionally) edit description, and flip to DRAFT so the rest of
+// the existing flow takes over.
+router.post('/:id/quote', async (req, res, next) => {
+  try {
+    const me = await loadActor(req.user!.sub);
+    if (!me || !hasSalesAccess(me)) return res.status(403).json({ error: 'Forbidden' });
+    const body = z.object({
+      amountCents: z.number().int(),
+      description: z.string().max(4000).nullable().optional(),
+      title: z.string().min(1).max(160).optional(),
+    }).parse(req.body);
+    const existing = await prisma.changeOrder.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: 'Change order not found' });
+    if (existing.status !== ChangeOrderStatus.REQUESTED) {
+      return res.status(409).json({ error: `Can only quote REQUESTED change orders (this is ${existing.status.toLowerCase()})` });
+    }
+    const updated = await prisma.changeOrder.update({
+      where: { id: existing.id },
+      data: {
+        amountCents: body.amountCents,
+        title: body.title,
+        description: body.description === null ? null : body.description ?? undefined,
+        status: ChangeOrderStatus.DRAFT,
+      },
+    });
+    audit(req, {
+      action: 'changeOrder.quoted',
+      resourceType: 'changeOrder',
+      resourceId: updated.id,
+      meta: { amountCents: body.amountCents },
+    }).catch(() => undefined);
+    res.json({ changeOrder: updated });
   } catch (err) {
     next(err);
   }

@@ -428,6 +428,8 @@ model ChangeOrder {
 }
 
 enum ChangeOrderStatus {
+  // Customer-initiated request (no price yet). Admin quotes → DRAFT.
+  REQUESTED
   DRAFT
   SENT
   ACCEPTED
