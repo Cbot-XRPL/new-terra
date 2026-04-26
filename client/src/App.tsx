@@ -34,6 +34,7 @@ import QuickBooksPage from './pages/portal/QuickBooksPage';
 import EstimatesPage from './pages/portal/EstimatesPage';
 import NewEstimatePage from './pages/portal/NewEstimatePage';
 import EstimateDetailPage from './pages/portal/EstimateDetailPage';
+import EstimatorVisualPage from './pages/portal/EstimatorVisualPage';
 import CalculatorsPage from './pages/portal/CalculatorsPage';
 import CatalogPage from './pages/portal/CatalogPage';
 import TimePage from './pages/portal/TimePage';
@@ -204,6 +205,14 @@ export default function App() {
           }
         />
         <Route path="estimates/:id" element={<EstimateDetailPage />} />
+        <Route
+          path="estimator/visual"
+          element={
+            <RequireAuth salesAccess>
+              <EstimatorVisualPage />
+            </RequireAuth>
+          }
+        />
         <Route
           path="calculators"
           element={

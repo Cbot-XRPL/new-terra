@@ -702,6 +702,28 @@ input:focus, textarea:focus, select:focus {
 .portal-user-role { font-size: 0.85rem; color: var(--text-muted); text-transform: capitalize; }
 .portal-main { padding: 2rem; overflow-x: auto; }
 
+/* Visual estimator */
+.estimator-visual {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 1.5rem;
+}
+.estimator-canvas svg { display: block; }
+.hotspot-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.hotspot-list .is-active {
+  background: var(--surface-strong);
+  color: var(--accent);
+}
+.estimator-side h2 { margin-top: 0; }
+@media (max-width: 1100px) {
+  .estimator-visual { grid-template-columns: 1fr; }
+}
+
 /* Dashboard */
 .dashboard { display: flex; flex-direction: column; gap: 1.5rem; max-width: 1100px; }
 .dashboard header h1 { margin-bottom: 0.25rem; }
