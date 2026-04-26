@@ -31,6 +31,9 @@ import ExpensesPage from './pages/portal/ExpensesPage';
 import NewExpensePage from './pages/portal/NewExpensePage';
 import ExpenseDetailPage from './pages/portal/ExpenseDetailPage';
 import QuickBooksPage from './pages/portal/QuickBooksPage';
+import EstimatesPage from './pages/portal/EstimatesPage';
+import NewEstimatePage from './pages/portal/NewEstimatePage';
+import EstimateDetailPage from './pages/portal/EstimateDetailPage';
 
 function PortalIndex() {
   const { user } = useAuth();
@@ -188,6 +191,16 @@ export default function App() {
             </RequireAuth>
           }
         />
+        <Route path="estimates" element={<EstimatesPage />} />
+        <Route
+          path="estimates/new"
+          element={
+            <RequireAuth salesAccess>
+              <NewEstimatePage />
+            </RequireAuth>
+          }
+        />
+        <Route path="estimates/:id" element={<EstimateDetailPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

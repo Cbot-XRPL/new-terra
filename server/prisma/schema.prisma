@@ -165,6 +165,11 @@ model User {
   // Auth + audit
   passwordResets    PasswordResetToken[] @relation("PasswordResets")
   auditEventsActed  AuditEvent[]         @relation("AuditActor")
+
+  // Estimates
+  estimateTemplates EstimateTemplate[] @relation("EstimateTemplateAuthor")
+  estimatesCreated  Estimate[]         @relation("EstimatesCreated")
+  estimatesReceived Estimate[]         @relation("EstimatesForCustomer")
 }
 
 model Invitation {
@@ -210,6 +215,9 @@ model Project {
   comments    ProjectComment[]
   expenses    Expense[]
   budgetLines ProjectBudgetLine[]
+  // Optional back-link to the estimate that birthed this project (null
+  // until an estimate is converted; never re-bound).
+  estimatesConverted Estimate[] @relation("ProjectFromEstimate")
 
   @@index([projectManagerId])
 }
@@ -385,6 +393,11 @@ model Contract {
   docusignEnvelopeId String?
   docusignStatus     String?
 
+  // Back-link to the estimate this contract was spawned from, when one
+  // exists. Independent of project link (the estimate may have created
+  // both the contract and the project at conversion time).
+  estimatesConverted Estimate[] @relation("ContractFromEstimate")
+
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
@@ -420,6 +433,7 @@ model Lead {
 
   notes         String?
   activities    LeadActivity[]
+  estimates     Estimate[]
 
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
@@ -631,4 +645,125 @@ model AuditEvent {
   @@index([resourceType, resourceId])
   @@index([actorId])
   @@index([createdAt])
+}
+
+enum EstimateStatus {
+  DRAFT
+  SENT
+  VIEWED
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  CONVERTED
+  VOID
+}
+
+// EstimateTemplate — admin-curated starter pack of line items for a common
+// scope (e.g. "Composite deck install", "Bathroom remodel — 5x8"). Sales
+// reps pick one, fill in quantities, adjust prices, and add custom lines.
+// Lines on the template are copied into the Estimate at draft time so
+// later template edits don't mutate sent estimates.
+model EstimateTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  // Optional category for grouping in the template picker — "Decks",
+  // "Bathrooms", "Hardscape", etc.
+  category    String?
+  active      Boolean  @default(true)
+  createdById String
+  createdBy   User     @relation("EstimateTemplateAuthor", fields: [createdById], references: [id])
+  lines       EstimateTemplateLine[]
+  estimates   Estimate[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model EstimateTemplateLine {
+  id          String   @id @default(cuid())
+  templateId  String
+  template    EstimateTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  description String
+  // Default quantity. Stored as Decimal so half-units (yards, hours) are
+  // honest — Prisma exposes Decimal as string in the JSON envelope.
+  defaultQuantity Decimal @db.Decimal(12, 3) @default(0)
+  unit        String?  // "ea", "lf", "sqft", "cuyd", "hr", "lump", etc.
+  unitPriceCents Int @default(0)
+  // Optional sub-totaling category for the rep view: "Materials", "Labor",
+  // "Permits", "Disposal".
+  category    String?
+  notes       String?
+  position    Int @default(0)
+}
+
+model Estimate {
+  id          String   @id @default(cuid())
+  number      String   @unique  // EST-YYYY-####
+  status      EstimateStatus @default(DRAFT)
+
+  // Either a converted customer or a still-a-lead. At least one should be
+  // set; both can be set after a lead converts during the estimate's life.
+  customerId  String?
+  customer    User?    @relation("EstimatesForCustomer", fields: [customerId], references: [id], onDelete: SetNull)
+  leadId      String?
+  lead        Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  templateId  String?
+  template    EstimateTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  templateNameSnapshot String?
+
+  createdById String
+  createdBy   User     @relation("EstimatesCreated", fields: [createdById], references: [id])
+
+  title       String
+  scope       String?  // free-text scope shown on the customer-facing view
+  notes       String?  // internal notes
+  termsText   String?
+
+  // Pricing — totals are persisted (rather than recalculated each request)
+  // so historical estimates are immune to later price-list edits.
+  subtotalCents Int @default(0)
+  taxRateBps  Int @default(0) // 700 = 7.00%
+  taxCents    Int @default(0)
+  totalCents  Int @default(0)
+
+  validUntil  DateTime?
+  sentAt      DateTime?
+  viewedAt    DateTime?
+  acceptedAt  DateTime?
+  declinedAt  DateTime?
+  declineReason String?
+  acceptedBySignature String?
+  acceptedByIp String?
+
+  // What this estimate became when accepted + converted.
+  convertedProjectId  String?
+  convertedProject    Project? @relation("ProjectFromEstimate", fields: [convertedProjectId], references: [id], onDelete: SetNull)
+  convertedContractId String?
+  convertedContract   Contract? @relation("ContractFromEstimate", fields: [convertedContractId], references: [id], onDelete: SetNull)
+
+  lines       EstimateLine[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([customerId])
+  @@index([leadId])
+}
+
+model EstimateLine {
+  id          String   @id @default(cuid())
+  estimateId  String
+  estimate    Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Decimal  @db.Decimal(12, 3) @default(0)
+  unit        String?
+  unitPriceCents Int @default(0)
+  // Pre-computed = round(quantity * unitPriceCents). Kept on the row so
+  // the customer-facing view doesn't redo math client-side.
+  totalCents  Int @default(0)
+  category    String?
+  notes       String?
+  position    Int @default(0)
 }
