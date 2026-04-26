@@ -75,6 +75,9 @@ export default function PaymentsPanel({ invoiceId, onChange }: Props) {
   const [reference, setReference] = useState('');
   const [receivedAt, setReceivedAt] = useState(() => new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState('');
+  // Cash typically gets a hand-off receipt rather than an email; everything
+  // else defaults to emailing the customer the PDF.
+  const [emailReceipt, setEmailReceipt] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   async function load() {
@@ -122,6 +125,7 @@ export default function PaymentsPanel({ invoiceId, onChange }: Props) {
           referenceNumber: reference || null,
           receivedAt: new Date(receivedAt).toISOString(),
           notes: notes || null,
+          emailReceipt,
         }),
       });
       setReference('');
@@ -157,6 +161,18 @@ export default function PaymentsPanel({ invoiceId, onChange }: Props) {
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Receipt download failed');
+    }
+  }
+
+  async function emailReceiptToCustomer(paymentId: string) {
+    try {
+      const r = await api<{ sentTo: string }>(
+        `/api/invoices/${invoiceId}/payments/${paymentId}/email-receipt`,
+        { method: 'POST' },
+      );
+      alert(`Receipt emailed to ${r.sentTo}.`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Receipt email failed');
     }
   }
 
@@ -235,14 +251,25 @@ export default function PaymentsPanel({ invoiceId, onChange }: Props) {
                     Receipt
                   </button>
                   {canRecord && (
-                    <button
-                      type="button"
-                      className="button-ghost button-small"
-                      style={{ marginLeft: '0.4rem' }}
-                      onClick={() => deletePayment(p.id)}
-                    >
-                      Delete
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="button-ghost button-small"
+                        style={{ marginLeft: '0.4rem' }}
+                        onClick={() => emailReceiptToCustomer(p.id)}
+                        title="Re-send the PDF receipt to the customer"
+                      >
+                        Email
+                      </button>
+                      <button
+                        type="button"
+                        className="button-ghost button-small"
+                        style={{ marginLeft: '0.4rem' }}
+                        onClick={() => deletePayment(p.id)}
+                      >
+                        Delete
+                      </button>
+                    </>
                   )}
                 </td>
               </tr>
@@ -271,7 +298,12 @@ export default function PaymentsPanel({ invoiceId, onChange }: Props) {
                   <select
                     id="p-method"
                     value={method}
-                    onChange={(e) => setMethod(e.target.value)}
+                    onChange={(e) => {
+                      setMethod(e.target.value);
+                      // Default email-receipt off when method flips to cash;
+                      // back on for any other method (admin can still toggle).
+                      setEmailReceipt(e.target.value !== 'CASH');
+                    }}
                   >
                     {(methods.length ? methods : ['CHECK', 'ZELLE', 'CASH', 'ACH', 'OTHER']).map((m) => (
                       <option key={m} value={m}>{METHOD_LABEL[m] ?? m}</option>
@@ -317,6 +349,19 @@ export default function PaymentsPanel({ invoiceId, onChange }: Props) {
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="e.g. deposited at chase 4/24"
               />
+              <label
+                htmlFor="p-email-receipt"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}
+              >
+                <input
+                  id="p-email-receipt"
+                  type="checkbox"
+                  checked={emailReceipt}
+                  onChange={(e) => setEmailReceipt(e.target.checked)}
+                  style={{ width: 'auto' }}
+                />
+                Email PDF receipt to customer
+              </label>
               <div className="form-actions">
                 <button type="submit" disabled={submitting}>
                   {submitting ? 'Saving…' : 'Save payment'}

@@ -7,8 +7,8 @@ import { audit } from '../lib/audit.js';
 import { createPaymentLinkForInvoice, isStripeConfigured } from '../lib/stripe.js';
 import { ALL_PAYMENT_METHODS, computeTotals, recomputeInvoiceStatus } from '../lib/payments.js';
 import { remindInvoices } from '../lib/reminders.js';
-import { renderReceiptPdf } from '../lib/receiptPdf.js';
-import { getCompanySettings } from '../lib/companySettings.js';
+import { buildReceiptForPayment } from '../lib/receiptPdf.js';
+import { sendPaymentReceiptEmail } from '../lib/mailer.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -234,6 +234,10 @@ const recordPaymentSchema = z.object({
   referenceNumber: z.string().max(80).optional().nullable(),
   receivedAt: z.string().datetime().optional(),
   notes: z.string().max(2000).optional().nullable(),
+  // Whether to auto-email the customer the receipt PDF. Default: true for
+  // every method except CASH (cash usually means a hand-off, not a digital
+  // workflow) — admin can override either way per-payment.
+  emailReceipt: z.boolean().optional(),
 });
 
 async function loadAccountingActor(userId: string) {
@@ -270,6 +274,35 @@ router.post('/:id/payments', async (req, res, next) => {
     });
 
     const totals = await recomputeInvoiceStatus(invoice.id);
+
+    // Auto-email the customer the receipt PDF unless the caller explicitly
+    // opted out (or it's cash, where the customer just got a hand-off).
+    const shouldEmail = body.emailReceipt ?? body.method !== PaymentMethod.CASH;
+    let emailed = false;
+    if (shouldEmail) {
+      try {
+        const built = await buildReceiptForPayment(payment.id);
+        if (built) {
+          await sendPaymentReceiptEmail({
+            to: built.payment.customerEmail,
+            customerName: built.payment.customerName,
+            invoiceNumber: built.payment.invoiceNumber,
+            receiptNumber: built.receiptNumber,
+            amountCents: built.payment.amountCents,
+            method: built.payment.method,
+            fullyPaid: built.totals.fullyPaid,
+            balanceCents: built.totals.balanceCents,
+            pdfBuffer: built.pdf,
+          });
+          emailed = true;
+        }
+      } catch (err) {
+        // Don't fail the payment record if the email blows up — the row is
+        // already written and the admin can resend the receipt manually.
+        console.warn('[invoices] receipt email failed for', payment.id, err);
+      }
+    }
+
     audit(req, {
       action: 'invoice.payment_recorded',
       resourceType: 'invoice',
@@ -280,6 +313,7 @@ router.post('/:id/payments', async (req, res, next) => {
         method: payment.method,
         referenceNumber: payment.referenceNumber,
         newStatus: totals.status,
+        emailed,
       },
     }).catch(() => undefined);
 
@@ -288,6 +322,7 @@ router.post('/:id/payments', async (req, res, next) => {
       paidCents: totals.paidCents,
       balanceCents: totals.balanceCents,
       status: totals.status,
+      emailed,
     });
   } catch (err) {
     next(err);
@@ -336,72 +371,65 @@ router.get('/_meta/payment-methods', (_req, res) => {
 router.get('/:id/payments/:paymentId/receipt.pdf', async (req, res, next) => {
   try {
     const { sub, role } = req.user!;
+    // Cheap auth check before we render the PDF — confirm the payment exists
+    // under this invoice and the customer (if any) owns it.
     const payment = await prisma.payment.findUnique({
       where: { id: req.params.paymentId },
-      include: {
-        recordedBy: { select: { name: true } },
-        invoice: {
-          include: {
-            customer: { select: { id: true, name: true, email: true } },
-            project: { select: { name: true } },
-            payments: { select: { amountCents: true } },
-          },
-        },
-      },
+      include: { invoice: { select: { id: true, customerId: true } } },
     });
     if (!payment || payment.invoiceId !== req.params.id) {
       return res.status(404).json({ error: 'Payment not found' });
     }
-    if (role === Role.CUSTOMER && payment.invoice.customer.id !== sub) {
+    if (role === Role.CUSTOMER && payment.invoice.customerId !== sub) {
       return res.status(404).json({ error: 'Payment not found' });
     }
 
-    const settings = await getCompanySettings();
-    const totals = computeTotals(
-      payment.invoice.amountCents,
-      payment.invoice.payments.map((p) => p.amountCents),
-    );
-
-    const receiptNumber = `${payment.invoice.number}-R${payment.id.slice(-4).toUpperCase()}`;
-    const pdf = await renderReceiptPdf({
-      receiptNumber,
-      company: {
-        name: settings.companyName ?? 'New Terra Construction',
-        addressLine1: settings.addressLine1,
-        addressLine2: settings.addressLine2,
-        city: settings.city,
-        state: settings.state,
-        zip: settings.zip,
-        phone: settings.phone,
-        email: settings.email,
-        websiteUrl: settings.websiteUrl,
-      },
-      customer: payment.invoice.customer,
-      invoice: {
-        number: payment.invoice.number,
-        amountCents: payment.invoice.amountCents,
-        dueAt: payment.invoice.dueAt,
-        issuedAt: payment.invoice.issuedAt,
-        project: payment.invoice.project,
-      },
-      payment: {
-        amountCents: payment.amountCents,
-        method: payment.method,
-        referenceNumber: payment.referenceNumber,
-        receivedAt: payment.receivedAt,
-        notes: payment.notes,
-        recordedByName: payment.recordedBy?.name ?? null,
-      },
-      totals: {
-        paidCents: totals.paidCents,
-        balanceCents: totals.balanceCents,
-        fullyPaid: totals.isFullyPaid,
-      },
-    });
+    const built = await buildReceiptForPayment(payment.id);
+    if (!built) return res.status(404).json({ error: 'Payment not found' });
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${receiptNumber}.pdf"`);
-    res.send(pdf);
+    res.setHeader('Content-Disposition', `inline; filename="${built.receiptNumber}.pdf"`);
+    res.send(built.pdf);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Manually re-send the receipt email (e.g. customer says they didn't get it).
+router.post('/:id/payments/:paymentId/email-receipt', async (req, res, next) => {
+  try {
+    const me = await loadAccountingActor(req.user!.sub);
+    if (!me || (me.role !== Role.ADMIN && !(me.role === Role.EMPLOYEE && me.isAccounting))) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const payment = await prisma.payment.findUnique({
+      where: { id: req.params.paymentId },
+      select: { invoiceId: true },
+    });
+    if (!payment || payment.invoiceId !== req.params.id) {
+      return res.status(404).json({ error: 'Payment not found' });
+    }
+    const built = await buildReceiptForPayment(req.params.paymentId);
+    if (!built) return res.status(404).json({ error: 'Payment not found' });
+
+    await sendPaymentReceiptEmail({
+      to: built.payment.customerEmail,
+      customerName: built.payment.customerName,
+      invoiceNumber: built.payment.invoiceNumber,
+      receiptNumber: built.receiptNumber,
+      amountCents: built.payment.amountCents,
+      method: built.payment.method,
+      fullyPaid: built.totals.fullyPaid,
+      balanceCents: built.totals.balanceCents,
+      pdfBuffer: built.pdf,
+    });
+    audit(req, {
+      action: 'invoice.receipt_emailed',
+      resourceType: 'invoice',
+      resourceId: req.params.id,
+      meta: { paymentId: req.params.paymentId, to: built.payment.customerEmail },
+    }).catch(() => undefined);
+    res.json({ ok: true, sentTo: built.payment.customerEmail });
   } catch (err) {
     next(err);
   }

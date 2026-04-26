@@ -103,6 +103,46 @@ export async function sendContractReminderEmail(input: {
   await transporter.sendMail({ to: input.to, from: env.smtp.from, subject, text });
 }
 
+export async function sendPaymentReceiptEmail(input: {
+  to: string;
+  customerName: string;
+  invoiceNumber: string;
+  receiptNumber: string;
+  amountCents: number;
+  method: string;
+  fullyPaid: boolean;
+  balanceCents: number;
+  pdfBuffer: Buffer;
+}) {
+  const dollars = `$${(input.amountCents / 100).toFixed(2)}`;
+  const balance = `$${(input.balanceCents / 100).toFixed(2)}`;
+  const subject = input.fullyPaid
+    ? `Receipt: ${input.invoiceNumber} paid in full`
+    : `Receipt: ${dollars} payment on ${input.invoiceNumber}`;
+  const tail = input.fullyPaid
+    ? `Invoice ${input.invoiceNumber} is now paid in full — thank you!`
+    : `Remaining balance on invoice ${input.invoiceNumber}: ${balance}.`;
+  const text = `Hi ${input.customerName},\n\nThanks for your ${input.method.toLowerCase()} payment of ${dollars}. The PDF receipt (${input.receiptNumber}) is attached for your records.\n\n${tail}\n\n— New Terra Construction`;
+
+  if (!transporter) {
+    console.log('[mailer:dev] Payment receipt to', input.to, '·', input.receiptNumber, `(${input.pdfBuffer.length} bytes)`);
+    return;
+  }
+  await transporter.sendMail({
+    to: input.to,
+    from: env.smtp.from,
+    subject,
+    text,
+    attachments: [
+      {
+        filename: `${input.receiptNumber}.pdf`,
+        content: input.pdfBuffer,
+        contentType: 'application/pdf',
+      },
+    ],
+  });
+}
+
 export async function sendInvoiceReminderEmail(input: {
   to: string;
   customerName: string;

@@ -3,6 +3,9 @@
 // to an email later without touching disk.
 
 import PDFDocument from 'pdfkit';
+import { prisma } from '../db.js';
+import { computeTotals } from './payments.js';
+import { getCompanySettings } from './companySettings.js';
 
 export interface ReceiptPdfInput {
   receiptNumber: string;
@@ -167,6 +170,96 @@ export function renderReceiptPdf(input: ReceiptPdfInput): Promise<Buffer> {
 
     doc.end();
   });
+}
+
+// One-shot helper: pull the payment + invoice + settings out of the DB,
+// build the input shape, and render. Used by the download endpoint and
+// the auto-email-on-record flow so the two paths can't drift.
+export async function buildReceiptForPayment(paymentId: string): Promise<{
+  pdf: Buffer;
+  receiptNumber: string;
+  payment: {
+    id: string;
+    amountCents: number;
+    method: string;
+    customerEmail: string;
+    customerName: string;
+    invoiceNumber: string;
+  };
+  totals: { paidCents: number; balanceCents: number; fullyPaid: boolean };
+} | null> {
+  const payment = await prisma.payment.findUnique({
+    where: { id: paymentId },
+    include: {
+      recordedBy: { select: { name: true } },
+      invoice: {
+        include: {
+          customer: { select: { id: true, name: true, email: true } },
+          project: { select: { name: true } },
+          payments: { select: { amountCents: true } },
+        },
+      },
+    },
+  });
+  if (!payment) return null;
+  const settings = await getCompanySettings();
+  const totals = computeTotals(
+    payment.invoice.amountCents,
+    payment.invoice.payments.map((p) => p.amountCents),
+  );
+  const receiptNumber = `${payment.invoice.number}-R${payment.id.slice(-4).toUpperCase()}`;
+  const pdf = await renderReceiptPdf({
+    receiptNumber,
+    company: {
+      name: settings.companyName ?? 'New Terra Construction',
+      addressLine1: settings.addressLine1,
+      addressLine2: settings.addressLine2,
+      city: settings.city,
+      state: settings.state,
+      zip: settings.zip,
+      phone: settings.phone,
+      email: settings.email,
+      websiteUrl: settings.websiteUrl,
+    },
+    customer: payment.invoice.customer,
+    invoice: {
+      number: payment.invoice.number,
+      amountCents: payment.invoice.amountCents,
+      dueAt: payment.invoice.dueAt,
+      issuedAt: payment.invoice.issuedAt,
+      project: payment.invoice.project,
+    },
+    payment: {
+      amountCents: payment.amountCents,
+      method: payment.method,
+      referenceNumber: payment.referenceNumber,
+      receivedAt: payment.receivedAt,
+      notes: payment.notes,
+      recordedByName: payment.recordedBy?.name ?? null,
+    },
+    totals: {
+      paidCents: totals.paidCents,
+      balanceCents: totals.balanceCents,
+      fullyPaid: totals.isFullyPaid,
+    },
+  });
+  return {
+    pdf,
+    receiptNumber,
+    payment: {
+      id: payment.id,
+      amountCents: payment.amountCents,
+      method: payment.method,
+      customerEmail: payment.invoice.customer.email,
+      customerName: payment.invoice.customer.name,
+      invoiceNumber: payment.invoice.number,
+    },
+    totals: {
+      paidCents: totals.paidCents,
+      balanceCents: totals.balanceCents,
+      fullyPaid: totals.isFullyPaid,
+    },
+  };
 }
 
 function formatMethod(m: string): string {
