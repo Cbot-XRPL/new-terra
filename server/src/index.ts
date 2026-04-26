@@ -5,7 +5,7 @@ import morgan from 'morgan';
 import path from 'node:path';
 import cron from 'node-cron';
 import { env } from './env.js';
-import { remindStaleContracts } from './lib/reminders.js';
+import { notifyStaleLeads, remindStaleContracts } from './lib/reminders.js';
 import { errorHandler } from './middleware/error.js';
 import authRouter from './routes/auth.js';
 import adminRouter from './routes/admin.js';
@@ -127,5 +127,21 @@ if (reminderSchedule) {
     console.log(`[cron] contract reminders scheduled "${reminderSchedule}"`);
   } else {
     console.warn(`[cron] CONTRACT_REMINDER_CRON="${reminderSchedule}" is not a valid expression; skipping`);
+  }
+}
+
+// Same shape for the stale-lead nudge. STALE_LEAD_CRON e.g. "0 8 * * 1-5"
+// fires the email at 8am on weekdays.
+const staleLeadSchedule = process.env.STALE_LEAD_CRON;
+if (staleLeadSchedule) {
+  if (cron.validate(staleLeadSchedule)) {
+    cron.schedule(staleLeadSchedule, () => {
+      notifyStaleLeads()
+        .then((r) => console.log('[cron:stale-leads]', r))
+        .catch((err) => console.warn('[cron:stale-leads] failed', err));
+    });
+    console.log(`[cron] stale-lead nudges scheduled "${staleLeadSchedule}"`);
+  } else {
+    console.warn(`[cron] STALE_LEAD_CRON="${staleLeadSchedule}" is not a valid expression; skipping`);
   }
 }

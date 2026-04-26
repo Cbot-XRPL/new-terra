@@ -1,6 +1,6 @@
-import { ContractStatus } from '@prisma/client';
+import { ContractStatus, LeadStatus } from '@prisma/client';
 import { prisma } from '../db.js';
-import { sendContractReminderEmail } from './mailer.js';
+import { sendContractReminderEmail, sendStaleLeadEmail } from './mailer.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -78,4 +78,58 @@ export async function remindStaleContracts(opts: RemindOptions = {}): Promise<Re
     skippedFresh,
     skippedCooldown,
   };
+}
+
+export interface StaleLeadResult {
+  considered: number;
+  notified: number;
+  skippedNoOwner: number;
+}
+
+/**
+ * Emails the assigned sales rep about leads that have sat in an open
+ * status (NEW / CONTACTED / QUALIFIED / QUOTE_SENT) without movement for
+ * `staleAfterDays`. Skips ON_HOLD / WON / LOST. The sales-flow widget can
+ * also kick this manually.
+ *
+ * Cooldown is by-lead via updatedAt — once a touch (any update) happens
+ * the lead falls out of the stale set until it goes silent again.
+ */
+export async function notifyStaleLeads(opts: { staleAfterDays?: number } = {}): Promise<StaleLeadResult> {
+  const staleAfterDays = opts.staleAfterDays ?? 5;
+  const staleBefore = new Date(Date.now() - staleAfterDays * DAY_MS);
+
+  const candidates = await prisma.lead.findMany({
+    where: {
+      status: {
+        in: [LeadStatus.NEW, LeadStatus.CONTACTED, LeadStatus.QUALIFIED, LeadStatus.QUOTE_SENT],
+      },
+      updatedAt: { lt: staleBefore },
+    },
+    include: { owner: { select: { id: true, name: true, email: true } } },
+  });
+
+  let notified = 0;
+  let skippedNoOwner = 0;
+  for (const l of candidates) {
+    if (!l.owner) {
+      skippedNoOwner += 1;
+      continue;
+    }
+    const daysQuiet = Math.max(1, Math.floor((Date.now() - l.updatedAt.getTime()) / DAY_MS));
+    try {
+      await sendStaleLeadEmail({
+        to: l.owner.email,
+        ownerName: l.owner.name,
+        leadName: l.name,
+        leadId: l.id,
+        status: l.status,
+        daysQuiet,
+      });
+      notified += 1;
+    } catch (err) {
+      console.warn('[reminders] stale-lead email failed for', l.id, err);
+    }
+  }
+  return { considered: candidates.length, notified, skippedNoOwner };
 }

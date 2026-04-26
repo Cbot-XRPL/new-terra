@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { Role, InvoiceStatus } from '@prisma/client';
 import { prisma } from '../db.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
+import { audit } from '../lib/audit.js';
+import { createPaymentLinkForInvoice, isStripeConfigured } from '../lib/stripe.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -156,6 +158,39 @@ router.delete('/:id', requireRole(Role.ADMIN), async (req, res, next) => {
   try {
     await prisma.invoice.delete({ where: { id: req.params.id } });
     res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Generate a Stripe Payment Link for this invoice and persist it to
+// paymentUrl. The webhook (POST /api/webhooks/stripe) will close the loop
+// when payment lands. Stub mode (no STRIPE_SECRET_KEY) returns a synthetic
+// URL so the UX is exercisable without real credentials — admin can copy/
+// edit it manually.
+router.post('/:id/payment-link', requireRole(Role.ADMIN), async (req, res, next) => {
+  try {
+    const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    if (invoice.status === InvoiceStatus.PAID || invoice.status === InvoiceStatus.VOID) {
+      return res.status(409).json({ error: `Cannot create a link for a ${invoice.status.toLowerCase()} invoice` });
+    }
+    const result = await createPaymentLinkForInvoice({
+      amountCents: invoice.amountCents,
+      description: `Invoice ${invoice.number}`,
+      invoiceId: invoice.id,
+    });
+    const updated = await prisma.invoice.update({
+      where: { id: invoice.id },
+      data: { paymentUrl: result.url },
+    });
+    audit(req, {
+      action: 'invoice.payment_link_created',
+      resourceType: 'invoice',
+      resourceId: invoice.id,
+      meta: { stub: result.stub, paymentLinkId: result.paymentLinkId ?? null },
+    }).catch(() => undefined);
+    res.json({ invoice: updated, stripeConfigured: isStripeConfigured(), stub: result.stub });
   } catch (err) {
     next(err);
   }

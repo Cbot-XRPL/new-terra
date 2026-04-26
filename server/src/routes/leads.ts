@@ -7,6 +7,7 @@ import { generateInviteToken } from '../lib/auth.js';
 import { sendInviteEmail } from '../lib/mailer.js';
 import { env } from '../env.js';
 import { hasSalesAccess } from '../lib/permissions.js';
+import { notifyStaleLeads } from '../lib/reminders.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -313,6 +314,20 @@ router.post('/:id/convert', async (req, res, next) => {
       // Echo the dev URL when SMTP isn't configured so the rep can copy it.
       inviteUrl: env.smtp.host ? undefined : inviteUrl,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Manual trigger for the stale-lead nudge — fires the same email path as
+// the optional cron job below. Sales reps + admins can run it on demand
+// from the leads page.
+router.post('/admin/notify-stale', async (req, res, next) => {
+  try {
+    const me = await loadMe(req.user!.sub);
+    if (!me || !hasSalesAccess(me)) return res.status(403).json({ error: 'Forbidden' });
+    const result = await notifyStaleLeads();
+    res.json(result);
   } catch (err) {
     next(err);
   }

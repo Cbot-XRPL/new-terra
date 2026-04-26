@@ -103,6 +103,26 @@ export async function sendContractReminderEmail(input: {
   await transporter.sendMail({ to: input.to, from: env.smtp.from, subject, text });
 }
 
+export async function sendStaleLeadEmail(input: {
+  to: string;
+  ownerName: string;
+  leadName: string;
+  leadId: string;
+  status: string;
+  daysQuiet: number;
+}) {
+  const url = `${env.appUrl}/portal/leads/${input.leadId}`;
+  const subject = `Stale lead: ${input.leadName} (${input.daysQuiet}d quiet)`;
+  const text = `Hi ${input.ownerName},\n\nThis lead has been in ${input.status.toLowerCase()} for ${input.daysQuiet} days without an update:\n\n${input.leadName}\n${url}\n\nMight be worth a touch. Update the status or log an activity to clear it from this list.\n\n— New Terra Construction`;
+
+  if (!transporter) {
+    console.log('[mailer:dev] Stale-lead nudge to', input.to);
+    console.log('[mailer:dev]', url);
+    return;
+  }
+  await transporter.sendMail({ to: input.to, from: env.smtp.from, subject, text });
+}
+
 export async function sendPasswordResetEmail(input: {
   to: string;
   name: string;

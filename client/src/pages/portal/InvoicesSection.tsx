@@ -88,6 +88,21 @@ export default function InvoicesSection({ projectId, customerId, customerName }:
     }
   }
 
+  async function generatePaymentLink(id: string) {
+    if (!confirm('Generate a Stripe payment link? The customer will get a one-click "Pay now" button on this invoice.')) return;
+    try {
+      const { stub } = await api<{ stub: boolean }>(`/api/invoices/${id}/payment-link`, {
+        method: 'POST',
+      });
+      await load();
+      if (stub) {
+        alert('Stripe is not configured on the server, so a stub link was saved. Edit it manually if you want to send something real.');
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not generate link');
+    }
+  }
+
   async function setStatus(id: string, status: InvoiceStatus) {
     try {
       await api(`/api/invoices/${id}`, {
@@ -191,6 +206,15 @@ export default function InvoicesSection({ projectId, customerId, customerName }:
                     >
                       Pay now
                     </a>
+                  ) : isAdmin && inv.status !== 'PAID' && inv.status !== 'VOID' ? (
+                    <button
+                      type="button"
+                      className="button-ghost button-small"
+                      onClick={() => generatePaymentLink(inv.id)}
+                      title="Create a Stripe payment link tagged with this invoice id"
+                    >
+                      Generate link
+                    </button>
                   ) : (
                     <span className="muted">—</span>
                   )}

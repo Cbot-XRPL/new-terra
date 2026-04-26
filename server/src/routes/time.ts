@@ -219,6 +219,77 @@ router.delete('/:id', async (req, res, next) => {
 
 // ----- Project labor rollup -----
 
+// Payroll-style CSV export — accounting + admin only. Sums minutes per
+// user × project for the supplied date range so it imports cleanly into
+// QuickBooks Bills, ADP, or just a spreadsheet for manual review.
+const csvQuery = z.object({
+  from: z.string().datetime(),
+  to: z.string().datetime(),
+});
+
+router.get('/payroll.csv', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!me || !hasAccountingAccess(me)) return res.status(403).json({ error: 'Forbidden' });
+    const { from, to } = csvQuery.parse(req.query);
+    const start = new Date(from);
+    const end = new Date(to);
+
+    const grouped = await prisma.timeEntry.groupBy({
+      by: ['userId', 'projectId', 'billable'],
+      where: { startedAt: { gte: start, lte: end }, endedAt: { not: null } },
+      _sum: { minutes: true },
+    });
+
+    // Hydrate user + project names so the CSV is human-readable without
+    // joining ids by hand.
+    const userIds = [...new Set(grouped.map((g) => g.userId))];
+    const projectIds = [...new Set(grouped.map((g) => g.projectId).filter((id): id is string => !!id))];
+    const [users, projects] = await Promise.all([
+      userIds.length
+        ? prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true, email: true } })
+        : Promise.resolve([]),
+      projectIds.length
+        ? prisma.project.findMany({ where: { id: { in: projectIds } }, select: { id: true, name: true } })
+        : Promise.resolve([]),
+    ]);
+    const userById = new Map(users.map((u) => [u.id, u]));
+    const projectById = new Map(projects.map((p) => [p.id, p.name]));
+
+    function csvEscape(v: string | number): string {
+      const s = String(v);
+      if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    }
+
+    const header = ['user_id', 'user_name', 'user_email', 'project_id', 'project_name', 'billable', 'minutes', 'hours_decimal'];
+    const rows = grouped.map((g) => {
+      const user = userById.get(g.userId);
+      const minutes = g._sum.minutes ?? 0;
+      return [
+        g.userId,
+        user?.name ?? '',
+        user?.email ?? '',
+        g.projectId ?? '',
+        g.projectId ? projectById.get(g.projectId) ?? '' : '(general/overhead)',
+        g.billable ? 'true' : 'false',
+        minutes,
+        (minutes / 60).toFixed(2),
+      ];
+    });
+
+    const body = [header, ...rows].map((r) => r.map(csvEscape).join(',')).join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="payroll-${start.toISOString().slice(0, 10)}-to-${end.toISOString().slice(0, 10)}.csv"`,
+    );
+    res.send(body);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/project/:projectId/summary', async (req, res, next) => {
   try {
     const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });

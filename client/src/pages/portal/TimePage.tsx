@@ -114,11 +114,41 @@ export default function TimePage() {
 
   return (
     <div className="dashboard">
-      <header>
-        <h1>Time</h1>
-        <p className="muted">
-          Punch in / out per project. {isAccounting ? 'You see the whole team.' : 'You see only your own entries.'}
-        </p>
+      <header className="row-between">
+        <div>
+          <h1>Time</h1>
+          <p className="muted">
+            Punch in / out per project. {isAccounting ? 'You see the whole team.' : 'You see only your own entries.'}
+          </p>
+        </div>
+        {isAccounting && (
+          <button
+            type="button"
+            className="button-ghost button-small"
+            onClick={() => {
+              // Default to the current month. Accounting can edit the URL
+              // before clicking if they want a different range.
+              const start = new Date();
+              start.setDate(1);
+              start.setHours(0, 0, 0, 0);
+              const end = new Date();
+              end.setHours(23, 59, 59, 999);
+              const token = localStorage.getItem('nt_token');
+              const params = new URLSearchParams({
+                from: start.toISOString(),
+                to: end.toISOString(),
+              });
+              if (token) params.set('token', token);
+              window.open(
+                `${import.meta.env.VITE_API_URL ?? ''}/api/time/payroll.csv?${params.toString()}`,
+                '_blank',
+              );
+            }}
+            title="Per-user / per-project totals for the current month"
+          >
+            Payroll CSV (this month)
+          </button>
+        )}
       </header>
 
       {error && <div className="form-error">{error}</div>}
