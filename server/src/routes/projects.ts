@@ -7,6 +7,7 @@ import { canManageProject, hasProjectManagerCapability, hasAccountingAccess } fr
 import { sendReviewRequestEmail } from '../lib/mailer.js';
 import { getCompanySettings } from '../lib/companySettings.js';
 import { runLaborBudgetAlerts } from '../lib/laborBudgetAlerts.js';
+import { buildJobFolderPdf } from '../lib/jobFolderPdf.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -260,6 +261,29 @@ router.patch('/:id', async (req, res, next) => {
 // Manual re-send of the review-request email. Useful when admin wants to
 // nudge a customer who didn't get the auto-send (or the auto-send failed
 // silently). Always re-stamps reviewRequestSentAt.
+// Job folder PDF — single bundled PDF of every estimate, contract, change
+// order, invoice, and photo on the project. Customers can pull their own;
+// staff can pull any. Subs blocked.
+router.get('/:id/job-folder.pdf', async (req, res, next) => {
+  try {
+    const { sub, role } = req.user!;
+    if (role === Role.SUBCONTRACTOR) return res.status(403).json({ error: 'Forbidden' });
+    const meta = await prisma.project.findUnique({
+      where: { id: req.params.id },
+      select: { customerId: true },
+    });
+    if (!meta) return res.status(404).json({ error: 'Project not found' });
+    if (role === Role.CUSTOMER && meta.customerId !== sub) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    const built = await buildJobFolderPdf(req.params.id);
+    if (!built) return res.status(404).json({ error: 'Project not found' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${built.filename}"`);
+    res.send(built.pdf);
+  } catch (err) { next(err); }
+});
+
 // Admin manual run of the labor-budget alerts cron.
 router.post('/_admin/run-labor-alerts', requireRole(Role.ADMIN), async (_req, res, next) => {
   try {

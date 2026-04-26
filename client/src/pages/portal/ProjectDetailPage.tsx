@@ -139,6 +139,28 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function downloadJobFolder() {
+    if (!project) return;
+    const apiBase = import.meta.env.VITE_API_URL ?? '';
+    const token = localStorage.getItem('nt_token');
+    const res = await fetch(`${apiBase}/api/projects/${project.id}/job-folder.pdf`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      setError('Could not download job folder');
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `job-folder-${project.id}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+
   async function editLaborBudget() {
     if (!project) return;
     const current = project.laborBudgetCents != null ? (project.laborBudgetCents / 100).toFixed(2) : '';
@@ -253,17 +275,27 @@ export default function ProjectDetailPage() {
               {project.startDate && <> · starts {formatDate(project.startDate)}</>}
             </p>
           </div>
-          {isPmOrAdmin && (
-            <select
-              value={project.status}
-              onChange={(e) => setStatus(e.target.value as ProjectStatus)}
-              style={{ marginBottom: 0, minWidth: 200 }}
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="button-ghost button-small"
+              onClick={downloadJobFolder}
+              title="One PDF with every estimate, contract, change order, invoice, and a photo appendix"
             >
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>{humanize(s)}</option>
-              ))}
-            </select>
-          )}
+              Job folder PDF
+            </button>
+            {isPmOrAdmin && (
+              <select
+                value={project.status}
+                onChange={(e) => setStatus(e.target.value as ProjectStatus)}
+                style={{ marginBottom: 0, minWidth: 200 }}
+              >
+                {STATUSES.map((s) => (
+                  <option key={s} value={s}>{humanize(s)}</option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
       </header>
 
