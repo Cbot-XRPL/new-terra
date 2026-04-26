@@ -148,6 +148,7 @@ model User {
   // accounting approver (any role).
   subcontractorBills    SubcontractorBill[] @relation("SubBillSubcontractor")
   subBillsApproved      SubcontractorBill[] @relation("SubBillApprover")
+  subBillAttachments    SubcontractorBillAttachment[] @relation("SubBillAttachmentUploader")
 
   // Bidirectional messaging — staff can message customers and vice versa.
   // Cross-role permission (no customer↔customer) is enforced in the route.
@@ -484,12 +485,33 @@ model SubcontractorBill {
   // status change. Null until PAID.
   expenseId       String?                 @unique
   expense         Expense?                @relation("SubBillExpense", fields: [expenseId], references: [id])
+  attachments     SubcontractorBillAttachment[]
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
 
   @@index([subcontractorId])
   @@index([projectId])
   @@index([status])
+}
+
+// One row per uploaded file backing a SubcontractorBill — the sub's own
+// invoice as a PDF or photo, plus optional photos of the work itself.
+// Stored on the same disk/S3 backend as project images so we don't fork
+// the storage logic.
+model SubcontractorBillAttachment {
+  id              String            @id @default(cuid())
+  billId          String
+  bill            SubcontractorBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+  uploadedById    String
+  uploadedBy      User              @relation("SubBillAttachmentUploader", fields: [uploadedById], references: [id])
+  filename        String            // original filename
+  url             String            // public URL we serve
+  thumbnailUrl    String?           // present for images
+  contentType     String            // mime
+  sizeBytes       Int
+  createdAt       DateTime          @default(now())
+
+  @@index([billId])
 }
 
 enum SubcontractorBillStatus {

@@ -1,5 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
+import sharp from 'sharp';
+import path from 'node:path';
+import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import { PaymentMethod, Role, SubcontractorBillStatus } from '@prisma/client';
 import { prisma } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -8,6 +13,27 @@ import { audit } from '../lib/audit.js';
 
 const router = Router();
 router.use(requireAuth);
+
+// Attachment storage: same uploads root as project images, under a
+// 'sub-bills/<billId>' tree. Multer drops files there; sharp generates
+// a thumb only when the upload is an image.
+const ATTACH_ROOT = path.resolve(process.cwd(), 'uploads', 'sub-bills');
+fsSync.mkdirSync(ATTACH_ROOT, { recursive: true });
+const attachmentUpload = multer({
+  storage: multer.diskStorage({
+    destination(req, _file, cb) {
+      const dir = path.join(ATTACH_ROOT, req.params.id);
+      fsSync.mkdir(dir, { recursive: true }, (err) => cb(err, dir));
+    },
+    filename(_req, file, cb) {
+      const stamp = Date.now();
+      const safe = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+      cb(null, `${stamp}-${safe}`);
+    },
+  }),
+  // 25 MB cap covers most subcontractor PDF invoices + photo evidence.
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
 
 async function nextBillNumber(): Promise<string> {
   const year = new Date().getFullYear();
@@ -45,6 +71,10 @@ router.get('/', async (req, res, next) => {
         project: { select: { id: true, name: true } },
         approvedBy: { select: { id: true, name: true } },
         expense: { select: { id: true } },
+        attachments: {
+          orderBy: { createdAt: 'asc' },
+          include: { uploadedBy: { select: { id: true, name: true } } },
+        },
       },
     });
     res.json({ bills });
@@ -275,6 +305,125 @@ router.delete('/:id', async (req, res, next) => {
       await prisma.expense.delete({ where: { id: existing.expenseId } }).catch(() => undefined);
     }
     await prisma.subcontractorBill.delete({ where: { id: existing.id } });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ----- Attachments -----
+//
+// Subs upload PDFs / photos of their actual invoice while the bill is
+// PENDING; once accounting approves it, only accounting/admin can attach
+// (or remove) — locks down evidence after sign-off. Anyone who can read
+// the parent bill can see the attachment list (already gated above).
+
+async function loadBillForAttachment(id: string, me: { id: string; role: Role }, isAccounting: boolean) {
+  const bill = await prisma.subcontractorBill.findUnique({ where: { id } });
+  if (!bill) return { error: 404 as const };
+  if (me.role === Role.SUBCONTRACTOR) {
+    if (bill.subcontractorId !== me.id) return { error: 404 as const };
+    if (bill.status !== SubcontractorBillStatus.PENDING) {
+      return { error: 409 as const };
+    }
+  } else if (!isAccounting) {
+    return { error: 403 as const };
+  }
+  return { bill };
+}
+
+router.post(
+  '/:id/attachments',
+  attachmentUpload.array('files', 8),
+  async (req, res, next) => {
+    try {
+      const me = await loadActor(req.user!.sub);
+      if (!me) return res.status(401).json({ error: 'Unauthenticated' });
+      const isAccounting = hasAccountingAccess(me);
+      const result = await loadBillForAttachment(req.params.id, me, isAccounting);
+      if (result.error === 404) return res.status(404).json({ error: 'Bill not found' });
+      if (result.error === 403) return res.status(403).json({ error: 'Forbidden' });
+      if (result.error === 409) return res.status(409).json({ error: 'Bill is already approved or paid; cannot attach more files' });
+      const bill = result.bill!;
+
+      const files = (req.files as Express.Multer.File[]) ?? [];
+      if (files.length === 0) return res.status(400).json({ error: 'No files received' });
+
+      const created = [];
+      for (const f of files) {
+        const url = `/uploads/sub-bills/${bill.id}/${f.filename}`;
+        let thumbnailUrl: string | null = null;
+        if (f.mimetype.startsWith('image/')) {
+          try {
+            const buf = await fs.readFile(f.path);
+            const thumb = await sharp(buf)
+              .rotate()
+              .resize({ width: 480, height: 480, fit: 'inside', withoutEnlargement: true })
+              .webp({ quality: 78 })
+              .toBuffer();
+            const thumbName = `thumb-${path.parse(f.filename).name}.webp`;
+            const thumbPath = path.join(ATTACH_ROOT, bill.id, thumbName);
+            await fs.writeFile(thumbPath, thumb);
+            thumbnailUrl = `/uploads/sub-bills/${bill.id}/${thumbName}`;
+          } catch (err) {
+            console.warn('[sub-bill] thumbnail failed', err);
+          }
+        }
+        const att = await prisma.subcontractorBillAttachment.create({
+          data: {
+            billId: bill.id,
+            uploadedById: me.id,
+            filename: f.originalname,
+            url,
+            thumbnailUrl,
+            contentType: f.mimetype,
+            sizeBytes: f.size,
+          },
+          include: { uploadedBy: { select: { id: true, name: true } } },
+        });
+        created.push(att);
+      }
+
+      audit(req, {
+        action: 'subBill.attachment_added',
+        resourceType: 'subcontractorBill',
+        resourceId: bill.id,
+        meta: { count: created.length },
+      }).catch(() => undefined);
+      res.status(201).json({ attachments: created });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.delete('/:id/attachments/:attachmentId', async (req, res, next) => {
+  try {
+    const me = await loadActor(req.user!.sub);
+    if (!me) return res.status(401).json({ error: 'Unauthenticated' });
+    const isAccounting = hasAccountingAccess(me);
+    const result = await loadBillForAttachment(req.params.id, me, isAccounting);
+    if (result.error === 404) return res.status(404).json({ error: 'Bill not found' });
+    if (result.error === 403) return res.status(403).json({ error: 'Forbidden' });
+    if (result.error === 409) return res.status(409).json({ error: 'Bill is approved or paid; cannot remove attachments' });
+    const bill = result.bill!;
+
+    const att = await prisma.subcontractorBillAttachment.findUnique({
+      where: { id: req.params.attachmentId },
+    });
+    if (!att || att.billId !== bill.id) {
+      return res.status(404).json({ error: 'Attachment not found' });
+    }
+    // Only the original uploader (if a sub) can delete; accounting can delete anyone's.
+    if (me.role === Role.SUBCONTRACTOR && att.uploadedById !== me.id) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    await prisma.subcontractorBillAttachment.delete({ where: { id: att.id } });
+    // Best-effort filesystem cleanup. Missing file is fine.
+    for (const u of [att.url, att.thumbnailUrl].filter(Boolean) as string[]) {
+      const filePath = path.join(process.cwd(), u.replace(/^\/+/, ''));
+      await fs.unlink(filePath).catch(() => undefined);
+    }
     res.status(204).end();
   } catch (err) {
     next(err);

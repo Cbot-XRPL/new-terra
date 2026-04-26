@@ -1,8 +1,19 @@
-import { type FormEvent, useEffect, useState } from 'react';
+import { Fragment, type FormEvent, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { formatCents, formatDate } from '../../lib/format';
+
+interface Attachment {
+  id: string;
+  filename: string;
+  url: string;
+  thumbnailUrl: string | null;
+  contentType: string;
+  sizeBytes: number;
+  createdAt: string;
+  uploadedBy: { id: string; name: string } | null;
+}
 
 type Status = 'PENDING' | 'APPROVED' | 'PAID' | 'VOID';
 type Method = 'CASH' | 'CHECK' | 'ZELLE' | 'ACH' | 'WIRE' | 'CARD' | 'STRIPE' | 'QUICKBOOKS' | 'OTHER';
@@ -23,6 +34,7 @@ interface Bill {
   project: { id: string; name: string } | null;
   approvedBy: { id: string; name: string } | null;
   expense: { id: string } | null;
+  attachments: Attachment[];
 }
 
 interface SubOption { id: string; name: string; email: string }
@@ -63,6 +75,11 @@ export default function SubcontractorBillsPage() {
   const [payingId, setPayingId] = useState<string | null>(null);
   const [payMethod, setPayMethod] = useState<Method>('CHECK');
   const [payReference, setPayReference] = useState('');
+
+  // Attachments expand
+  const [openAttach, setOpenAttach] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attaching, setAttaching] = useState(false);
 
   async function load() {
     try {
@@ -138,6 +155,45 @@ export default function SubcontractorBillsPage() {
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Pay failed');
+    }
+  }
+
+  async function uploadAttachments(billId: string, files: FileList) {
+    setAttaching(true);
+    setError(null);
+    try {
+      const apiBase = import.meta.env.VITE_API_URL ?? '';
+      const token = localStorage.getItem('nt_token');
+      const form = new FormData();
+      for (const f of Array.from(files)) form.append('files', f);
+      const res = await fetch(`${apiBase}/api/subcontractor-bills/${billId}/attachments`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setError(body?.error ?? 'Upload failed');
+        return;
+      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setAttaching(false);
+    }
+  }
+
+  async function deleteAttachment(billId: string, attachmentId: string) {
+    if (!confirm('Remove this attachment?')) return;
+    try {
+      await api(`/api/subcontractor-bills/${billId}/attachments/${attachmentId}`, {
+        method: 'DELETE',
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Delete failed');
     }
   }
 
@@ -255,8 +311,32 @@ export default function SubcontractorBillsPage() {
             </thead>
             <tbody>
               {bills.map((b) => (
-                <tr key={b.id}>
-                  <td>{b.number}</td>
+                <Fragment key={b.id}>
+                <tr>
+                  <td>
+                    <strong>{b.number}</strong>
+                    {b.attachments.length > 0 && (
+                      <button
+                        type="button"
+                        className="button-ghost button-small"
+                        style={{ marginLeft: '0.4rem' }}
+                        onClick={() => setOpenAttach(openAttach === b.id ? null : b.id)}
+                        title="Show attached files"
+                      >
+                        📎 {b.attachments.length}
+                      </button>
+                    )}
+                    {b.attachments.length === 0 && (isSub || isAccounting) && (
+                      <button
+                        type="button"
+                        className="button-ghost button-small"
+                        style={{ marginLeft: '0.4rem' }}
+                        onClick={() => setOpenAttach(openAttach === b.id ? null : b.id)}
+                      >
+                        Attach
+                      </button>
+                    )}
+                  </td>
                   {!isSub && <td>{b.subcontractor.name}</td>}
                   <td>{b.project ? b.project.name : <span className="muted">overhead</span>}</td>
                   <td>{b.externalNumber ?? <span className="muted">—</span>}</td>
@@ -339,6 +419,84 @@ export default function SubcontractorBillsPage() {
                     </td>
                   )}
                 </tr>
+                {openAttach === b.id && (
+                  <tr>
+                    <td colSpan={isSub ? 8 : 9} style={{ background: 'var(--surface)' }}>
+                      <div style={{ padding: '0.5rem 0' }}>
+                        <h4 style={{ margin: '0 0 0.5rem' }}>Attachments</h4>
+                        {b.attachments.length === 0 && (
+                          <p className="muted" style={{ marginBottom: '0.5rem' }}>
+                            No files yet — upload your invoice (PDF) or photos of the work.
+                          </p>
+                        )}
+                        {b.attachments.length > 0 && (
+                          <div className="gallery" style={{ marginBottom: '0.75rem' }}>
+                            {b.attachments.map((att) => (
+                              <figure key={att.id} className="gallery-item">
+                                <a href={att.url} target="_blank" rel="noreferrer">
+                                  {att.thumbnailUrl ? (
+                                    <img src={att.thumbnailUrl} alt={att.filename} loading="lazy" />
+                                  ) : (
+                                    <div
+                                      style={{
+                                        width: '100%',
+                                        height: 120,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        background: 'var(--bg-elevated)',
+                                        border: '1px solid rgba(95,99,104,0.3)',
+                                        borderRadius: 6,
+                                      }}
+                                    >
+                                      <span className="muted">📄 {att.contentType.split('/')[1] || 'file'}</span>
+                                    </div>
+                                  )}
+                                </a>
+                                <figcaption>
+                                  <div style={{ wordBreak: 'break-all' }}>{att.filename}</div>
+                                  <div className="muted" style={{ fontSize: '0.75rem' }}>
+                                    {(att.sizeBytes / 1024).toFixed(0)} KB · {att.uploadedBy?.name ?? 'unknown'}
+                                  </div>
+                                  {(isAccounting || (isSub && b.status === 'PENDING' && att.uploadedBy?.id === user?.id)) && (
+                                    <button
+                                      type="button"
+                                      className="button-ghost button-small"
+                                      onClick={() => deleteAttachment(b.id, att.id)}
+                                    >
+                                      Delete
+                                    </button>
+                                  )}
+                                </figcaption>
+                              </figure>
+                            ))}
+                          </div>
+                        )}
+                        {((isSub && b.status === 'PENDING') || isAccounting) && (
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <input
+                              ref={openAttach === b.id ? fileInputRef : null}
+                              type="file"
+                              multiple
+                              accept="image/*,.pdf,application/pdf"
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files.length > 0) {
+                                  uploadAttachments(b.id, e.target.files);
+                                }
+                              }}
+                              disabled={attaching}
+                            />
+                            {attaching && <span className="muted">uploading…</span>}
+                            <span className="muted" style={{ fontSize: '0.85rem' }}>
+                              PDF + image, up to 25 MB each.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>
