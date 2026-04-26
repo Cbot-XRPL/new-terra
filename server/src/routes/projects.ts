@@ -4,6 +4,8 @@ import { ProjectStatus, Role, type Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { canManageProject, hasProjectManagerCapability, hasAccountingAccess } from '../lib/permissions.js';
+import { sendReviewRequestEmail } from '../lib/mailer.js';
+import { getCompanySettings } from '../lib/companySettings.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -188,6 +190,10 @@ router.patch('/:id', async (req, res, next) => {
       }
     }
 
+    const before = await prisma.project.findUnique({
+      where: { id: req.params.id },
+      select: { status: true, reviewRequestSentAt: true },
+    });
     const project = await prisma.project.update({
       where: { id: req.params.id },
       data: {
@@ -205,7 +211,66 @@ router.patch('/:id', async (req, res, next) => {
       },
       include: projectInclude,
     });
+
+    // Auto-fire the review-request email when status flips to COMPLETE,
+    // but only the first time — toggling COMPLETE → ACTIVE → COMPLETE
+    // doesn't double-send because we stamp reviewRequestSentAt. Failures
+    // are non-fatal: the PATCH still succeeds and admin can manually
+    // re-send via the /request-review endpoint.
+    if (
+      data.status === ProjectStatus.COMPLETE
+      && before
+      && before.status !== ProjectStatus.COMPLETE
+      && !before.reviewRequestSentAt
+    ) {
+      try {
+        const settings = await getCompanySettings();
+        await sendReviewRequestEmail({
+          to: project.customer.email,
+          customerName: project.customer.name,
+          projectName: project.name,
+          googleReviewUrl: settings.googleReviewUrl,
+          yelpReviewUrl: settings.yelpReviewUrl,
+        });
+        await prisma.project.update({
+          where: { id: project.id },
+          data: { reviewRequestSentAt: new Date() },
+        });
+      } catch (err) {
+        console.warn('[projects] review request email failed for', project.id, err);
+      }
+    }
+
     res.json({ project });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Manual re-send of the review-request email. Useful when admin wants to
+// nudge a customer who didn't get the auto-send (or the auto-send failed
+// silently). Always re-stamps reviewRequestSentAt.
+router.post('/:id/request-review', requireRole(Role.ADMIN, Role.EMPLOYEE), async (req, res, next) => {
+  try {
+    const project = await prisma.project.findUnique({
+      where: { id: req.params.id },
+      include: { customer: { select: { name: true, email: true } } },
+    });
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const settings = await getCompanySettings();
+    await sendReviewRequestEmail({
+      to: project.customer.email,
+      customerName: project.customer.name,
+      projectName: project.name,
+      googleReviewUrl: settings.googleReviewUrl,
+      yelpReviewUrl: settings.yelpReviewUrl,
+    });
+    const updated = await prisma.project.update({
+      where: { id: project.id },
+      data: { reviewRequestSentAt: new Date() },
+      select: { id: true, reviewRequestSentAt: true },
+    });
+    res.json({ project: updated, sentTo: project.customer.email });
   } catch (err) {
     next(err);
   }

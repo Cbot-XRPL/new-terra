@@ -175,6 +175,29 @@ export async function sendInvoiceReminderEmail(input: {
   await transporter.sendMail({ to: input.to, from: env.smtp.from, subject, text: body });
 }
 
+export async function sendReviewRequestEmail(input: {
+  to: string;
+  customerName: string;
+  projectName: string;
+  googleReviewUrl: string | null;
+  yelpReviewUrl: string | null;
+}) {
+  const subject = `Thanks from New Terra Construction — would you mind a quick review?`;
+  const links: string[] = [];
+  if (input.googleReviewUrl) links.push(`Google: ${input.googleReviewUrl}`);
+  if (input.yelpReviewUrl) links.push(`Yelp: ${input.yelpReviewUrl}`);
+  const linkBlock = links.length > 0
+    ? `\n\nIf you have a minute, a quick review goes a long way:\n${links.join('\n')}\n`
+    : '';
+  const text = `Hi ${input.customerName},\n\nThanks for trusting us with ${input.projectName}. It was a pleasure working with you, and we hope the result feels exactly the way you imagined.${linkBlock}\nReply if anything looks off after the dust settles — we'd rather hear about it now than later.\n\n— New Terra Construction`;
+
+  if (!transporter) {
+    console.log('[mailer:dev] Review request to', input.to, '·', input.projectName);
+    return;
+  }
+  await transporter.sendMail({ to: input.to, from: env.smtp.from, subject, text });
+}
+
 export async function sendStaleLeadEmail(input: {
   to: string;
   ownerName: string;

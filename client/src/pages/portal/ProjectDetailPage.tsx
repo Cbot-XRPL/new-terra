@@ -37,6 +37,7 @@ interface ProjectDetail {
   // flipped showBudgetToCustomer on the project.
   budgetCents?: number | null;
   showBudgetToCustomer?: boolean;
+  reviewRequestSentAt?: string | null;
   customer: { id: string; name: string; email: string };
   projectManager: { id: string; name: string; email: string } | null;
 }
@@ -233,6 +234,33 @@ export default function ProjectDetailPage() {
       </header>
 
       {error && <div className="form-error">{error}</div>}
+
+      {isPmOrAdmin && project.status === 'COMPLETE' && (
+        <section className="card">
+          <div className="row-between">
+            <p className="muted" style={{ margin: 0 }}>
+              {project.reviewRequestSentAt
+                ? <>Review request sent {formatDate(project.reviewRequestSentAt)}.</>
+                : 'No review request sent yet.'}
+            </p>
+            <button
+              type="button"
+              className="button-ghost"
+              onClick={async () => {
+                try {
+                  await api(`/api/projects/${project.id}/request-review`, { method: 'POST' });
+                  alert('Review request emailed.');
+                  load();
+                } catch (err) {
+                  setError(err instanceof ApiError ? err.message : 'Send failed');
+                }
+              }}
+            >
+              {project.reviewRequestSentAt ? 'Re-send review request' : 'Send review request'}
+            </button>
+          </div>
+        </section>
+      )}
 
       {project.description && (
         <section className="card">

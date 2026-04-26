@@ -40,6 +40,8 @@ const settingsSchema = z.object({
   checkPayableTo: z.string().max(160).nullable().optional(),
   checkMailingAddress: z.string().max(400).nullable().optional(),
   paymentNotes: z.string().max(2000).nullable().optional(),
+  googleReviewUrl: z.string().url().max(500).nullable().optional(),
+  yelpReviewUrl: z.string().url().max(500).nullable().optional(),
 });
 
 router.patch('/', requireRole(Role.ADMIN), async (req, res, next) => {

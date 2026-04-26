@@ -239,6 +239,10 @@ model Project {
   // see the project budget + the job-cost rollup. Otherwise both stay
   // strictly internal.
   showBudgetToCustomer Boolean @default(false)
+  // Stamped when we email the customer a review-request after the project
+  // is marked COMPLETE. Null = never sent. Keeps us from double-sending
+  // when admin toggles status back and forth.
+  reviewRequestSentAt DateTime?
   // Soft-archive timestamp. Archived projects fall out of default lists but
   // keep all their data; admins can unarchive at any time.
   archivedAt  DateTime?
@@ -381,6 +385,10 @@ model CompanySettings {
   // Free-form note shown above the payment options ("we accept …", "deposits
   // due in cash on day-of", etc.).
   paymentNotes        String?
+  // Optional review-request URLs. When the project COMPLETE email goes out
+  // we include any URL that's set; blank ones are skipped.
+  googleReviewUrl     String?
+  yelpReviewUrl       String?
   updatedAt           DateTime @updatedAt
 }
 

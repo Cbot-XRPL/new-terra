@@ -20,6 +20,8 @@ interface Settings {
   checkPayableTo: string | null;
   checkMailingAddress: string | null;
   paymentNotes: string | null;
+  googleReviewUrl: string | null;
+  yelpReviewUrl: string | null;
 }
 
 const FIELDS: Array<{ key: keyof Settings; label: string; multiline?: boolean; placeholder?: string }> = [
@@ -60,6 +62,11 @@ const PAYMENT_FIELDS: Array<{ key: keyof Settings; label: string; multiline?: bo
     multiline: true,
     placeholder: 'Free-form note shown above the payment options on every unpaid invoice.',
   },
+];
+
+const REVIEW_FIELDS: Array<{ key: keyof Settings; label: string; placeholder?: string }> = [
+  { key: 'googleReviewUrl', label: 'Google review link', placeholder: 'https://g.page/r/...' },
+  { key: 'yelpReviewUrl', label: 'Yelp review link', placeholder: 'https://yelp.com/biz/...' },
 ];
 
 export default function CompanySettingsPage() {
@@ -143,6 +150,22 @@ export default function CompanySettingsPage() {
             get checks mailed to a stale address.
           </p>
           {PAYMENT_FIELDS.map((f) => (
+            <SettingField
+              key={f.key}
+              field={f}
+              value={settings[f.key]}
+              onChange={(v) => patch(f.key, v)}
+            />
+          ))}
+        </section>
+
+        <section className="card" style={{ marginTop: '1rem' }}>
+          <h2>Review request links</h2>
+          <p className="muted" style={{ fontSize: '0.85rem' }}>
+            When a project is marked COMPLETE, the customer is auto-emailed a thank-you note
+            with whichever of these links you fill in. Leave blank to skip.
+          </p>
+          {REVIEW_FIELDS.map((f) => (
             <SettingField
               key={f.key}
               field={f}
