@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { formatCents, formatDate } from '../../lib/format';
+import PaymentInstructions from './PaymentInstructions';
 
 interface Payment {
   id: string;
@@ -135,6 +136,30 @@ export default function PaymentsPanel({ invoiceId, onChange }: Props) {
     }
   }
 
+  // Receipt PDFs need the bearer token, so we can't just use a plain anchor.
+  // Fetch as a blob and open it in a new tab so the customer can save / print.
+  async function downloadReceipt(paymentId: string) {
+    const apiBase = import.meta.env.VITE_API_URL ?? '';
+    const token = localStorage.getItem('nt_token');
+    try {
+      const res = await fetch(
+        `${apiBase}/api/invoices/${invoiceId}/payments/${paymentId}/receipt.pdf`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      );
+      if (!res.ok) {
+        setError('Could not download receipt');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      // Revoke after a short delay so the new tab has time to load it.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Receipt download failed');
+    }
+  }
+
   async function deletePayment(id: string) {
     if (!confirm('Remove this payment? The invoice balance will be recalculated.')) return;
     try {
@@ -174,6 +199,10 @@ export default function PaymentsPanel({ invoiceId, onChange }: Props) {
         </div>
       </div>
 
+      {invoice.balanceCents > 0 && invoice.status !== 'VOID' && (
+        <PaymentInstructions />
+      )}
+
       {invoice.payments.length ? (
         <table className="table">
           <thead>
@@ -196,17 +225,26 @@ export default function PaymentsPanel({ invoiceId, onChange }: Props) {
                 <td style={{ textAlign: 'right' }}>{formatCents(p.amountCents)}</td>
                 <td className="muted">{p.recordedBy?.name ?? 'system'}</td>
                 <td className="muted" style={{ maxWidth: 220 }}>{p.notes ?? '—'}</td>
-                {canRecord && (
-                  <td>
+                <td>
+                  <button
+                    type="button"
+                    className="button-ghost button-small"
+                    onClick={() => downloadReceipt(p.id)}
+                    title="Open a PDF receipt for this payment"
+                  >
+                    Receipt
+                  </button>
+                  {canRecord && (
                     <button
                       type="button"
                       className="button-ghost button-small"
+                      style={{ marginLeft: '0.4rem' }}
                       onClick={() => deletePayment(p.id)}
                     >
                       Delete
                     </button>
-                  </td>
-                )}
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

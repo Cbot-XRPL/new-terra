@@ -300,6 +300,42 @@ model Payment {
   @@index([referenceNumber])
 }
 
+// One-row table that holds company-wide settings the admin edits from the
+// portal: business contact info + the payment instructions that show on
+// every unpaid invoice (Zelle handle, ACH details, who to make checks out
+// to, where to mail them). All fields are optional; the UI just hides any
+// section that's blank so we don't tell customers "Pay via Zelle: " with
+// nothing after it.
+//
+// We pin the row to id = "default" so the upsert pattern stays trivial.
+model CompanySettings {
+  id                  String   @id @default("default")
+  // Business identity
+  companyName         String?
+  legalName           String?
+  taxId               String?
+  phone               String?
+  email               String?
+  websiteUrl          String?
+  // Mailing address (rendered on receipts + invoices)
+  addressLine1        String?
+  addressLine2        String?
+  city                String?
+  state               String?
+  zip                 String?
+  // Payment instructions — all optional. Empty fields are hidden.
+  zelleEmail          String?
+  zelleName           String?
+  zellePhone          String?
+  achInstructions     String?
+  checkPayableTo      String?
+  checkMailingAddress String?
+  // Free-form note shown above the payment options ("we accept …", "deposits
+  // due in cash on day-of", etc.).
+  paymentNotes        String?
+  updatedAt           DateTime @updatedAt
+}
+
 enum PaymentMethod {
   CASH
   CHECK

@@ -131,9 +131,14 @@ export default function AdminDashboard() {
           <h1>Admin</h1>
           <p className="muted">Manage who has access to the portal.</p>
         </div>
-        <Link to="/portal/bulk-import" className="button button-ghost">
-          Bulk import…
-        </Link>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <Link to="/portal/admin/settings" className="button button-ghost">
+            Company settings…
+          </Link>
+          <Link to="/portal/bulk-import" className="button button-ghost">
+            Bulk import…
+          </Link>
+        </div>
       </header>
 
       {error && <div className="form-error">{error}</div>}

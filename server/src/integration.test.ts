@@ -217,6 +217,110 @@ d('integration · sales gate', () => {
   });
 });
 
+d('integration · company settings', () => {
+  it('any authenticated user can read settings', async () => {
+    const res = await request(app)
+      .get('/api/settings')
+      .set('Authorization', `Bearer ${seeded.customer.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.settings).toBeTruthy();
+    expect(res.body.settings.id).toBe('default');
+  });
+
+  it('only admin can patch settings', async () => {
+    const denied = await request(app)
+      .patch('/api/settings')
+      .set('Authorization', `Bearer ${seeded.sales.token}`)
+      .send({ companyName: 'Hax Inc' });
+    expect(denied.status).toBe(403);
+
+    const ok = await request(app)
+      .patch('/api/settings')
+      .set('Authorization', `Bearer ${seeded.admin.token}`)
+      .send({ companyName: 'IT Test Co', zelleEmail: 'pay@example.com' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.settings.companyName).toBe('IT Test Co');
+    expect(ok.body.settings.zelleEmail).toBe('pay@example.com');
+  });
+
+  it('rejects an invalid email', async () => {
+    const res = await request(app)
+      .patch('/api/settings')
+      .set('Authorization', `Bearer ${seeded.admin.token}`)
+      .send({ zelleEmail: 'not-an-email' });
+    expect(res.status).toBe(400);
+  });
+});
+
+d('integration · receipt PDFs', () => {
+  it('admin can fetch a receipt PDF for a recorded payment', async () => {
+    const number = `IT-RCPT-${Date.now()}`;
+    const invoice = await prisma.invoice.create({
+      data: {
+        number,
+        customerId: seeded.customer.id,
+        amountCents: 5_000,
+        status: 'SENT',
+      },
+    });
+    try {
+      const pay = await request(app)
+        .post(`/api/invoices/${invoice.id}/payments`)
+        .set('Authorization', `Bearer ${seeded.admin.token}`)
+        .send({ amountCents: 5_000, method: 'CHECK', referenceNumber: 'CHK-RCPT' });
+      expect(pay.status).toBe(201);
+
+      const res = await request(app)
+        .get(`/api/invoices/${invoice.id}/payments/${pay.body.payment.id}/receipt.pdf`)
+        .set('Authorization', `Bearer ${seeded.admin.token}`);
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('application/pdf');
+      // PDF magic bytes — sanity check we got a real document, not an HTML error.
+      expect(res.body.toString('utf8', 0, 4)).toBe('%PDF');
+    } finally {
+      await prisma.invoice.delete({ where: { id: invoice.id } });
+    }
+  });
+
+  it('a different customer is 404 on someone else\'s receipt', async () => {
+    const number = `IT-RCPT2-${Date.now()}`;
+    const invoice = await prisma.invoice.create({
+      data: {
+        number,
+        customerId: seeded.customer.id,
+        amountCents: 5_000,
+        status: 'SENT',
+      },
+    });
+    try {
+      const pay = await request(app)
+        .post(`/api/invoices/${invoice.id}/payments`)
+        .set('Authorization', `Bearer ${seeded.admin.token}`)
+        .send({ amountCents: 5_000, method: 'CASH' });
+      expect(pay.status).toBe(201);
+
+      // Spin up an "other customer" just for this case so the test stays
+      // self-contained.
+      const other = await seedUser({
+        email: 'it-other-customer@vitest.local',
+        name: 'Other Customer',
+        role: Role.CUSTOMER,
+      });
+      const otherTok = await login(other.email);
+      try {
+        const res = await request(app)
+          .get(`/api/invoices/${invoice.id}/payments/${pay.body.payment.id}/receipt.pdf`)
+          .set('Authorization', `Bearer ${otherTok}`);
+        expect(res.status).toBe(404);
+      } finally {
+        await prisma.user.delete({ where: { id: other.id } });
+      }
+    } finally {
+      await prisma.invoice.delete({ where: { id: invoice.id } });
+    }
+  });
+});
+
 d('integration · payments ledger', () => {
   it('admin records a partial payment, then a final payment, status auto-flips', async () => {
     // Use the seeded customer to own the invoice so cleanup is predictable.

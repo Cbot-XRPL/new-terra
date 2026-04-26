@@ -35,6 +35,7 @@ import EstimatesPage from './pages/portal/EstimatesPage';
 import NewEstimatePage from './pages/portal/NewEstimatePage';
 import EstimateDetailPage from './pages/portal/EstimateDetailPage';
 import EstimatorVisualPage from './pages/portal/EstimatorVisualPage';
+import CompanySettingsPage from './pages/portal/CompanySettingsPage';
 import CalculatorsPage from './pages/portal/CalculatorsPage';
 import CatalogPage from './pages/portal/CatalogPage';
 import TimePage from './pages/portal/TimePage';
@@ -89,6 +90,14 @@ export default function App() {
           element={
             <RequireAuth roles={['ADMIN']}>
               <AdminDashboard />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="admin/settings"
+          element={
+            <RequireAuth roles={['ADMIN']}>
+              <CompanySettingsPage />
             </RequireAuth>
           }
         />

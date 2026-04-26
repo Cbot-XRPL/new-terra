@@ -7,6 +7,8 @@ import { audit } from '../lib/audit.js';
 import { createPaymentLinkForInvoice, isStripeConfigured } from '../lib/stripe.js';
 import { ALL_PAYMENT_METHODS, computeTotals, recomputeInvoiceStatus } from '../lib/payments.js';
 import { remindInvoices } from '../lib/reminders.js';
+import { renderReceiptPdf } from '../lib/receiptPdf.js';
+import { getCompanySettings } from '../lib/companySettings.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -325,6 +327,84 @@ router.delete('/:id/payments/:paymentId', async (req, res, next) => {
 // list across the codebase.
 router.get('/_meta/payment-methods', (_req, res) => {
   res.json({ methods: ALL_PAYMENT_METHODS });
+});
+
+// Streamed PDF receipt for a single payment. Customer can pull receipts on
+// their own invoices; staff can pull any. Receipt number is derived from
+// the invoice number + payment id suffix so two payments on the same
+// invoice get distinct, recognizable receipt numbers.
+router.get('/:id/payments/:paymentId/receipt.pdf', async (req, res, next) => {
+  try {
+    const { sub, role } = req.user!;
+    const payment = await prisma.payment.findUnique({
+      where: { id: req.params.paymentId },
+      include: {
+        recordedBy: { select: { name: true } },
+        invoice: {
+          include: {
+            customer: { select: { id: true, name: true, email: true } },
+            project: { select: { name: true } },
+            payments: { select: { amountCents: true } },
+          },
+        },
+      },
+    });
+    if (!payment || payment.invoiceId !== req.params.id) {
+      return res.status(404).json({ error: 'Payment not found' });
+    }
+    if (role === Role.CUSTOMER && payment.invoice.customer.id !== sub) {
+      return res.status(404).json({ error: 'Payment not found' });
+    }
+
+    const settings = await getCompanySettings();
+    const totals = computeTotals(
+      payment.invoice.amountCents,
+      payment.invoice.payments.map((p) => p.amountCents),
+    );
+
+    const receiptNumber = `${payment.invoice.number}-R${payment.id.slice(-4).toUpperCase()}`;
+    const pdf = await renderReceiptPdf({
+      receiptNumber,
+      company: {
+        name: settings.companyName ?? 'New Terra Construction',
+        addressLine1: settings.addressLine1,
+        addressLine2: settings.addressLine2,
+        city: settings.city,
+        state: settings.state,
+        zip: settings.zip,
+        phone: settings.phone,
+        email: settings.email,
+        websiteUrl: settings.websiteUrl,
+      },
+      customer: payment.invoice.customer,
+      invoice: {
+        number: payment.invoice.number,
+        amountCents: payment.invoice.amountCents,
+        dueAt: payment.invoice.dueAt,
+        issuedAt: payment.invoice.issuedAt,
+        project: payment.invoice.project,
+      },
+      payment: {
+        amountCents: payment.amountCents,
+        method: payment.method,
+        referenceNumber: payment.referenceNumber,
+        receivedAt: payment.receivedAt,
+        notes: payment.notes,
+        recordedByName: payment.recordedBy?.name ?? null,
+      },
+      totals: {
+        paidCents: totals.paidCents,
+        balanceCents: totals.balanceCents,
+        fullyPaid: totals.isFullyPaid,
+      },
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${receiptNumber}.pdf"`);
+    res.send(pdf);
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Manual run of the invoice reminder cron. Used by admin from the Finance
