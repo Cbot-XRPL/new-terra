@@ -1,0 +1,74 @@
+# CI for the New Terra portal.
+#
+# Runs on every push + PR. Uses a Postgres service so `prisma migrate
+# deploy` and the build (which needs prisma generate to succeed) work
+# the same way they do locally. Server + client are typechecked in one
+# job because they share the workspace install; the cost of splitting
+# them isn't worth the parallelism for a project this size.
+
+name: ci
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: new_terra
+        ports:
+          - 5432:5432
+        # Wait for postgres to be ready before the rest of the job runs.
+        options: >-
+          --health-cmd "pg_isready -U postgres -d new_terra"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/new_terra?schema=public
+      JWT_SECRET: ci-fake-jwt-secret-do-not-use
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install workspaces
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: server
+        run: npx prisma generate
+
+      - name: Apply migrations
+        working-directory: server
+        run: npx prisma migrate deploy
+
+      - name: Build server
+        run: npm --workspace server run build
+
+      - name: Build client
+        run: npm --workspace client run build
+
+      - name: Server tests
+        run: npm --workspace server test
+
+      - name: Client tests
+        run: npm --workspace client test
+
+      - name: Audit production deps
+        # Fails the job if any HIGH/CRITICAL vulnerabilities show up in
+        # prod deps. Dev-deps churn too quickly to gate on.
+        run: npm audit --omit=dev --audit-level=high

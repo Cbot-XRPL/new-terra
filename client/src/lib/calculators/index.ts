@@ -248,7 +248,10 @@ export function tileFloor(input: {
 }): CalcResult {
   const tileSqft = (input.tileSizeInches * input.tileSizeInches) / 144;
   const waste = (input.wastePct ?? 10) / 100;
-  const tiles = Math.ceil((input.areaSqft / tileSqft) * (1 + waste));
+  // Round to 6 decimals before ceiling so e.g. 100 × 1.1 = 110.000…0001
+  // doesn't push us up to 111 tiles.
+  const raw = (input.areaSqft / tileSqft) * (1 + waste);
+  const tiles = Math.ceil(Math.round(raw * 1_000_000) / 1_000_000);
   const thinsetBags = Math.ceil(input.areaSqft / 95); // ~95 sqft per 50lb bag of thinset
   const groutLb = Math.ceil(input.areaSqft / 100); // very rough — depends on joint width
   return {
