@@ -1,13 +1,7 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
-
-const API_BASE = import.meta.env.VITE_API_URL ?? '';
-
-function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem('nt_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
+import { pendingCount, queueOrPostExpense } from '../../lib/offlineQueue';
 
 interface Vendor { id: string; name: string }
 interface Category { id: string; name: string; parent: { id: string; name: string } | null }
@@ -45,6 +39,14 @@ export default function NewExpensePage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [queueInfo, setQueueInfo] = useState<{ pending: number; lastQueued: number | null }>({
+    pending: 0,
+    lastQueued: null,
+  });
+
+  useEffect(() => {
+    pendingCount().then((n) => setQueueInfo((cur) => ({ ...cur, pending: n }))).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -106,14 +108,22 @@ export default function NewExpensePage() {
       form.append('reimbursable', String(reimbursable));
       if (receiptFile) form.append('receipt', receiptFile);
 
-      const res = await fetch(`${API_BASE}/api/finance/expenses`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: form,
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new ApiError(res.status, data?.error ?? res.statusText, data);
-      navigate(`/portal/finance/expenses/${data.expense.id}`);
+      const result = await queueOrPostExpense(form);
+      if (result.ok && result.sent) {
+        navigate(`/portal/finance/expenses/${(result.expense as { id: string }).id}`);
+      } else if (result.ok && !result.sent) {
+        // Queued offline. Show feedback + reset the form so the next receipt
+        // can go in immediately. Replay happens automatically on reconnect.
+        const pending = await pendingCount();
+        setQueueInfo({ pending, lastQueued: result.queuedAt });
+        setReceiptFile(null);
+        if (receiptPreview) URL.revokeObjectURL(receiptPreview);
+        setReceiptPreview(null);
+        setAmount('');
+        setDescription('');
+      } else if (!result.ok) {
+        setError(result.error);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to save expense');
     } finally {
@@ -132,6 +142,18 @@ export default function NewExpensePage() {
       </header>
 
       {error && <div className="form-error">{error}</div>}
+
+      {queueInfo.pending > 0 && (
+        <div className="form-success">
+          {queueInfo.pending} receipt{queueInfo.pending === 1 ? '' : 's'} waiting to upload — will
+          send automatically when you're back online.
+        </div>
+      )}
+      {queueInfo.lastQueued && (
+        <div className="form-success">
+          Saved offline. We'll upload it as soon as you're connected.
+        </div>
+      )}
 
       <section className="card">
         <form onSubmit={submit}>
