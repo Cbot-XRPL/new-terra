@@ -32,6 +32,7 @@ import estimatesRouter from './routes/estimates.js';
 import catalogRouter from './routes/catalog.js';
 import timeRouter from './routes/time.js';
 import settingsRouter from './routes/settings.js';
+import changeOrdersRouter from './routes/changeOrders.js';
 
 // Builds an express app without binding to a port. The listen() call lives
 // in index.ts so the test suite can import this factory and hand the app to
@@ -102,6 +103,7 @@ export function createApp(): Express {
   app.use('/api/catalog', catalogRouter);
   app.use('/api/time', timeRouter);
   app.use('/api/settings', settingsRouter);
+  app.use('/api/change-orders', changeOrdersRouter);
 
   // In production, serve the built React client from this same process. The
   // SPA fallback comes after every /api route is registered so client routes

@@ -9,6 +9,7 @@ import SelectionsSection from './SelectionsSection';
 import LogEntriesSection from './LogEntriesSection';
 import ProjectComments from './ProjectComments';
 import JobCostingSection from './JobCostingSection';
+import ChangeOrdersSection from './ChangeOrdersSection';
 
 type ProjectStatus = 'PLANNING' | 'AWAITING_CONTRACT' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETE' | 'CANCELLED';
 
@@ -309,6 +310,11 @@ export default function ProjectDetailPage() {
       <InvoicesSection
         projectId={project.id}
         customerId={project.customer.id}
+        customerName={project.customer.name}
+      />
+
+      <ChangeOrdersSection
+        projectId={project.id}
         customerName={project.customer.name}
       />
 

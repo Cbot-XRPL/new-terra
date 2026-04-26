@@ -407,6 +407,85 @@ d('integration · payments ledger', () => {
   });
 });
 
+d('integration · change orders', () => {
+  it('admin creates → sends → customer accepts → invoice auto-issued', async () => {
+    const project = await prisma.project.create({
+      data: { name: 'CO Project', customerId: seeded.customer.id, budgetCents: 1000 },
+    });
+    try {
+      const create = await request(app)
+        .post('/api/change-orders')
+        .set('Authorization', `Bearer ${seeded.admin.token}`)
+        .send({ projectId: project.id, title: 'Add deck', amountCents: 250_000 });
+      expect(create.status).toBe(201);
+      const coId = create.body.changeOrder.id;
+
+      // Customer can't see DRAFT change orders.
+      const draftPeek = await request(app)
+        .get(`/api/change-orders?projectId=${project.id}`)
+        .set('Authorization', `Bearer ${seeded.customer.token}`);
+      expect(draftPeek.status).toBe(200);
+      expect(draftPeek.body.changeOrders).toHaveLength(0);
+
+      const send = await request(app)
+        .post(`/api/change-orders/${coId}/send`)
+        .set('Authorization', `Bearer ${seeded.admin.token}`);
+      expect(send.status).toBe(200);
+
+      // Now customer sees it.
+      const sentPeek = await request(app)
+        .get(`/api/change-orders?projectId=${project.id}`)
+        .set('Authorization', `Bearer ${seeded.customer.token}`);
+      expect(sentPeek.body.changeOrders).toHaveLength(1);
+
+      const accept = await request(app)
+        .post(`/api/change-orders/${coId}/accept`)
+        .set('Authorization', `Bearer ${seeded.customer.token}`)
+        .send({ signatureName: 'Test Customer' });
+      expect(accept.status).toBe(200);
+      expect(accept.body.changeOrder.status).toBe('ACCEPTED');
+      expect(accept.body.changeOrder.invoice).toBeTruthy();
+
+      // Auto-issued invoice exists.
+      const invoiceId = accept.body.changeOrder.invoice.id;
+      const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
+      expect(invoice?.amountCents).toBe(250_000);
+      expect(invoice?.status).toBe('DRAFT');
+      expect(invoice?.notes).toContain('Change order');
+    } finally {
+      await prisma.changeOrder.deleteMany({ where: { projectId: project.id } });
+      await prisma.invoice.deleteMany({ where: { projectId: project.id } });
+      await prisma.project.delete({ where: { id: project.id } });
+    }
+  });
+
+  it('staff cannot accept on the customer\'s behalf', async () => {
+    const project = await prisma.project.create({
+      data: { name: 'CO Staff Test', customerId: seeded.customer.id, budgetCents: 1000 },
+    });
+    try {
+      const create = await request(app)
+        .post('/api/change-orders')
+        .set('Authorization', `Bearer ${seeded.admin.token}`)
+        .send({ projectId: project.id, title: 'x', amountCents: 100 });
+      const coId = create.body.changeOrder.id;
+      await request(app)
+        .post(`/api/change-orders/${coId}/send`)
+        .set('Authorization', `Bearer ${seeded.admin.token}`);
+
+      const res = await request(app)
+        .post(`/api/change-orders/${coId}/accept`)
+        .set('Authorization', `Bearer ${seeded.sales.token}`)
+        .send({ signatureName: 'Hax' });
+      expect(res.status).toBe(403);
+    } finally {
+      await prisma.changeOrder.deleteMany({ where: { projectId: project.id } });
+      await prisma.invoice.deleteMany({ where: { projectId: project.id } });
+      await prisma.project.delete({ where: { id: project.id } });
+    }
+  });
+});
+
 d('integration · subcontractor scope', () => {
   it('subcontractor sees only projects they have schedules on', async () => {
     const sub = await seedUser({
