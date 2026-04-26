@@ -1,0 +1,652 @@
+import { Router } from 'express';
+import multer from 'multer';
+import { z } from 'zod';
+import { BankAccountKind, Role } from '@prisma/client';
+import { prisma } from '../db.js';
+import { requireAuth } from '../middleware/auth.js';
+import { hasAccountingAccess } from '../lib/permissions.js';
+import { audit } from '../lib/audit.js';
+
+const router = Router();
+router.use(requireAuth);
+
+// All banking surfaces are admin/accounting. Subs + customers + plain
+// employees never see anything in here — it's the company's books.
+async function gateAccounting(req: { user?: { sub: string } }, res: { status: (n: number) => { json: (b: unknown) => unknown } }) {
+  const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+  if (!me || !hasAccountingAccess(me)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return null;
+  }
+  return me;
+}
+
+// ----- Bank accounts -----
+
+const accountSchema = z.object({
+  name: z.string().min(1).max(120),
+  kind: z.nativeEnum(BankAccountKind).optional(),
+  last4: z.string().max(8).nullable().optional(),
+  institutionName: z.string().max(120).nullable().optional(),
+  currentBalanceCents: z.number().int().optional(),
+  isLiability: z.boolean().optional(),
+  active: z.boolean().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+router.get('/accounts', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const accounts = await prisma.bankAccount.findMany({
+      orderBy: [{ active: 'desc' }, { name: 'asc' }],
+      include: { _count: { select: { transactions: true } } },
+    });
+    res.json({ accounts });
+  } catch (err) { next(err); }
+});
+
+router.post('/accounts', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const data = accountSchema.parse(req.body);
+    const account = await prisma.bankAccount.create({
+      data: {
+        name: data.name,
+        kind: data.kind ?? BankAccountKind.CHECKING,
+        last4: data.last4 ?? null,
+        institutionName: data.institutionName ?? null,
+        currentBalanceCents: data.currentBalanceCents ?? 0,
+        isLiability: data.isLiability ?? false,
+        active: data.active ?? true,
+        notes: data.notes ?? null,
+      },
+    });
+    res.status(201).json({ account });
+  } catch (err) { next(err); }
+});
+
+router.patch('/accounts/:id', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const data = accountSchema.partial().parse(req.body);
+    const account = await prisma.bankAccount.update({
+      where: { id: req.params.id },
+      data: {
+        name: data.name,
+        kind: data.kind,
+        last4: data.last4 === null ? null : data.last4,
+        institutionName: data.institutionName === null ? null : data.institutionName,
+        currentBalanceCents: data.currentBalanceCents,
+        isLiability: data.isLiability,
+        active: data.active,
+        notes: data.notes === null ? null : data.notes,
+      },
+    });
+    res.json({ account });
+  } catch (err) { next(err); }
+});
+
+router.delete('/accounts/:id', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    // Soft-delete: archive instead of hard delete so existing transactions
+    // keep their FK. Hard delete cascades to every transaction, which is
+    // almost never what you want.
+    await prisma.bankAccount.update({ where: { id: req.params.id }, data: { active: false } });
+    res.status(204).end();
+  } catch (err) { next(err); }
+});
+
+// ----- Bank transactions -----
+
+const txSchema = z.object({
+  date: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
+  amountCents: z.number().int(),
+  description: z.string().min(1).max(500),
+  runningBalanceCents: z.number().int().nullable().optional(),
+  categoryId: z.string().nullable().optional(),
+  matchedPaymentId: z.string().nullable().optional(),
+  matchedExpenseId: z.string().nullable().optional(),
+  matchedSubBillId: z.string().nullable().optional(),
+  externalId: z.string().nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+  reconciled: z.boolean().optional(),
+});
+
+const txQuery = z.object({
+  accountId: z.string().optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  uncategorized: z.enum(['true', 'false']).optional(),
+  unmatched: z.enum(['true', 'false']).optional(),
+  unreconciled: z.enum(['true', 'false']).optional(),
+  q: z.string().optional(),
+  pageSize: z.coerce.number().int().min(1).max(500).default(100),
+});
+
+router.get('/transactions', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const q = txQuery.parse(req.query);
+    const where: Record<string, unknown> = {};
+    if (q.accountId) where.accountId = q.accountId;
+    if (q.from || q.to) {
+      where.date = {
+        ...(q.from ? { gte: new Date(q.from) } : {}),
+        ...(q.to ? { lte: new Date(q.to) } : {}),
+      };
+    }
+    if (q.uncategorized === 'true') where.categoryId = null;
+    if (q.unmatched === 'true') {
+      where.matchedPaymentId = null;
+      where.matchedExpenseId = null;
+      where.matchedSubBillId = null;
+    }
+    if (q.unreconciled === 'true') where.reconciled = false;
+    if (q.q) where.description = { contains: q.q, mode: 'insensitive' };
+    const transactions = await prisma.bankTransaction.findMany({
+      where,
+      orderBy: { date: 'desc' },
+      take: q.pageSize,
+      include: {
+        account: { select: { id: true, name: true, kind: true } },
+        category: { select: { id: true, name: true } },
+        matchedPayment: { select: { id: true, invoiceId: true, amountCents: true } },
+        matchedExpense: { select: { id: true, description: true, amountCents: true } },
+        matchedSubBill: { select: { id: true, number: true, amountCents: true } },
+      },
+    });
+    res.json({ transactions });
+  } catch (err) { next(err); }
+});
+
+router.post('/transactions', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const body = z.object({ accountId: z.string().min(1) }).extend(txSchema.shape).parse(req.body);
+    const tx = await prisma.bankTransaction.create({
+      data: {
+        accountId: body.accountId,
+        date: new Date(body.date),
+        amountCents: body.amountCents,
+        description: body.description,
+        runningBalanceCents: body.runningBalanceCents ?? null,
+        categoryId: body.categoryId ?? null,
+        matchedPaymentId: body.matchedPaymentId ?? null,
+        matchedExpenseId: body.matchedExpenseId ?? null,
+        matchedSubBillId: body.matchedSubBillId ?? null,
+        externalId: body.externalId ?? null,
+        notes: body.notes ?? null,
+        reconciled: body.reconciled ?? false,
+        reconciledAt: body.reconciled ? new Date() : null,
+      },
+    });
+    res.status(201).json({ transaction: tx });
+  } catch (err) { next(err); }
+});
+
+router.patch('/transactions/:id', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const body = txSchema.partial().parse(req.body);
+    const existing = await prisma.bankTransaction.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: 'Transaction not found' });
+    const reconciledChanged = body.reconciled !== undefined && body.reconciled !== existing.reconciled;
+    const tx = await prisma.bankTransaction.update({
+      where: { id: req.params.id },
+      data: {
+        date: body.date ? new Date(body.date) : undefined,
+        amountCents: body.amountCents,
+        description: body.description,
+        runningBalanceCents: body.runningBalanceCents === null ? null : body.runningBalanceCents,
+        categoryId: body.categoryId === null ? null : body.categoryId,
+        matchedPaymentId: body.matchedPaymentId === null ? null : body.matchedPaymentId,
+        matchedExpenseId: body.matchedExpenseId === null ? null : body.matchedExpenseId,
+        matchedSubBillId: body.matchedSubBillId === null ? null : body.matchedSubBillId,
+        notes: body.notes === null ? null : body.notes,
+        reconciled: body.reconciled,
+        reconciledAt: reconciledChanged ? (body.reconciled ? new Date() : null) : undefined,
+      },
+    });
+    res.json({ transaction: tx });
+  } catch (err) { next(err); }
+});
+
+router.delete('/transactions/:id', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    await prisma.bankTransaction.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (err) { next(err); }
+});
+
+// ----- CSV import -----
+//
+// Most US banks export CSVs that look like:
+//   Date,Description,Amount[,Balance]
+// or
+//   Posting Date,Description,Debit,Credit[,Balance]
+// We sniff both. amountCents is signed: positive = inflow. Returns counts
+// for created / skipped (duplicate by externalId) / categorized (matched a
+// rule). Re-importing the same file is idempotent: rows with the same
+// externalId on the same account are skipped.
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+interface ParsedRow {
+  date: Date;
+  description: string;
+  amountCents: number;
+  balanceCents?: number;
+  externalId?: string;
+}
+
+// Tiny CSV parser tolerant of quoted fields with commas/escapes. Good enough
+// for bank exports — they're well-formed.
+function parseCsv(text: string): string[][] {
+  const lines: string[][] = [];
+  let cur: string[] = [];
+  let field = '';
+  let inQuote = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (inQuote) {
+      if (c === '"' && text[i + 1] === '"') { field += '"'; i += 1; }
+      else if (c === '"') { inQuote = false; }
+      else { field += c; }
+    } else {
+      if (c === '"') inQuote = true;
+      else if (c === ',') { cur.push(field); field = ''; }
+      else if (c === '\n') { cur.push(field); lines.push(cur); cur = []; field = ''; }
+      else if (c === '\r') { /* skip */ }
+      else field += c;
+    }
+  }
+  if (field !== '' || cur.length > 0) { cur.push(field); lines.push(cur); }
+  return lines.filter((r) => r.length > 1 || (r.length === 1 && r[0] !== ''));
+}
+
+function parseAmountCents(raw: string): number {
+  // Strip $, commas, parens (negative). Empty → 0.
+  const s = raw.trim().replace(/^\$/, '').replace(/,/g, '');
+  if (!s) return 0;
+  const isNeg = s.startsWith('(') && s.endsWith(')');
+  const num = Number(isNeg ? s.slice(1, -1) : s);
+  if (!Number.isFinite(num)) return 0;
+  return Math.round((isNeg ? -num : num) * 100);
+}
+
+function parseDateLoose(raw: string): Date | null {
+  // Support YYYY-MM-DD, MM/DD/YYYY, M/D/YY, MM-DD-YYYY.
+  const s = raw.trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return new Date(s);
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if (m) {
+    let y = Number(m[3]);
+    if (y < 100) y += 2000;
+    const mo = Number(m[1]) - 1;
+    const d = Number(m[2]);
+    return new Date(Date.UTC(y, mo, d));
+  }
+  const fallback = new Date(s);
+  return Number.isNaN(fallback.valueOf()) ? null : fallback;
+}
+
+function parseRows(rows: string[][]): { rows: ParsedRow[]; warnings: string[] } {
+  const warnings: string[] = [];
+  if (rows.length < 2) return { rows: [], warnings: ['Empty file'] };
+  const headerRow = rows[0].map((h) => h.trim().toLowerCase());
+  const idx = (names: string[]) => names
+    .map((n) => headerRow.indexOf(n))
+    .find((i) => i !== -1);
+
+  const dateIdx = idx(['date', 'posting date', 'posted date', 'transaction date']);
+  const descIdx = idx(['description', 'memo', 'name', 'details', 'transaction description']);
+  const amountIdx = idx(['amount', 'transaction amount']);
+  const debitIdx = idx(['debit', 'withdrawal']);
+  const creditIdx = idx(['credit', 'deposit']);
+  const balanceIdx = idx(['balance', 'running balance']);
+  const externalIdx = idx(['transaction id', 'reference', 'check number']);
+
+  if (dateIdx === undefined || descIdx === undefined) {
+    return { rows: [], warnings: ['Missing required Date or Description column'] };
+  }
+  if (amountIdx === undefined && (debitIdx === undefined || creditIdx === undefined)) {
+    return { rows: [], warnings: ['Missing Amount or Debit/Credit columns'] };
+  }
+
+  const out: ParsedRow[] = [];
+  for (let i = 1; i < rows.length; i += 1) {
+    const r = rows[i];
+    if (r.length < 2) continue;
+    const date = parseDateLoose(r[dateIdx] ?? '');
+    if (!date) {
+      warnings.push(`Row ${i + 1}: unparseable date "${r[dateIdx]}"`);
+      continue;
+    }
+    const description = (r[descIdx] ?? '').trim();
+    if (!description) continue;
+    let amountCents = 0;
+    if (amountIdx !== undefined) {
+      amountCents = parseAmountCents(r[amountIdx] ?? '');
+    } else {
+      const debit = debitIdx !== undefined ? parseAmountCents(r[debitIdx] ?? '') : 0;
+      const credit = creditIdx !== undefined ? parseAmountCents(r[creditIdx] ?? '') : 0;
+      amountCents = credit - Math.abs(debit); // debit is money out
+    }
+    const balance = balanceIdx !== undefined ? parseAmountCents(r[balanceIdx] ?? '') : undefined;
+    const ext = externalIdx !== undefined ? (r[externalIdx] ?? '').trim() || undefined : undefined;
+    out.push({ date, description, amountCents, balanceCents: balance, externalId: ext });
+  }
+  return { rows: out, warnings };
+}
+
+router.post('/accounts/:id/import', upload.single('file'), async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const account = await prisma.bankAccount.findUnique({ where: { id: req.params.id } });
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+    if (!req.file) return res.status(400).json({ error: 'No CSV file uploaded' });
+
+    const text = req.file.buffer.toString('utf8');
+    const csv = parseCsv(text);
+    const parsed = parseRows(csv);
+    if (parsed.rows.length === 0) {
+      return res.status(400).json({ error: 'No transactions parsed', warnings: parsed.warnings });
+    }
+
+    // Pull every active rule once so we don't N+1 per-row.
+    const rules = await prisma.bankCategorizationRule.findMany({
+      where: { active: true, OR: [{ accountId: null }, { accountId: account.id }] },
+    });
+
+    let created = 0;
+    let skipped = 0;
+    let categorized = 0;
+    for (const row of parsed.rows) {
+      // Dedupe by externalId on this account; if no externalId we dedupe by
+      // (date, amount, description) which catches typical re-imports without
+      // accidentally suppressing two real same-day same-vendor charges
+      // (description usually includes a unique store id).
+      const dupe = await prisma.bankTransaction.findFirst({
+        where: row.externalId
+          ? { accountId: account.id, externalId: row.externalId }
+          : {
+              accountId: account.id,
+              date: row.date,
+              amountCents: row.amountCents,
+              description: row.description,
+            },
+        select: { id: true },
+      });
+      if (dupe) { skipped += 1; continue; }
+
+      const matched = rules.find((r) =>
+        row.description.toLowerCase().includes(r.matchText.toLowerCase()),
+      );
+      await prisma.bankTransaction.create({
+        data: {
+          accountId: account.id,
+          date: row.date,
+          amountCents: row.amountCents,
+          description: row.description,
+          runningBalanceCents: row.balanceCents ?? null,
+          categoryId: matched?.categoryId ?? null,
+          externalId: row.externalId ?? null,
+        },
+      });
+      created += 1;
+      if (matched) categorized += 1;
+    }
+
+    audit(req, {
+      action: 'banking.csv_imported',
+      resourceType: 'bankAccount',
+      resourceId: account.id,
+      meta: { created, skipped, categorized },
+    }).catch(() => undefined);
+
+    res.json({ created, skipped, categorized, warnings: parsed.warnings });
+  } catch (err) { next(err); }
+});
+
+// ----- Categorization rules -----
+
+const ruleSchema = z.object({
+  accountId: z.string().nullable().optional(),
+  matchText: z.string().min(1).max(200),
+  categoryId: z.string().min(1),
+  vendorId: z.string().nullable().optional(),
+  projectId: z.string().nullable().optional(),
+  active: z.boolean().optional(),
+});
+
+router.get('/rules', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const rules = await prisma.bankCategorizationRule.findMany({
+      orderBy: [{ active: 'desc' }, { matchText: 'asc' }],
+      include: {
+        account: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true } },
+        vendor: { select: { id: true, name: true } },
+        project: { select: { id: true, name: true } },
+      },
+    });
+    res.json({ rules });
+  } catch (err) { next(err); }
+});
+
+router.post('/rules', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const data = ruleSchema.parse(req.body);
+    const rule = await prisma.bankCategorizationRule.create({
+      data: {
+        accountId: data.accountId ?? null,
+        matchText: data.matchText,
+        categoryId: data.categoryId,
+        vendorId: data.vendorId ?? null,
+        projectId: data.projectId ?? null,
+        active: data.active ?? true,
+      },
+    });
+    res.status(201).json({ rule });
+  } catch (err) { next(err); }
+});
+
+router.patch('/rules/:id', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const data = ruleSchema.partial().parse(req.body);
+    const rule = await prisma.bankCategorizationRule.update({
+      where: { id: req.params.id },
+      data: {
+        accountId: data.accountId === null ? null : data.accountId,
+        matchText: data.matchText,
+        categoryId: data.categoryId,
+        vendorId: data.vendorId === null ? null : data.vendorId,
+        projectId: data.projectId === null ? null : data.projectId,
+        active: data.active,
+      },
+    });
+    res.json({ rule });
+  } catch (err) { next(err); }
+});
+
+router.delete('/rules/:id', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    await prisma.bankCategorizationRule.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (err) { next(err); }
+});
+
+// Run categorization rules across uncategorized transactions on demand.
+// Useful after adding a new rule retroactively.
+router.post('/rules/_apply', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const rules = await prisma.bankCategorizationRule.findMany({
+      where: { active: true },
+    });
+    const txs = await prisma.bankTransaction.findMany({
+      where: { categoryId: null },
+      select: { id: true, accountId: true, description: true },
+    });
+    let updated = 0;
+    for (const tx of txs) {
+      const matched = rules.find((r) =>
+        (r.accountId == null || r.accountId === tx.accountId)
+        && tx.description.toLowerCase().includes(r.matchText.toLowerCase()),
+      );
+      if (matched) {
+        await prisma.bankTransaction.update({
+          where: { id: tx.id },
+          data: { categoryId: matched.categoryId },
+        });
+        updated += 1;
+      }
+    }
+    res.json({ updated, considered: txs.length });
+  } catch (err) { next(err); }
+});
+
+// ----- Other assets / liabilities -----
+//
+// Flat CRUD for non-cash assets (vehicles, tools) and standalone liabilities
+// (long-term loans). Both feed the balance-sheet rollup. Admin edits values
+// directly — no depreciation engine.
+
+const assetSchema = z.object({
+  name: z.string().min(1).max(160),
+  category: z.string().max(80).nullable().optional(),
+  currentValueCents: z.number().int().nonnegative().optional(),
+  acquiredAt: z.string().datetime().nullable().optional(),
+  acquisitionCostCents: z.number().int().nonnegative().nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+  archived: z.boolean().optional(),
+});
+
+router.get('/assets', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const assets = await prisma.otherAsset.findMany({
+      orderBy: [{ archived: 'asc' }, { name: 'asc' }],
+    });
+    res.json({ assets });
+  } catch (err) { next(err); }
+});
+
+router.post('/assets', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const data = assetSchema.parse(req.body);
+    const asset = await prisma.otherAsset.create({
+      data: {
+        name: data.name,
+        category: data.category ?? null,
+        currentValueCents: data.currentValueCents ?? 0,
+        acquiredAt: data.acquiredAt ? new Date(data.acquiredAt) : null,
+        acquisitionCostCents: data.acquisitionCostCents ?? null,
+        notes: data.notes ?? null,
+        archived: data.archived ?? false,
+      },
+    });
+    res.status(201).json({ asset });
+  } catch (err) { next(err); }
+});
+
+router.patch('/assets/:id', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const data = assetSchema.partial().parse(req.body);
+    const asset = await prisma.otherAsset.update({
+      where: { id: req.params.id },
+      data: {
+        name: data.name,
+        category: data.category === null ? null : data.category,
+        currentValueCents: data.currentValueCents,
+        acquiredAt: data.acquiredAt === null ? null : data.acquiredAt ? new Date(data.acquiredAt) : undefined,
+        acquisitionCostCents: data.acquisitionCostCents === null ? null : data.acquisitionCostCents,
+        notes: data.notes === null ? null : data.notes,
+        archived: data.archived,
+      },
+    });
+    res.json({ asset });
+  } catch (err) { next(err); }
+});
+
+router.delete('/assets/:id', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    await prisma.otherAsset.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (err) { next(err); }
+});
+
+const liabilitySchema = z.object({
+  name: z.string().min(1).max(160),
+  category: z.string().max(80).nullable().optional(),
+  currentBalanceCents: z.number().int().nonnegative().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+  archived: z.boolean().optional(),
+});
+
+router.get('/liabilities', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const liabilities = await prisma.otherLiability.findMany({
+      orderBy: [{ archived: 'asc' }, { name: 'asc' }],
+    });
+    res.json({ liabilities });
+  } catch (err) { next(err); }
+});
+
+router.post('/liabilities', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const data = liabilitySchema.parse(req.body);
+    const liability = await prisma.otherLiability.create({
+      data: {
+        name: data.name,
+        category: data.category ?? null,
+        currentBalanceCents: data.currentBalanceCents ?? 0,
+        notes: data.notes ?? null,
+        archived: data.archived ?? false,
+      },
+    });
+    res.status(201).json({ liability });
+  } catch (err) { next(err); }
+});
+
+router.patch('/liabilities/:id', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const data = liabilitySchema.partial().parse(req.body);
+    const liability = await prisma.otherLiability.update({
+      where: { id: req.params.id },
+      data: {
+        name: data.name,
+        category: data.category === null ? null : data.category,
+        currentBalanceCents: data.currentBalanceCents,
+        notes: data.notes === null ? null : data.notes,
+        archived: data.archived,
+      },
+    });
+    res.json({ liability });
+  } catch (err) { next(err); }
+});
+
+router.delete('/liabilities/:id', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    await prisma.otherLiability.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  } catch (err) { next(err); }
+});
+
+export default router;

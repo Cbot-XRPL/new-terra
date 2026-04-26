@@ -40,6 +40,9 @@ import ProjectTimelinePage from './pages/portal/ProjectTimelinePage';
 import RecurringInvoicesPage from './pages/portal/RecurringInvoicesPage';
 import SubcontractorBillsPage from './pages/portal/SubcontractorBillsPage';
 import ProfitabilityPage from './pages/portal/ProfitabilityPage';
+import BankingPage from './pages/portal/BankingPage';
+import BankRulesPage from './pages/portal/BankRulesPage';
+import AssetsLiabilitiesPage from './pages/portal/AssetsLiabilitiesPage';
 import CalculatorsPage from './pages/portal/CalculatorsPage';
 import CatalogPage from './pages/portal/CatalogPage';
 import TimePage from './pages/portal/TimePage';
@@ -130,6 +133,30 @@ export default function App() {
           element={
             <RequireAuth accountingAccess>
               <ProfitabilityPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="banking"
+          element={
+            <RequireAuth accountingAccess>
+              <BankingPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="banking/rules"
+          element={
+            <RequireAuth accountingAccess>
+              <BankRulesPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="banking/assets"
+          element={
+            <RequireAuth accountingAccess>
+              <AssetsLiabilitiesPage />
             </RequireAuth>
           }
         />

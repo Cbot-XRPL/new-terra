@@ -257,6 +257,7 @@ model Project {
   changeOrders       ChangeOrder[]
   recurringInvoices  RecurringInvoice[]
   subcontractorBills SubcontractorBill[]
+  bankRules          BankCategorizationRule[]
 
   @@index([projectManagerId])
 }
@@ -333,6 +334,10 @@ model Payment {
   recordedById    String?
   recordedBy      User?         @relation("RecordedPayments", fields: [recordedById], references: [id])
   createdAt       DateTime      @default(now())
+
+  // Optional bank-transaction backlink — set when admin matches the bank
+  // line to this payment so the P&L doesn't double-count the deposit.
+  bankTransactions BankTransaction[]
 
   @@index([invoiceId])
   @@index([referenceNumber])
@@ -488,6 +493,7 @@ model SubcontractorBill {
   expenseId       String?                 @unique
   expense         Expense?                @relation("SubBillExpense", fields: [expenseId], references: [id])
   attachments     SubcontractorBillAttachment[]
+  bankTransactions BankTransaction[]
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
 
@@ -528,6 +534,167 @@ enum RecurringFrequency {
   MONTHLY
   QUARTERLY
   YEARLY
+}
+
+// A bank account, credit card, cash drawer, or any other place money sits.
+// Used for both balance-sheet asset rollup and bank-transaction tracking.
+// kind drives whether the balance shows as an asset or a liability:
+//   CHECKING / SAVINGS / CASH = asset (positive balance is good)
+//   CREDIT_CARD / LINE_OF_CREDIT = liability (positive balance = we owe)
+//   LOAN = liability
+//   OTHER = asset by default; admin can flip with isLiability.
+//
+// currentBalanceCents is the admin-edited "as of today" balance — used by
+// the balance sheet and updated when bank transactions are imported. We
+// don't recompute from transactions because partial history (CSV doesn't
+// usually go back to account opening) would always under-count.
+model BankAccount {
+  id                  String   @id @default(cuid())
+  name                String
+  kind                BankAccountKind @default(CHECKING)
+  // Last 4 of the account number — purely cosmetic so the dropdown reads as
+  // 'Chase Checking ··1234' instead of 'Chase Checking'.
+  last4               String?
+  institutionName     String?
+  // Cents in the account today. For credit cards / loans this is the
+  // amount owed (positive = liability balance).
+  currentBalanceCents Int      @default(0)
+  // Override the default asset/liability classification. When true the
+  // account is rolled up under Liabilities even if its kind is normally
+  // an asset (e.g. a 'Cash' kind that's actually a tenant escrow).
+  isLiability         Boolean  @default(false)
+  active              Boolean  @default(true)
+  notes               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  transactions        BankTransaction[]
+  rules               BankCategorizationRule[]
+}
+
+enum BankAccountKind {
+  CHECKING
+  SAVINGS
+  CASH
+  CREDIT_CARD
+  LINE_OF_CREDIT
+  LOAN
+  OTHER
+}
+
+// One row per bank-statement line. Imported via CSV or entered manually;
+// admin can edit any field after the fact (matching how QB lets you mutate
+// transaction data freely). amountCents is signed: positive = money in,
+// negative = money out.
+//
+// matchedExpenseId / matchedPaymentId / matchedSubBillId tie the bank
+// transaction to an existing record so the P&L doesn't double-count. When
+// none are set the row's category drives the P&L bucket directly.
+model BankTransaction {
+  id              String   @id @default(cuid())
+  accountId       String
+  account         BankAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  date            DateTime
+  // The signed cents amount. Positive = inflow (deposit / credit), negative
+  // = outflow (debit / charge). Matches the convention most US bank exports
+  // already follow.
+  amountCents     Int
+  description     String   // free text from the statement memo
+  // Optional explicit running balance from the statement at this row's date.
+  // Useful for reconciliation but not required.
+  runningBalanceCents Int?
+  // Free-text category (matches our Expense category model). Auto-set by
+  // categorization rules on import; admin can override.
+  categoryId      String?
+  category        ExpenseCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  // Manual reconciliation marker — flipped when admin confirms the line
+  // matches the statement. Independent of matched* below (a row can be
+  // reconciled without being tied to a portal record, e.g. a bank fee).
+  reconciled      Boolean  @default(false)
+  reconciledAt    DateTime?
+  // At most one of these three is non-null (we don't enforce that at the DB
+  // level — admin overrides should be cheap). When set, the transaction is
+  // already represented by the matched record so the P&L uses the matched
+  // record's classification, not the transaction's category.
+  matchedPaymentId   String?
+  matchedPayment     Payment?           @relation(fields: [matchedPaymentId], references: [id], onDelete: SetNull)
+  matchedExpenseId   String?
+  matchedExpense     Expense?           @relation(fields: [matchedExpenseId], references: [id], onDelete: SetNull)
+  matchedSubBillId   String?
+  matchedSubBill     SubcontractorBill? @relation(fields: [matchedSubBillId], references: [id], onDelete: SetNull)
+  // External id from the bank export — used for dedupe so re-importing
+  // the same CSV doesn't duplicate rows. Optional because some exports
+  // don't include one.
+  externalId      String?
+  notes           String?
+  createdAt       DateTime @default(now())
+
+  @@index([accountId, date])
+  @@index([accountId, externalId])
+  @@index([categoryId])
+}
+
+// Auto-categorization rule applied at CSV import time. matches descriptions
+// case-insensitively (substring match keeps it simple — most bank memos are
+// uppercase, predictable, and verbose enough that 'HOME DEPOT' will catch
+// 'PURCHASE - HOME DEPOT #1234 ANYTOWN'). When accountId is null the rule
+// applies to every account; otherwise scoped.
+model BankCategorizationRule {
+  id          String   @id @default(cuid())
+  accountId   String?
+  account     BankAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  // Substring matched against transaction description (case-insensitive).
+  matchText   String
+  categoryId  String
+  category    ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  // Optional vendor + project pre-fills so a 'HOME DEPOT' rule can also
+  // tag the row with a vendor row admin already maintains.
+  vendorId    String?
+  vendor      Vendor?  @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([categoryId])
+}
+
+// Owned non-cash assets — vehicles, tools, equipment, real estate. Kept
+// dead-simple: a name, an acquisition cost (or current value override),
+// optional acquired date. No depreciation engine — admin fills in the
+// current value when it changes (matching the user's stated workflow of
+// editing data manually rather than relying on accounting automation).
+//
+// All non-archived rows roll up to the balance sheet's Assets section.
+model OtherAsset {
+  id              String   @id @default(cuid())
+  name            String
+  category        String?  // free-text: Vehicle, Tools, Real estate, etc.
+  // The current book value used by the balance sheet. Admin sets this
+  // directly — no depreciation calc.
+  currentValueCents Int    @default(0)
+  acquiredAt      DateTime?
+  acquisitionCostCents Int?
+  notes           String?
+  archived        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Standalone liabilities not represented by a BankAccount (long-term
+// loans the company owes, vendor payables in aggregate, etc.). Same flat
+// shape as OtherAsset.
+model OtherLiability {
+  id              String   @id @default(cuid())
+  name            String
+  category        String?  // free-text: Loan, Equipment lease, Tax payable, etc.
+  currentBalanceCents Int  @default(0)
+  notes           String?
+  archived        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 enum PaymentMethod {
@@ -823,6 +990,7 @@ model Vendor {
 
   expenses    Expense[]
   products    Product[]
+  bankRules   BankCategorizationRule[]
 
   @@index([name])
 }
@@ -844,6 +1012,8 @@ model ExpenseCategory {
 
   expenses    Expense[]
   budgetLines ProjectBudgetLine[]
+  bankTransactions BankTransaction[]
+  bankRules   BankCategorizationRule[]
 
   @@index([parentId])
 }
@@ -891,6 +1061,7 @@ model Expense {
   // Optional back-link populated when the expense was auto-created from
   // a SubcontractorBill being marked PAID.
   subcontractorBill SubcontractorBill? @relation("SubBillExpense")
+  bankTransactions BankTransaction[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

@@ -83,6 +83,10 @@ export default function PortalLayout() {
             (user?.role === 'EMPLOYEE' && (user.isAccounting || user.isProjectManager))) && (
             <NavLink to="/portal/finance">Finance</NavLink>
           )}
+          {(user?.role === 'ADMIN' ||
+            (user?.role === 'EMPLOYEE' && user.isAccounting)) && (
+            <NavLink to="/portal/banking">Banking</NavLink>
+          )}
           {(user?.role === 'ADMIN'
             || (user?.role === 'EMPLOYEE' && user.isAccounting)
             || user?.role === 'SUBCONTRACTOR') && (
