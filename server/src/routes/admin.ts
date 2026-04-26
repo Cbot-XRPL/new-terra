@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { generateInviteToken } from '../lib/auth.js';
 import { sendInviteEmail } from '../lib/mailer.js';
 import { env } from '../env.js';
+import { audit } from '../lib/audit.js';
 
 const router = Router();
 
@@ -121,6 +122,10 @@ router.patch('/users/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     const data = updateUserSchema.parse(req.body);
+    const before = await prisma.user.findUnique({
+      where: { id },
+      select: { isActive: true, role: true, isSales: true, isProjectManager: true, isAccounting: true },
+    });
     const updated = await prisma.user.update({
       where: { id },
       data,
@@ -135,7 +140,58 @@ router.patch('/users/:id', async (req, res, next) => {
         isAccounting: true,
       },
     });
+    // Record only the fields that actually changed so the audit trail stays
+    // signal-heavy — granting/revoking capabilities is the interesting part.
+    if (before) {
+      const changes: Record<string, { from: unknown; to: unknown }> = {};
+      for (const key of ['isActive', 'role', 'isSales', 'isProjectManager', 'isAccounting'] as const) {
+        if (before[key] !== updated[key]) {
+          changes[key] = { from: before[key], to: updated[key] };
+        }
+      }
+      if (Object.keys(changes).length > 0) {
+        audit(req, {
+          action: 'admin.user_updated',
+          resourceType: 'user',
+          resourceId: id,
+          meta: { changes },
+        }).catch(() => undefined);
+      }
+    }
     res.json({ user: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Audit log read — admin only. Paginated, filterable by action prefix +
+// resource type + actor.
+const auditQuery = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(50),
+  action: z.string().optional(),
+  actorId: z.string().optional(),
+  resourceType: z.string().optional(),
+});
+
+router.get('/audit', async (req, res, next) => {
+  try {
+    const q = auditQuery.parse(req.query);
+    const where: Record<string, unknown> = {};
+    if (q.action) where.action = { startsWith: q.action };
+    if (q.actorId) where.actorId = q.actorId;
+    if (q.resourceType) where.resourceType = q.resourceType;
+    const [events, total] = await Promise.all([
+      prisma.auditEvent.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (q.page - 1) * q.pageSize,
+        take: q.pageSize,
+        include: { actor: { select: { id: true, name: true, email: true } } },
+      }),
+      prisma.auditEvent.count({ where }),
+    ]);
+    res.json({ events, total, page: q.page, pageSize: q.pageSize });
   } catch (err) {
     next(err);
   }

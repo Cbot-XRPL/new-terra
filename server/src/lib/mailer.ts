@@ -103,6 +103,23 @@ export async function sendContractReminderEmail(input: {
   await transporter.sendMail({ to: input.to, from: env.smtp.from, subject, text });
 }
 
+export async function sendPasswordResetEmail(input: {
+  to: string;
+  name: string;
+  resetUrl: string;
+  ttlMinutes: number;
+}) {
+  const subject = 'Reset your New Terra Construction password';
+  const text = `Hi ${input.name},\n\nWe received a request to reset your password. If this was you, click the link below within ${input.ttlMinutes} minutes:\n\n${input.resetUrl}\n\nIf you did not request this, you can safely ignore this email — your password is unchanged.\n\n— New Terra Construction`;
+
+  if (!transporter) {
+    console.log('[mailer:dev] Password reset link to', input.to);
+    console.log('[mailer:dev]', input.resetUrl);
+    return;
+  }
+  await transporter.sendMail({ to: input.to, from: env.smtp.from, subject, text });
+}
+
 export async function sendInquiryEmail(input: {
   name: string;
   email: string;

@@ -161,6 +161,10 @@ model User {
   // QuickBooks connections this user authorised (audit only — connection
   // can survive the user's deletion via SetNull).
   qbConnectionsConnected QbConnection[] @relation("QbConnectionsConnected")
+
+  // Auth + audit
+  passwordResets    PasswordResetToken[] @relation("PasswordResets")
+  auditEventsActed  AuditEvent[]         @relation("AuditActor")
 }
 
 model Invitation {
@@ -584,4 +588,47 @@ model QbConnection {
   lastError           String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+}
+
+// Single-use password reset token. Mirrors Invitation: only the SHA-256
+// hash is stored, the raw value lives in the email link. Expires in 1h
+// (much shorter than invites; resets are higher-risk).
+model PasswordResetToken {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation("PasswordResets", fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash   String   @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Audit event — append-only log of sensitive writes. We never delete from
+// this table from the app; rotate on the DB side once it gets large.
+model AuditEvent {
+  id          String   @id @default(cuid())
+  // Caller info — actorId is optional so we can record events that happen
+  // without an authenticated session (e.g. password reset request).
+  actorId     String?
+  actor       User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actorRole   String?
+  // What happened. Free-text but encouraged: "user.role_changed",
+  // "contract.voided", "expense.deleted", "qb.disconnected", etc.
+  action      String
+  // Resource pointer for filtering. resourceType + resourceId are nullable
+  // so non-resource events (e.g. login_failed) still record.
+  resourceType String?
+  resourceId   String?
+  // Free-form payload (request IP, before/after diff, message). Kept as
+  // JSON so we don't have to migrate every time we record a new field.
+  meta        Json?
+  ip          String?
+  createdAt   DateTime @default(now())
+
+  @@index([action])
+  @@index([resourceType, resourceId])
+  @@index([actorId])
+  @@index([createdAt])
 }

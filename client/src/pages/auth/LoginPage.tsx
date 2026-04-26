@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
 import { ApiError } from '../../lib/api';
 
@@ -56,6 +56,9 @@ export default function LoginPage() {
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+        <p className="muted" style={{ marginTop: '1rem' }}>
+          <Link to="/forgot-password">Forgot your password?</Link>
+        </p>
       </div>
     </section>
   );

@@ -8,6 +8,7 @@ import { sendContractDecidedEmail, sendContractInviteEmail } from '../lib/mailer
 import { remindStaleContracts } from '../lib/reminders.js';
 import { createEnvelopeForContract, isDocuSignConfigured } from '../lib/docusign.js';
 import { ContractDelivery } from '@prisma/client';
+import { audit } from '../lib/audit.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -244,6 +245,12 @@ router.patch('/:id', async (req, res, next) => {
           where: { id: contract.id },
           data: { status: ContractStatus.VOID },
         });
+        audit(req, {
+          action: 'contract.voided',
+          resourceType: 'contract',
+          resourceId: contract.id,
+          meta: { previousStatus: contract.status },
+        }).catch(() => undefined);
         return res.json({ contract: voided });
       }
       return res.status(409).json({ error: 'Cannot edit a sent contract' });

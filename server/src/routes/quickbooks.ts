@@ -14,6 +14,7 @@ import {
   pushVendor,
 } from '../lib/quickbooks.js';
 import { env } from '../env.js';
+import { audit } from '../lib/audit.js';
 
 const router = Router();
 
@@ -111,6 +112,14 @@ router.get(
         realmId,
         connectedById: me.id,
       });
+      audit(null, {
+        actorId: me.id,
+        actorRole: me.role,
+        action: 'qb.connected',
+        resourceType: 'qb_connection',
+        resourceId: connection.id,
+        meta: { realmId: connection.realmId },
+      }).catch(() => undefined);
       // Send the user back into the app rather than leaving them on a JSON
       // blob from /callback. APP_URL is the same value we use for invite URLs.
       res.redirect(`${env.appUrl}/portal/finance/qb?connected=${connection.realmId}`);
@@ -127,6 +136,7 @@ router.post('/disconnect', async (req, res, next) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
     await prisma.qbConnection.deleteMany({});
+    audit(req, { action: 'qb.disconnected' }).catch(() => undefined);
     res.json({ ok: true });
   } catch (err) {
     next(err);

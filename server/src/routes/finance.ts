@@ -11,6 +11,7 @@ import {
   canSubmitExpense,
   hasAccountingAccess,
 } from '../lib/permissions.js';
+import { audit } from '../lib/audit.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -585,6 +586,17 @@ router.delete('/expenses/:id', async (req, res, next) => {
       const dir = path.join(RECEIPTS_ROOT, existing.id);
       await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
     }
+    audit(req, {
+      action: 'expense.deleted',
+      resourceType: 'expense',
+      resourceId: existing.id,
+      meta: {
+        amountCents: existing.amountCents,
+        vendorId: existing.vendorId,
+        projectId: existing.projectId,
+        syncStatus: existing.syncStatus,
+      },
+    }).catch(() => undefined);
     res.status(204).end();
   } catch (err) {
     next(err);

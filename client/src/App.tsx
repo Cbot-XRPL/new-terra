@@ -7,6 +7,8 @@ import HomePage from './pages/public/HomePage';
 import ContactPage from './pages/public/ContactPage';
 import LoginPage from './pages/auth/LoginPage';
 import AcceptInvitePage from './pages/auth/AcceptInvitePage';
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
+import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 import CustomerDashboard from './pages/portal/CustomerDashboard';
 import StaffDashboard from './pages/portal/StaffDashboard';
 import AdminDashboard from './pages/portal/AdminDashboard';
@@ -46,6 +48,8 @@ export default function App() {
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/accept-invite" element={<AcceptInvitePage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
       </Route>
 
       <Route

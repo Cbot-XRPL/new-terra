@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import morgan from 'morgan';
 import path from 'node:path';
 import cron from 'node-cron';
@@ -35,6 +36,19 @@ const app = express();
 // rate limiter and any future logging see the real client IP rather than the
 // proxy's. Local dev runs without a proxy so trust stays off.
 if (env.nodeEnv === 'production') app.set('trust proxy', 1);
+
+// Security headers. The default helmet config gives HSTS, X-Frame-Options,
+// X-Content-Type-Options, Referrer-Policy, and a sensible Permissions-Policy.
+// We disable CSP because we serve cross-origin images (DocuSign tabs) and
+// inline styles inside the SPA; tighten this once the asset story is locked.
+// crossOriginResourcePolicy is set to cross-origin so the SPA on a separate
+// origin (Vite dev) can pull /uploads/... images.
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  }),
+);
 
 app.use(cors({ origin: env.appUrl, credentials: true }));
 
