@@ -38,6 +38,8 @@ const updateInvoiceSchema = z.object({
   lineItems: z.array(lineItemSchema).optional(),
   paidAt: z.string().datetime().nullable().optional(),
   paymentUrl: z.string().url().nullable().optional(),
+  requiresAcknowledgment: z.boolean().optional(),
+  milestoneLabel: z.string().max(200).nullable().optional(),
 });
 
 async function nextInvoiceNumber(): Promise<string> {
@@ -168,6 +170,8 @@ router.patch('/:id', requireRole(Role.ADMIN), async (req, res, next) => {
         lineItems: data.lineItems ?? undefined,
         paymentUrl: data.paymentUrl === null ? null : data.paymentUrl,
         paidAt: paidAt as Date | null | undefined,
+        requiresAcknowledgment: data.requiresAcknowledgment,
+        milestoneLabel: data.milestoneLabel === null ? null : data.milestoneLabel,
       },
       include: {
         customer: { select: { id: true, name: true, email: true } },
@@ -358,6 +362,55 @@ router.delete('/:id/payments/:paymentId', async (req, res, next) => {
   }
 });
 
+// Customer acknowledges a milestone on an invoice that requires sign-off
+// (typed name + IP capture). Once acknowledged, the front-end stops gating
+// the "Pay now" / payment instructions panel for this invoice.
+const ackSchema = z.object({ signatureName: z.string().min(1).max(160) });
+router.post('/:id/acknowledge', async (req, res, next) => {
+  try {
+    const { sub, role } = req.user!;
+    if (role !== Role.CUSTOMER) {
+      return res.status(403).json({ error: 'Only the customer can acknowledge a milestone' });
+    }
+    const data = ackSchema.parse(req.body);
+    const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    if (invoice.customerId !== sub) return res.status(404).json({ error: 'Invoice not found' });
+    if (!invoice.requiresAcknowledgment) {
+      return res.status(409).json({ error: 'This invoice does not require acknowledgment' });
+    }
+    if (invoice.acknowledgedAt) {
+      return res.status(409).json({ error: 'Already acknowledged' });
+    }
+    const ip = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0].trim()
+      ?? req.socket.remoteAddress
+      ?? null;
+    const updated = await prisma.invoice.update({
+      where: { id: invoice.id },
+      data: {
+        acknowledgedAt: new Date(),
+        acknowledgedName: data.signatureName,
+        acknowledgedIp: ip,
+      },
+    });
+    audit(req, {
+      action: 'invoice.acknowledged',
+      resourceType: 'invoice',
+      resourceId: invoice.id,
+      meta: { signatureName: data.signatureName, milestoneLabel: invoice.milestoneLabel },
+    }).catch(() => undefined);
+    res.json({
+      invoice: {
+        id: updated.id,
+        acknowledgedAt: updated.acknowledgedAt,
+        acknowledgedName: updated.acknowledgedName,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Surface the available methods for the client dropdown so we don't fork the
 // list across the codebase.
 router.get('/_meta/payment-methods', (_req, res) => {
@@ -499,6 +552,12 @@ router.post('/_admin/draw-schedule/:projectId', requireRole(Role.ADMIN), async (
           status: InvoiceStatus.DRAFT,
           dueAt: dueAt ?? undefined,
           notes: `${draw.label} (draw ${i + 1} of ${body.draws.length} — ${draw.percent}% of contract)`,
+          // Draws gate "Pay now" behind a customer signoff so they can't pay
+          // (and later say they didn't agree the milestone was complete).
+          // The deposit (i=0) doesn't require ack — it's signed by virtue
+          // of the contract itself.
+          requiresAcknowledgment: i > 0,
+          milestoneLabel: i > 0 ? draw.label : null,
         },
       });
       created.push({ id: inv.id, number: inv.number, amountCents: inv.amountCents });

@@ -281,6 +281,17 @@ model Invoice {
   // Set by the reminder cron after each successful nudge — used to keep one
   // invoice from getting emailed every day. Null means never reminded.
   lastReminderAt DateTime?
+  // When true, the customer must acknowledge the milestone (typed name
+  // signature) before any payment "Pay now" affordances appear. Used for
+  // progress-billing draws so the customer can't pay (and then later say
+  // they didn't agree the work was complete). Free-text milestoneLabel is
+  // surfaced to the customer above the signature box. Null acknowledgedAt
+  // means "not yet signed".
+  requiresAcknowledgment Boolean   @default(false)
+  milestoneLabel         String?
+  acknowledgedAt         DateTime?
+  acknowledgedName       String?
+  acknowledgedIp         String?
   payments    Payment[]
   // Back-link populated when an invoice was auto-issued from an accepted
   // change order. Null for ordinary invoices.

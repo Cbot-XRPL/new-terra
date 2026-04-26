@@ -20,6 +20,13 @@ interface InvoiceDetail {
   paidCents: number;
   balanceCents: number;
   status: string;
+  // Milestone acknowledgment fields. When requiresAcknowledgment is true
+  // and acknowledgedAt is null, the customer must sign before payment
+  // instructions are revealed.
+  requiresAcknowledgment: boolean;
+  milestoneLabel: string | null;
+  acknowledgedAt: string | null;
+  acknowledgedName: string | null;
   payments: Payment[];
 }
 
@@ -215,7 +222,17 @@ export default function PaymentsPanel({ invoiceId, onChange }: Props) {
         </div>
       </div>
 
-      {invoice.balanceCents > 0 && invoice.status !== 'VOID' && (
+      {invoice.requiresAcknowledgment && (
+        <MilestoneAcknowledgment
+          invoice={invoice}
+          isCustomer={user?.role === 'CUSTOMER'}
+          onSigned={() => { load(); onChange?.(); }}
+        />
+      )}
+
+      {invoice.balanceCents > 0
+        && invoice.status !== 'VOID'
+        && (!invoice.requiresAcknowledgment || invoice.acknowledgedAt) && (
         <PaymentInstructions />
       )}
 
@@ -378,6 +395,94 @@ export default function PaymentsPanel({ invoiceId, onChange }: Props) {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// Pay-now gate: when an invoice requires acknowledgment, the customer must
+// sign first. Staff just see a status badge — they don't sign on the
+// customer's behalf. Once signed, this collapses into a small confirmation.
+function MilestoneAcknowledgment({
+  invoice,
+  isCustomer,
+  onSigned,
+}: {
+  invoice: InvoiceDetail;
+  isCustomer: boolean;
+  onSigned: () => void;
+}) {
+  const [signatureName, setSignatureName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  if (invoice.acknowledgedAt) {
+    return (
+      <div className="payment-instructions" style={{ borderColor: 'rgba(15,157,88,0.4)' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <span className="badge badge-paid">milestone acknowledged</span>
+          <span className="muted">
+            Signed by <strong>{invoice.acknowledgedName}</strong> on {new Date(invoice.acknowledgedAt).toLocaleString()}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isCustomer) {
+    return (
+      <div className="payment-instructions">
+        <h3 style={{ marginTop: 0 }}>Awaiting customer acknowledgment</h3>
+        <p className="muted" style={{ marginBottom: 0 }}>
+          {invoice.milestoneLabel
+            ? <>Milestone: <strong>{invoice.milestoneLabel}</strong>. </>
+            : null}
+          The customer must sign this draw before payment options appear on their side.
+        </p>
+      </div>
+    );
+  }
+
+  async function sign() {
+    if (!signatureName.trim()) {
+      setErr('Type your full name as signature');
+      return;
+    }
+    setSubmitting(true);
+    setErr(null);
+    try {
+      await api(`/api/invoices/${invoice.id}/acknowledge`, {
+        method: 'POST',
+        body: JSON.stringify({ signatureName: signatureName.trim() }),
+      });
+      onSigned();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Could not sign');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="payment-instructions" style={{ borderColor: 'rgba(249,171,0,0.4)' }}>
+      <h3 style={{ marginTop: 0 }}>Acknowledge milestone before paying</h3>
+      <p>
+        Please confirm that the milestone
+        {invoice.milestoneLabel ? <> &mdash; <strong>{invoice.milestoneLabel}</strong></> : null}
+        {' '}has been completed to your satisfaction. Payment options will appear once
+        you sign below.
+      </p>
+      {err && <div className="form-error">{err}</div>}
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          value={signatureName}
+          onChange={(e) => setSignatureName(e.target.value)}
+          placeholder="Type your full name"
+          style={{ minWidth: 240 }}
+        />
+        <button type="button" onClick={sign} disabled={submitting}>
+          {submitting ? 'Signing…' : 'Sign & continue to payment'}
+        </button>
+      </div>
     </div>
   );
 }

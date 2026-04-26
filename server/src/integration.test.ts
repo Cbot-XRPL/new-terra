@@ -407,6 +407,66 @@ d('integration · payments ledger', () => {
   });
 });
 
+d('integration · milestone acknowledgment', () => {
+  it('only the customer can acknowledge, and only once', async () => {
+    const invoice = await prisma.invoice.create({
+      data: {
+        number: `IT-ACK-${Date.now()}`,
+        customerId: seeded.customer.id,
+        amountCents: 5_000,
+        status: 'SENT',
+        requiresAcknowledgment: true,
+        milestoneLabel: 'Test milestone',
+      },
+    });
+    try {
+      // Staff blocked.
+      const denied = await request(app)
+        .post(`/api/invoices/${invoice.id}/acknowledge`)
+        .set('Authorization', `Bearer ${seeded.admin.token}`)
+        .send({ signatureName: 'Hax' });
+      expect(denied.status).toBe(403);
+
+      // Customer signs.
+      const signed = await request(app)
+        .post(`/api/invoices/${invoice.id}/acknowledge`)
+        .set('Authorization', `Bearer ${seeded.customer.token}`)
+        .send({ signatureName: 'Test Cust' });
+      expect(signed.status).toBe(200);
+      expect(signed.body.invoice.acknowledgedName).toBe('Test Cust');
+
+      // Second sign blocked.
+      const dup = await request(app)
+        .post(`/api/invoices/${invoice.id}/acknowledge`)
+        .set('Authorization', `Bearer ${seeded.customer.token}`)
+        .send({ signatureName: 'Test Cust' });
+      expect(dup.status).toBe(409);
+    } finally {
+      await prisma.invoice.delete({ where: { id: invoice.id } });
+    }
+  });
+
+  it('rejects ack on an invoice that does not require it', async () => {
+    const invoice = await prisma.invoice.create({
+      data: {
+        number: `IT-ACK2-${Date.now()}`,
+        customerId: seeded.customer.id,
+        amountCents: 5_000,
+        status: 'SENT',
+      },
+    });
+    try {
+      const res = await request(app)
+        .post(`/api/invoices/${invoice.id}/acknowledge`)
+        .set('Authorization', `Bearer ${seeded.customer.token}`)
+        .send({ signatureName: 'Cust' });
+      expect(res.status).toBe(409);
+    } finally {
+      await prisma.invoice.delete({ where: { id: invoice.id } });
+    }
+  });
+});
+
 d('integration · change orders', () => {
   it('admin creates → sends → customer accepts → invoice auto-issued', async () => {
     const project = await prisma.project.create({
