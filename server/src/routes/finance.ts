@@ -307,6 +307,111 @@ router.get('/expenses', async (req, res, next) => {
 
 // Aggregate dashboard for the finance landing page. Cheap, single round-trip,
 // scoped per role the same way the list endpoint is.
+// Per-project profitability rollup. Cash basis: revenue = sum of payments
+// received against the project's invoices; cost = sum of expenses tagged
+// to the project + labor cost from closed time entries. Margin =
+// revenue − cost; pct rounds to one decimal. Open / planning projects
+// with $0 collected return marginPct=null so the UI shows '—' instead of
+// nonsensical '-100%'.
+router.get('/profitability', async (req, res, next) => {
+  try {
+    const me = await loadMe(req.user!.sub);
+    if (!me || !hasAccountingAccess(me)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const projects = await prisma.project.findMany({
+      where: { archivedAt: null },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        customer: { select: { id: true, name: true } },
+        invoices: {
+          where: { status: { not: 'VOID' } },
+          select: {
+            amountCents: true,
+            payments: { select: { amountCents: true } },
+          },
+        },
+        expenses: { select: { amountCents: true } },
+        timeEntries: {
+          where: { endedAt: { not: null } },
+          select: { minutes: true, hourlyRateCents: true },
+        },
+      },
+    });
+
+    interface Row {
+      projectId: string;
+      name: string;
+      customer: string;
+      status: string;
+      invoicedCents: number;
+      collectedCents: number;
+      expenseCents: number;
+      laborCents: number;
+      costCents: number;
+      marginCents: number;
+      marginPct: number | null;
+    }
+    const rows: Row[] = projects.map((p) => {
+      const invoiced = p.invoices.reduce((s, inv) => s + inv.amountCents, 0);
+      const collected = p.invoices.reduce(
+        (s, inv) => s + inv.payments.reduce((q, x) => q + x.amountCents, 0),
+        0,
+      );
+      const expense = p.expenses.reduce((s, e) => s + e.amountCents, 0);
+      const labor = p.timeEntries.reduce(
+        (s, t) => s + Math.round((t.minutes / 60) * t.hourlyRateCents),
+        0,
+      );
+      const cost = expense + labor;
+      const margin = collected - cost;
+      const marginPct = collected > 0
+        ? Math.round((margin / collected) * 1000) / 10
+        : null;
+      return {
+        projectId: p.id,
+        name: p.name,
+        customer: p.customer.name,
+        status: p.status,
+        invoicedCents: invoiced,
+        collectedCents: collected,
+        expenseCents: expense,
+        laborCents: labor,
+        costCents: cost,
+        marginCents: margin,
+        marginPct,
+      };
+    });
+
+    // Portfolio totals — useful for a "how is the year going" sanity check.
+    const totals = rows.reduce(
+      (acc, r) => ({
+        invoicedCents: acc.invoicedCents + r.invoicedCents,
+        collectedCents: acc.collectedCents + r.collectedCents,
+        costCents: acc.costCents + r.costCents,
+      }),
+      { invoicedCents: 0, collectedCents: 0, costCents: 0 },
+    );
+    const totalsMargin = totals.collectedCents - totals.costCents;
+    const totalsPct = totals.collectedCents > 0
+      ? Math.round((totalsMargin / totals.collectedCents) * 1000) / 10
+      : null;
+
+    res.json({
+      rows: rows.sort((a, b) => b.collectedCents - a.collectedCents),
+      totals: {
+        ...totals,
+        marginCents: totalsMargin,
+        marginPct: totalsPct,
+        projectCount: rows.length,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // AR aging + expected-cash rollup. Pulls every non-VOID, non-PAID-in-full
 // invoice and buckets the outstanding balance into current / 30 / 60 / 90+
 // days from dueAt (current = "due in the future or no due date set"). The

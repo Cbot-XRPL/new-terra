@@ -39,6 +39,7 @@ import CompanySettingsPage from './pages/portal/CompanySettingsPage';
 import ProjectTimelinePage from './pages/portal/ProjectTimelinePage';
 import RecurringInvoicesPage from './pages/portal/RecurringInvoicesPage';
 import SubcontractorBillsPage from './pages/portal/SubcontractorBillsPage';
+import ProfitabilityPage from './pages/portal/ProfitabilityPage';
 import CalculatorsPage from './pages/portal/CalculatorsPage';
 import CatalogPage from './pages/portal/CatalogPage';
 import TimePage from './pages/portal/TimePage';
@@ -121,6 +122,14 @@ export default function App() {
           element={
             <RequireAuth roles={['ADMIN', 'EMPLOYEE', 'SUBCONTRACTOR']}>
               <SubcontractorBillsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="finance/profitability"
+          element={
+            <RequireAuth accountingAccess>
+              <ProfitabilityPage />
             </RequireAuth>
           }
         />

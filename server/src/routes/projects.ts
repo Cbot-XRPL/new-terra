@@ -445,6 +445,23 @@ router.get('/:id/job-cost', async (req, res, next) => {
     // sum of the lines so projects without a top number still surface a roll-up.
     const totalBudgetCents = project.budgetCents ?? (linesBudget > 0 ? linesBudget : 0);
 
+    // Revenue side: sum every payment received against an invoice on this
+    // project. We use payments (not invoice.amountCents) so the P&L view
+    // reflects cash actually in the door, not just billed.
+    const projectInvoices = await prisma.invoice.findMany({
+      where: { projectId: project.id, status: { not: 'VOID' } },
+      include: { payments: { select: { amountCents: true } } },
+    });
+    const invoicedCents = projectInvoices.reduce((s, inv) => s + inv.amountCents, 0);
+    const collectedCents = projectInvoices.reduce(
+      (s, inv) => s + inv.payments.reduce((p, x) => p + x.amountCents, 0),
+      0,
+    );
+    const marginCents = collectedCents - actualTotal;
+    const marginPct = collectedCents > 0
+      ? Math.round((marginCents / collectedCents) * 1000) / 10
+      : null;
+
     res.json({
       projectId: project.id,
       totalBudgetCents,
@@ -453,6 +470,11 @@ router.get('/:id/job-cost', async (req, res, next) => {
       laborCents,
       laborEntryCount,
       varianceCents: totalBudgetCents - actualTotal,
+      // P&L view — same numbers admin would otherwise calc by hand.
+      invoicedCents,
+      collectedCents,
+      marginCents,
+      marginPct,
       lines,
     });
   } catch (err) {
