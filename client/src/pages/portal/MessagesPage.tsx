@@ -65,17 +65,26 @@ export default function MessagesPage() {
 
   useEffect(() => {
     loadThreads();
-    const id = setInterval(loadThreads, 15_000);
-    return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    if (active) {
-      loadConversation(active);
-      const id = setInterval(() => loadConversation(active), 10_000);
-      return () => clearInterval(id);
-    }
-    return undefined;
+    // Subscribe to push events; refresh threads / active conversation when
+    // anything involving us arrives. Falls back to manual reloads if the
+    // EventSource fails (older proxies, locked-down networks).
+    const token = localStorage.getItem('nt_token');
+    if (!token) return;
+    const base = import.meta.env.VITE_API_URL ?? '';
+    const es = new EventSource(`${base}/api/messages/stream?token=${encodeURIComponent(token)}`);
+    es.addEventListener('message.created', () => {
+      loadThreads();
+      // Re-fetch the active conversation only when it involves the new
+      // message (cheap to just re-fetch — server returns full thread).
+      if (active) loadConversation(active);
+    });
+    es.onerror = () => {
+      // Browser auto-reconnects; we don't need to do anything here. Log so
+      // it's discoverable while debugging connectivity.
+      console.warn('[messages SSE] connection bounced');
+    };
+    return () => es.close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
   async function send(e: FormEvent) {

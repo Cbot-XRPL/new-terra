@@ -28,9 +28,21 @@ export default function ProjectComments({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     load();
-    // Poll every 20s so customers see PM updates without a manual refresh.
-    const id = setInterval(load, 20_000);
-    return () => clearInterval(id);
+    // SSE for live updates. Server publishes comment.created /
+    // comment.deleted on the project topic; we just refetch on any event
+    // so attachments + ordering come back consistent. EventSource
+    // auto-reconnects so we don't need a poll fallback for transient
+    // network blips.
+    const token = localStorage.getItem('nt_token');
+    if (!token) return;
+    const base = import.meta.env.VITE_API_URL ?? '';
+    const es = new EventSource(
+      `${base}/api/projects/${projectId}/comments/stream?token=${encodeURIComponent(token)}`,
+    );
+    const refresh = () => load();
+    es.addEventListener('comment.created', refresh);
+    es.addEventListener('comment.deleted', refresh);
+    return () => es.close();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 

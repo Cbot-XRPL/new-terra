@@ -12,12 +12,21 @@ declare global {
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  // Bearer header is the primary path. EventSource can't carry custom
+  // headers, so we also accept `?token=` for SSE endpoints. The query token
+  // is the same JWT, so this widens the surface but doesn't lower the bar.
+  let token: string | null = null;
   const header = req.header('authorization');
-  if (!header?.startsWith('Bearer ')) {
+  if (header?.startsWith('Bearer ')) {
+    token = header.slice(7);
+  } else if (typeof req.query.token === 'string' && req.query.token.length > 0) {
+    token = req.query.token;
+  }
+  if (!token) {
     return res.status(401).json({ error: 'Missing bearer token' });
   }
   try {
-    req.user = verifyJwt(header.slice(7));
+    req.user = verifyJwt(token);
     next();
   } catch {
     res.status(401).json({ error: 'Invalid or expired token' });

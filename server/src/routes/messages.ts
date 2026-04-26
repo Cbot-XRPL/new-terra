@@ -1,8 +1,10 @@
+import type { Response } from 'express';
 import { Router } from 'express';
 import { z } from 'zod';
 import { Role } from '@prisma/client';
 import { prisma } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
+import { messageBus } from '../lib/eventBus.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -122,6 +124,21 @@ router.post('/', async (req, res, next) => {
       },
       include: { fromUser: { select: { id: true, name: true, role: true } } },
     });
+    // Publish to BOTH parties' streams so each side gets push without polling.
+    const evt = {
+      type: 'message.created' as const,
+      message: {
+        id: message.id,
+        fromUserId: message.fromUserId,
+        toUserId: message.toUserId,
+        body: message.body,
+        subject: message.subject,
+        createdAt: message.createdAt.toISOString(),
+        fromUser: message.fromUser,
+      },
+    };
+    messageBus.publish(`user:${message.fromUserId}`, evt);
+    messageBus.publish(`user:${message.toUserId}`, evt);
     res.status(201).json({ message });
   } catch (err) {
     next(err);
@@ -159,5 +176,40 @@ router.get('/unread-count', async (req, res, next) => {
     next(err);
   }
 });
+
+// SSE stream — pushes message.created events scoped to the caller's user id.
+// EventSource doesn't carry custom headers, so the JWT comes in via the
+// query param `token`. Keep this in mind when documenting / auditing.
+router.get('/stream', async (req, res, next) => {
+  try {
+    const userId = req.user!.sub;
+    setupSseHeaders(res);
+
+    const unsubscribe = messageBus.subscribe(`user:${userId}`, (evt) => {
+      res.write(`event: ${evt.type}\ndata: ${JSON.stringify(evt)}\n\n`);
+    });
+
+    // Heartbeat every 25s keeps proxies + browsers from idle-killing the
+    // connection. EventSource auto-reconnects but we'd rather not bounce.
+    const heartbeat = setInterval(() => res.write(`: ping\n\n`), 25_000);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+function setupSseHeaders(res: Response): void {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering
+  res.flushHeaders?.();
+  // Initial comment frame so the client's `onopen` fires immediately.
+  res.write(': connected\n\n');
+}
 
 export default router;

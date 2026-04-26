@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { canManageProject } from '../lib/permissions.js';
+import { projectCommentBus } from '../lib/eventBus.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -128,12 +129,35 @@ router.post('/:id/comments', upload.array('attachments', 5), async (req, res, ne
         data: { attachments: finalAttachments as unknown as object },
         include: { author: { select: { id: true, name: true, role: true } } },
       });
+      projectCommentBus.publish(`project:${project.id}`, {
+        type: 'comment.created',
+        projectId: project.id,
+        comment: {
+          id: updated.id,
+          authorId: updated.authorId,
+          body: updated.body,
+          attachments: updated.attachments,
+          createdAt: updated.createdAt.toISOString(),
+          author: updated.author,
+        },
+      });
       return res.status(201).json({ comment: updated });
     }
 
     const comment = await prisma.projectComment.create({
       data: { projectId: project.id, authorId: me.id, body: data.body ?? '' },
       include: { author: { select: { id: true, name: true, role: true } } },
+    });
+    projectCommentBus.publish(`project:${project.id}`, {
+      type: 'comment.created',
+      projectId: project.id,
+      comment: {
+        id: comment.id,
+        authorId: comment.authorId,
+        body: comment.body,
+        createdAt: comment.createdAt.toISOString(),
+        author: comment.author,
+      },
     });
     res.status(201).json({ comment });
   } catch (err) {
@@ -162,7 +186,40 @@ router.delete('/:id/comments/:commentId', async (req, res, next) => {
       const dir = path.join(COMMENT_ROOT, comment.id);
       await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
     }
+    projectCommentBus.publish(`project:${project.id}`, {
+      type: 'comment.deleted',
+      projectId: project.id,
+      commentId: comment.id,
+    });
     res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/comments/stream', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    const project = await prisma.project.findUnique({ where: { id: req.params.id } });
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    if (!me || !canManageProject(me, project).read) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+    res.write(': connected\n\n');
+
+    const unsubscribe = projectCommentBus.subscribe(`project:${project.id}`, (evt) => {
+      res.write(`event: ${evt.type}\ndata: ${JSON.stringify(evt)}\n\n`);
+    });
+    const heartbeat = setInterval(() => res.write(': ping\n\n'), 25_000);
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
   } catch (err) {
     next(err);
   }
