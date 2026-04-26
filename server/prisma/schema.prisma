@@ -631,6 +631,11 @@ model ContractTemplate {
   // List of variable definitions: [{ key, label, required, multiline }, ...]
   variables   Json     @default("[]")
   active      Boolean  @default(true)
+  // When true, accepting an estimate automatically spawns a project +
+  // a draft contract from this template, so the customer doesn't have to
+  // wait on sales for the conversion. At most one template should carry
+  // this flag — the route enforces that on save.
+  isDefaultForEstimateAccept Boolean @default(false)
   createdById String
   createdBy   User     @relation("TemplateAuthor", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())

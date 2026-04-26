@@ -17,6 +17,9 @@ interface Template {
   body: string;
   variables: VariableDef[];
   active: boolean;
+  // When true, accepting an estimate auto-spawns a project + draft
+  // contract from this template — i.e. customer self-serve conversion.
+  isDefaultForEstimateAccept: boolean;
   createdAt: string;
   updatedAt: string;
   createdBy: { id: string; name: string };
@@ -177,6 +180,18 @@ export default function ContractTemplatesPage() {
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Archive failed');
+    }
+  }
+
+  async function setAutoDefault(t: Template, on: boolean) {
+    try {
+      await api(`/api/contract-templates/${t.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isDefaultForEstimateAccept: on }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Update failed');
     }
   }
 
@@ -348,6 +363,15 @@ export default function ContractTemplatesPage() {
                 <tr key={t.id}>
                   <td>
                     <strong>{t.name}</strong>
+                    {t.isDefaultForEstimateAccept && (
+                      <span
+                        className="badge badge-paid"
+                        style={{ marginLeft: '0.4rem' }}
+                        title="Accepting an estimate auto-spawns a draft contract from this template"
+                      >
+                        auto-default
+                      </span>
+                    )}
                     {t.description && <div className="muted">{t.description}</div>}
                   </td>
                   <td>{t.variables.length}</td>
@@ -358,6 +382,17 @@ export default function ContractTemplatesPage() {
                     <button className="button button-ghost button-small" onClick={() => startEdit(t)}>
                       Edit
                     </button>{' '}
+                    {t.active && (
+                      <button
+                        className="button button-ghost button-small"
+                        onClick={() => setAutoDefault(t, !t.isDefaultForEstimateAccept)}
+                        title={t.isDefaultForEstimateAccept
+                          ? 'Stop auto-spawning a draft contract on estimate accept'
+                          : 'Auto-spawn a draft contract from this template when a customer accepts an estimate'}
+                      >
+                        {t.isDefaultForEstimateAccept ? 'Clear auto-default' : 'Set auto-default'}
+                      </button>
+                    )}{' '}
                     {t.active ? (
                       <button className="button button-ghost button-small" onClick={() => archive(t)}>
                         Archive

@@ -417,7 +417,10 @@ router.post('/:id/accept', async (req, res, next) => {
       return res.status(403).json({ error: 'Only customers can accept' });
     }
     const data = acceptSchema.parse(req.body);
-    const estimate = await prisma.estimate.findUnique({ where: { id: req.params.id } });
+    const estimate = await prisma.estimate.findUnique({
+      where: { id: req.params.id },
+      include: { lines: true, customer: true },
+    });
     if (!estimate || estimate.customerId !== me.id) {
       return res.status(404).json({ error: 'Estimate not found' });
     }
@@ -428,16 +431,106 @@ router.post('/:id/accept', async (req, res, next) => {
     if (estimate.validUntil && estimate.validUntil < new Date()) {
       return res.status(409).json({ error: 'Estimate has expired' });
     }
-    const updated = await prisma.estimate.update({
-      where: { id: estimate.id },
-      data: {
-        status: EstimateStatus.ACCEPTED,
-        acceptedAt: new Date(),
-        acceptedBySignature: data.signatureName,
-        acceptedByIp: req.ip ?? null,
-      },
+
+    // Look for the auto-default contract template. If present we run the
+    // full conversion in the same transaction so the customer walks away
+    // with a project + draft contract, not just a status change.
+    const defaultTemplate = await prisma.contractTemplate.findFirst({
+      where: { active: true, isDefaultForEstimateAccept: true },
     });
-    res.json({ estimate: updated });
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const e = await tx.estimate.update({
+        where: { id: estimate.id },
+        data: {
+          status: EstimateStatus.ACCEPTED,
+          acceptedAt: new Date(),
+          acceptedBySignature: data.signatureName,
+          acceptedByIp: req.ip ?? null,
+        },
+      });
+      if (!defaultTemplate || !estimate.customer) return { estimate: e, autoConverted: false };
+
+      // Mirror the staff /convert flow inside the same transaction. Same
+      // budget-line seeding (from estimate categories) and same contract
+      // body composition; differences are: customer is the actor, project
+      // name defaults to the estimate title, and we mark the estimate
+      // CONVERTED in this same write.
+      const project = await tx.project.create({
+        data: {
+          name: estimate.title,
+          description: estimate.scope ?? undefined,
+          customerId: estimate.customer.id,
+          status: ProjectStatus.PLANNING,
+          budgetCents: estimate.totalCents,
+        },
+      });
+      const grouped = new Map<string | null, number>();
+      for (const l of estimate.lines) {
+        const key = l.category ?? null;
+        grouped.set(key, (grouped.get(key) ?? 0) + l.totalCents);
+      }
+      for (const [cat, cents] of grouped) {
+        if (cents <= 0) continue;
+        let categoryId: string | null = null;
+        if (cat) {
+          const existing = await tx.expenseCategory.findFirst({ where: { name: cat } });
+          const row = existing ?? await tx.expenseCategory.create({ data: { name: cat } });
+          categoryId = row.id;
+        }
+        await tx.projectBudgetLine.create({
+          data: { projectId: project.id, categoryId, budgetCents: cents, notes: `From estimate ${estimate.number}` },
+        });
+      }
+
+      const linesText = estimate.lines
+        .map((l) => `- ${l.description} (${l.quantity} ${l.unit ?? ''}) — $${(l.totalCents / 100).toFixed(2)}`)
+        .join('\n');
+      const body = `${defaultTemplate.body}\n\n--- Estimate ${estimate.number}: ${estimate.title} ---\n${linesText}\n\nTotal: $${(estimate.totalCents / 100).toFixed(2)}`;
+      const contract = await tx.contract.create({
+        data: {
+          templateId: defaultTemplate.id,
+          templateNameSnapshot: defaultTemplate.name,
+          bodySnapshot: body,
+          variableValues: {},
+          customerId: estimate.customer.id,
+          // Use the estimate's createdBy as a stand-in 'author' since the
+          // customer can't author contracts. They still see it as a draft.
+          createdById: estimate.createdById,
+          projectId: project.id,
+          status: ContractStatus.DRAFT,
+        },
+      });
+
+      const final = await tx.estimate.update({
+        where: { id: estimate.id },
+        data: {
+          status: EstimateStatus.CONVERTED,
+          convertedProjectId: project.id,
+          convertedContractId: contract.id,
+        },
+        include: {
+          convertedProject: { select: { id: true, name: true } },
+          convertedContract: { select: { id: true, status: true } },
+        },
+      });
+      return { estimate: final, autoConverted: true, project, contract };
+    });
+
+    if (updated.autoConverted) {
+      audit(req, {
+        action: 'estimate.auto_converted',
+        resourceType: 'estimate',
+        resourceId: estimate.id,
+        meta: {
+          projectId: updated.project?.id ?? null,
+          contractId: updated.contract?.id ?? null,
+          totalCents: estimate.totalCents,
+        },
+      }).catch(() => undefined);
+    }
+
+    res.json({ estimate: updated.estimate, autoConverted: updated.autoConverted });
   } catch (err) {
     next(err);
   }

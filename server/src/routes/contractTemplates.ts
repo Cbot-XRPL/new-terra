@@ -26,9 +26,22 @@ const createSchema = z.object({
   body: z.string().min(1),
   variables: z.array(variableSchema).default([]),
   active: z.boolean().optional(),
+  // When true, accepting an estimate auto-spawns a draft contract from
+  // this template. Setting it on one row clears it on every other row
+  // so we never have two competing defaults.
+  isDefaultForEstimateAccept: z.boolean().optional(),
 });
 
 const updateSchema = createSchema.partial();
+
+// When admin sets the auto-default flag on a template, clear it on every
+// other one so we don't end up with two "default" templates.
+async function clearOtherDefaults(exceptId: string | null) {
+  await prisma.contractTemplate.updateMany({
+    where: exceptId ? { id: { not: exceptId }, isDefaultForEstimateAccept: true } : { isDefaultForEstimateAccept: true },
+    data: { isDefaultForEstimateAccept: false },
+  });
+}
 
 // Reading templates is allowed to admin + sales-flagged employees so they
 // can pick a template when drafting a contract.
@@ -81,9 +94,11 @@ router.post('/', requireRole(Role.ADMIN), async (req, res, next) => {
         body: data.body,
         variables: data.variables,
         active: data.active ?? true,
+        isDefaultForEstimateAccept: data.isDefaultForEstimateAccept ?? false,
         createdById: req.user!.sub,
       },
     });
+    if (template.isDefaultForEstimateAccept) await clearOtherDefaults(template.id);
     res.status(201).json({ template });
   } catch (err) {
     next(err);
@@ -101,8 +116,10 @@ router.patch('/:id', requireRole(Role.ADMIN), async (req, res, next) => {
         body: data.body,
         variables: data.variables,
         active: data.active,
+        isDefaultForEstimateAccept: data.isDefaultForEstimateAccept,
       },
     });
+    if (data.isDefaultForEstimateAccept) await clearOtherDefaults(template.id);
     res.json({ template });
   } catch (err) {
     next(err);
