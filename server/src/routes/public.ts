@@ -11,18 +11,25 @@ async function verifyTurnstile(token: string | undefined, ip?: string): Promise<
   // No secret configured means Turnstile is off — always pass.
   if (!TURNSTILE_SECRET) return true;
   if (!token) return false;
+  // Bound the verification call so a slow Cloudflare doesn't hang the
+  // whole signup request. 5s is generous; real responses come in <500ms.
+  const ctrl = new AbortController();
+  const timeout = setTimeout(() => ctrl.abort(), 5000);
   try {
     const body = new URLSearchParams({ secret: TURNSTILE_SECRET, response: token });
     if (ip) body.set('remoteip', ip);
     const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
       method: 'POST',
       body,
+      signal: ctrl.signal,
     });
     const data = (await res.json()) as { success?: boolean };
     return Boolean(data.success);
   } catch (err) {
     console.warn('[turnstile] verification request failed', err);
     return false;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

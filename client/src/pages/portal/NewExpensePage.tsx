@@ -48,6 +48,12 @@ export default function NewExpensePage() {
     pendingCount().then((n) => setQueueInfo((cur) => ({ ...cur, pending: n }))).catch(() => undefined);
   }, []);
 
+  // Revoke any active blob URL on unmount so a user who picked a photo
+  // and then navigated away doesn't leak the object URL forever.
+  useEffect(() => () => {
+    if (receiptPreview) URL.revokeObjectURL(receiptPreview);
+  }, [receiptPreview]);
+
   useEffect(() => {
     Promise.all([
       api<{ vendors: Vendor[] }>('/api/finance/vendors'),

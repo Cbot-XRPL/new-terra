@@ -51,9 +51,21 @@ async function nextInvoiceNumber(): Promise<string> {
 // and not yet expired, generates a DRAFT invoice from each, and advances
 // nextRunAt. Idempotent on the row level: a single run won't double-issue
 // because we update nextRunAt + lastRunAt in the same write.
-export async function runRecurringInvoices(now: Date = new Date()): Promise<RunResult> {
+//
+// Optional `templateIds` scopes the run to a specific subset of templates,
+// used by the per-template "Run now" admin button so a manual trigger
+// doesn't accidentally also fire every other due template that happens to
+// be ready at the same moment.
+export async function runRecurringInvoices(
+  now: Date = new Date(),
+  opts: { templateIds?: string[] } = {},
+): Promise<RunResult> {
   const candidates = await prisma.recurringInvoice.findMany({
-    where: { active: true, nextRunAt: { lte: now } },
+    where: {
+      active: true,
+      nextRunAt: { lte: now },
+      ...(opts.templateIds ? { id: { in: opts.templateIds } } : {}),
+    },
   });
 
   const result: RunResult = { considered: candidates.length, generated: 0, invoiceIds: [], paused: 0 };

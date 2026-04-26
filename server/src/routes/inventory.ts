@@ -25,20 +25,16 @@ router.get('/', async (req, res, next) => {
     if (!me) return res.status(403).json({ error: 'Forbidden' });
 
     const lowOnly = req.query.lowOnly === 'true';
+    // We filter the low-stock subset in JS (not in Prisma) because comparing
+    // two columns of the same row needs a raw SQL `where col_a <= col_b`,
+    // and the tracked-products set is small (typically < a few hundred).
+    // The DB-side filter just narrows to tracked rows; the JS pass applies
+    // the threshold comparison.
     const products = await prisma.product.findMany({
-      where: {
-        trackInventory: true,
-        ...(lowOnly
-          ? { AND: [{ reorderThresholdMilli: { gt: 0 } }, { onHandQtyMilli: { lte: prisma.product.fields.reorderThresholdMilli } }] }
-          : {}),
-      },
+      where: { trackInventory: true },
       orderBy: [{ active: 'desc' }, { name: 'asc' }],
       include: { vendor: { select: { id: true, name: true } } },
     });
-
-    // Prisma's relation-field comparator above doesn't work — we filter in
-    // JS to keep the query simple and the dataset is small (< few hundred
-    // tracked products). 'lowOnly' = onHand <= threshold && threshold > 0.
     const list = lowOnly
       ? products.filter((p) => p.reorderThresholdMilli > 0 && p.onHandQtyMilli <= p.reorderThresholdMilli)
       : products;

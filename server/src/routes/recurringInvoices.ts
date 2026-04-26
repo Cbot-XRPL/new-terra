@@ -10,6 +10,15 @@ import { advanceDate, runRecurringInvoices } from '../lib/recurringInvoices.js';
 const router = Router();
 router.use(requireAuth);
 
+// Mirror invoices.ts so a recurring template can carry the same line-item
+// shape we'll later spawn an Invoice from.
+const lineItemSchema = z.object({
+  description: z.string().min(1),
+  quantity: z.number().positive().optional(),
+  unitCents: z.number().int().nonnegative().optional(),
+  totalCents: z.number().int().nonnegative(),
+});
+
 async function loadActor(userId: string) {
   return prisma.user.findUnique({ where: { id: userId } });
 }
@@ -43,7 +52,7 @@ const createSchema = z.object({
   frequency: z.nativeEnum(RecurringFrequency),
   dayOfPeriod: z.number().int().min(0).max(28).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
-  lineItems: z.array(z.unknown()).optional(),
+  lineItems: z.array(lineItemSchema).optional(),
   // First-run date — required so admin doesn't accidentally generate
   // an invoice immediately on save.
   nextRunAt: z.string().datetime(),
@@ -69,7 +78,7 @@ router.post('/', async (req, res, next) => {
         frequency: data.frequency,
         dayOfPeriod: data.dayOfPeriod ?? null,
         notes: data.notes ?? null,
-        lineItems: (data.lineItems as unknown) ?? undefined,
+        lineItems: data.lineItems ?? undefined,
         nextRunAt: new Date(data.nextRunAt),
         endsAt: data.endsAt ? new Date(data.endsAt) : null,
         active: data.active ?? true,
@@ -94,7 +103,7 @@ const patchSchema = z.object({
   frequency: z.nativeEnum(RecurringFrequency).optional(),
   dayOfPeriod: z.number().int().min(0).max(28).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
-  lineItems: z.array(z.unknown()).optional(),
+  lineItems: z.array(lineItemSchema).optional(),
   nextRunAt: z.string().datetime().optional(),
   endsAt: z.string().datetime().nullable().optional(),
   active: z.boolean().optional(),
@@ -113,7 +122,7 @@ router.patch('/:id', async (req, res, next) => {
         frequency: data.frequency,
         dayOfPeriod: data.dayOfPeriod === null ? null : data.dayOfPeriod,
         notes: data.notes === null ? null : data.notes,
-        lineItems: (data.lineItems as unknown) ?? undefined,
+        lineItems: data.lineItems ?? undefined,
         nextRunAt: data.nextRunAt ? new Date(data.nextRunAt) : undefined,
         endsAt: data.endsAt === null ? null : data.endsAt ? new Date(data.endsAt) : undefined,
         active: data.active,
@@ -146,12 +155,13 @@ router.post('/:id/run-now', async (req, res, next) => {
     if (!tpl) return res.status(404).json({ error: 'Recurring invoice not found' });
 
     // Force a run even if nextRunAt is in the future by temporarily moving
-    // it to now. We then advance based on the original schedule below.
+    // it to now, then run the cron scoped to ONLY this template id so we
+    // don't accidentally fire every other due template alongside.
     await prisma.recurringInvoice.update({
       where: { id: tpl.id },
       data: { nextRunAt: new Date(), active: true },
     });
-    const result = await runRecurringInvoices(new Date());
+    const result = await runRecurringInvoices(new Date(), { templateIds: [tpl.id] });
     res.json(result);
   } catch (err) {
     next(err);

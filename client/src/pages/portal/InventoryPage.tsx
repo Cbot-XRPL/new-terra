@@ -1,7 +1,6 @@
-import { type FormEvent, useEffect, useState } from 'react';
+import { Fragment, type FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
-import { formatCents } from '../../lib/format';
 
 type Reason = 'RESTOCK' | 'USED' | 'COUNT' | 'WRITE_OFF' | 'OTHER';
 
@@ -49,6 +48,7 @@ export default function InventoryPage() {
   const [adjDirection, setAdjDirection] = useState<'in' | 'out'>('out');
   const [adjReason, setAdjReason] = useState<Reason>('USED');
   const [adjNotes, setAdjNotes] = useState('');
+  const [adjSubmitting, setAdjSubmitting] = useState(false);
 
   async function load() {
     try {
@@ -80,6 +80,7 @@ export default function InventoryPage() {
       return;
     }
     const signed = adjDirection === 'in' ? qty : -qty;
+    setAdjSubmitting(true);
     try {
       await api(`/api/inventory/products/${p.id}/adjust`, {
         method: 'POST',
@@ -95,6 +96,8 @@ export default function InventoryPage() {
       if (openId === p.id) await loadHistory(p.id);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Adjust failed');
+    } finally {
+      setAdjSubmitting(false);
     }
   }
 
@@ -157,44 +160,41 @@ export default function InventoryPage() {
             <tbody>
               {products.map((p) => {
                 const low = p.reorderThresholdQty > 0 && p.onHandQty <= p.reorderThresholdQty;
+                const isOpen = openId === p.id;
                 return (
-                  <tr key={p.id}>
-                    <td><strong>{p.name}</strong>{p.category && <span className="muted"> · {p.category}</span>}</td>
-                    <td className="muted">{p.sku ?? '—'}</td>
-                    <td className="muted">{p.unit ?? '—'}</td>
-                    <td
-                      style={{ textAlign: 'right', color: low ? 'var(--accent)' : undefined, fontWeight: 600 }}
-                    >
-                      {p.onHandQty.toFixed(p.onHandQty % 1 === 0 ? 0 : 2)}
-                    </td>
-                    <td
-                      style={{ textAlign: 'right', cursor: 'pointer' }}
-                      onClick={() => patchThreshold(p)}
-                      title="Click to edit"
-                    >
-                      {p.reorderThresholdQty > 0 ? p.reorderThresholdQty : <span className="muted">—</span>}
-                    </td>
-                    <td>{p.vendor?.name ?? <span className="muted">—</span>}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="button-ghost button-small"
-                        onClick={() => {
-                          if (openId === p.id) { setOpenId(null); setHistory([]); }
-                          else { setOpenId(p.id); loadHistory(p.id); }
-                        }}
+                  <Fragment key={p.id}>
+                    <tr>
+                      <td><strong>{p.name}</strong>{p.category && <span className="muted"> · {p.category}</span>}</td>
+                      <td className="muted">{p.sku ?? '—'}</td>
+                      <td className="muted">{p.unit ?? '—'}</td>
+                      <td
+                        style={{ textAlign: 'right', color: low ? 'var(--accent)' : undefined, fontWeight: 600 }}
                       >
-                        {openId === p.id ? 'Close' : 'Adjust'}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              }).flatMap((row, idx) => {
-                const p = products[idx];
-                if (openId !== p.id) return [row];
-                return [
-                  row,
-                  <tr key={`${p.id}-detail`}>
+                        {p.onHandQty.toFixed(p.onHandQty % 1 === 0 ? 0 : 2)}
+                      </td>
+                      <td
+                        style={{ textAlign: 'right', cursor: 'pointer' }}
+                        onClick={() => patchThreshold(p)}
+                        title="Click to edit"
+                      >
+                        {p.reorderThresholdQty > 0 ? p.reorderThresholdQty : <span className="muted">—</span>}
+                      </td>
+                      <td>{p.vendor?.name ?? <span className="muted">—</span>}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="button-ghost button-small"
+                          onClick={() => {
+                            if (isOpen) { setOpenId(null); setHistory([]); }
+                            else { setOpenId(p.id); loadHistory(p.id); }
+                          }}
+                        >
+                          {isOpen ? 'Close' : 'Adjust'}
+                        </button>
+                      </td>
+                    </tr>
+                    {isOpen && (
+                  <tr>
                     <td colSpan={7} style={{ background: 'var(--surface)' }}>
                       <form onSubmit={(e) => adjust(p, e)} style={{ marginBottom: '0.75rem' }}>
                         <div className="form-row">
@@ -222,7 +222,9 @@ export default function InventoryPage() {
                             <input value={adjNotes} onChange={(e) => setAdjNotes(e.target.value)} placeholder="Job site, PO #, etc." />
                           </div>
                         </div>
-                        <button type="submit">Record adjustment</button>
+                        <button type="submit" disabled={adjSubmitting || !adjAmount}>
+                          {adjSubmitting ? 'Saving…' : 'Record adjustment'}
+                        </button>
                       </form>
 
                       <h4 style={{ margin: '0.5rem 0' }}>Recent adjustments</h4>
@@ -257,8 +259,10 @@ export default function InventoryPage() {
                         <p className="muted">No history yet for this product.</p>
                       )}
                     </td>
-                  </tr>,
-                ];
+                  </tr>
+                    )}
+                  </Fragment>
+                );
               })}
             </tbody>
           </table>
@@ -284,6 +288,3 @@ export default function InventoryPage() {
   );
 }
 
-// PRICE export so the page references stay clean if we add a price-based
-// rollup in a later commit.
-export const _formatCents = formatCents;
