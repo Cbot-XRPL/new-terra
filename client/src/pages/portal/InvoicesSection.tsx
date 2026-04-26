@@ -37,7 +37,19 @@ export default function InvoicesSection({ projectId, customerId, customerName }:
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [showDraws, setShowDraws] = useState(false);
   const [openPayments, setOpenPayments] = useState<string | null>(null);
+
+  // Draw schedule form state. Defaults to a typical 4-stage builder schedule
+  // (deposit / framing / mechanicals / final).
+  const [contractValue, setContractValue] = useState('');
+  const [draws, setDraws] = useState<Array<{ label: string; percent: string; offsetDays: string }>>([
+    { label: 'Deposit at signing', percent: '25', offsetDays: '0' },
+    { label: 'Framing complete', percent: '25', offsetDays: '14' },
+    { label: 'Mechanical rough-in', percent: '25', offsetDays: '30' },
+    { label: 'Final on substantial completion', percent: '25', offsetDays: '60' },
+  ]);
+  const [drawSubmitting, setDrawSubmitting] = useState(false);
 
   const [amount, setAmount] = useState('');
   const [dueAt, setDueAt] = useState('');
@@ -119,14 +131,79 @@ export default function InvoicesSection({ projectId, customerId, customerName }:
     }
   }
 
+  async function generateDrawSchedule(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const cents = Math.round(Number(contractValue) * 100);
+    if (!Number.isFinite(cents) || cents <= 0) {
+      setError('Enter a valid contract value');
+      return;
+    }
+    const parsed = draws.map((d) => ({
+      label: d.label.trim(),
+      percent: Number(d.percent),
+      dueOffsetDays: d.offsetDays === '' ? null : Number(d.offsetDays),
+    }));
+    if (parsed.some((d) => !d.label || !Number.isFinite(d.percent) || d.percent <= 0)) {
+      setError('Each draw needs a label and a positive percent');
+      return;
+    }
+    const totalPercent = parsed.reduce((s, d) => s + d.percent, 0);
+    if (Math.abs(totalPercent - 100) > 0.01) {
+      setError(`Percents must sum to 100% (got ${totalPercent}%)`);
+      return;
+    }
+    setDrawSubmitting(true);
+    try {
+      const r = await api<{ invoices: Array<{ number: string }> }>(
+        `/api/invoices/_admin/draw-schedule/${projectId}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ contractValueCents: cents, draws: parsed }),
+        },
+      );
+      alert(`Created ${r.invoices.length} draft invoices: ${r.invoices.map((i) => i.number).join(', ')}`);
+      setShowDraws(false);
+      setContractValue('');
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not generate schedule');
+    } finally {
+      setDrawSubmitting(false);
+    }
+  }
+
+  function patchDraw(idx: number, patch: Partial<{ label: string; percent: string; offsetDays: string }>) {
+    setDraws((arr) => arr.map((d, i) => (i === idx ? { ...d, ...patch } : d)));
+  }
+  function removeDraw(idx: number) {
+    setDraws((arr) => arr.filter((_, i) => i !== idx));
+  }
+  function addDraw() {
+    setDraws((arr) => [...arr, { label: '', percent: '0', offsetDays: '' }]);
+  }
+
+  // Live percent-sum display so admin sees the schedule balance as they type.
+  const drawPercentSum = draws.reduce((s, d) => s + (Number(d.percent) || 0), 0);
+
   return (
     <section className="card">
       <div className="row-between">
         <h2>Invoices</h2>
         {isAdmin && (
-          <button onClick={() => setShowForm((v) => !v)}>
-            {showForm ? 'Cancel' : 'New invoice'}
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              type="button"
+              className="button-ghost button-small"
+              onClick={() => setShowDraws((v) => !v)}
+              title="Generate a series of draft invoices for a deposit + progress payments"
+            >
+              {showDraws ? 'Cancel draws' : 'Draw schedule…'}
+            </button>
+            <button onClick={() => setShowForm((v) => !v)}>
+              {showForm ? 'Cancel' : 'New invoice'}
+            </button>
+          </div>
         )}
       </div>
 
@@ -176,6 +253,97 @@ export default function InvoicesSection({ projectId, customerId, customerName }:
           <button type="submit" disabled={submitting}>
             {submitting ? 'Creating…' : 'Create invoice'}
           </button>
+        </form>
+      )}
+
+      {isAdmin && showDraws && (
+        <form onSubmit={generateDrawSchedule} className="invoice-form">
+          <p className="muted">
+            Generates one DRAFT invoice per draw, sized by % of contract value, dated by days
+            from project start. Last draw absorbs any rounding so amounts sum exactly.
+          </p>
+          <div className="form-row">
+            <div>
+              <label htmlFor="d-cv">Contract value (USD)</label>
+              <input
+                id="d-cv"
+                type="number"
+                step="0.01"
+                min="0"
+                value={contractValue}
+                onChange={(e) => setContractValue(e.target.value)}
+                required
+              />
+            </div>
+            <div style={{ alignSelf: 'end' }}>
+              <span className={drawPercentSum === 100 ? '' : 'form-error'} style={{ fontSize: '0.85rem' }}>
+                Total: {drawPercentSum.toFixed(2)}% {drawPercentSum === 100 ? '✓' : '(must = 100)'}
+              </span>
+            </div>
+          </div>
+          <table className="table" style={{ marginTop: '0.5rem' }}>
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th style={{ width: 90 }}>%</th>
+                <th style={{ width: 110 }}>Days from start</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {draws.map((d, idx) => (
+                <tr key={idx}>
+                  <td>
+                    <input
+                      value={d.label}
+                      onChange={(e) => patchDraw(idx, { label: e.target.value })}
+                      placeholder="e.g. Framing complete"
+                      required
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={d.percent}
+                      onChange={(e) => patchDraw(idx, { percent: e.target.value })}
+                      required
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      min="0"
+                      value={d.offsetDays}
+                      placeholder="optional"
+                      onChange={(e) => patchDraw(idx, { offsetDays: e.target.value })}
+                    />
+                  </td>
+                  <td>
+                    {draws.length > 1 && (
+                      <button
+                        type="button"
+                        className="button-ghost button-small"
+                        onClick={() => removeDraw(idx)}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="form-actions">
+            <button type="button" className="button-ghost button-small" onClick={addDraw}>
+              + Add draw
+            </button>
+            <button type="submit" disabled={drawSubmitting || drawPercentSum !== 100}>
+              {drawSubmitting ? 'Generating…' : `Generate ${draws.length} draft invoices`}
+            </button>
+          </div>
         </form>
       )}
 

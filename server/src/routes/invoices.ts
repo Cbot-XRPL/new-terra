@@ -435,6 +435,96 @@ router.post('/:id/payments/:paymentId/email-receipt', async (req, res, next) => 
   }
 });
 
+// Generate a draw schedule for a project: one DRAFT invoice per draw,
+// amounts derived from a percent split of the contract value. The last
+// draw absorbs any rounding cents so the per-draw amounts always sum
+// exactly to the contract value.
+const drawSchema = z.object({
+  contractValueCents: z.number().int().positive(),
+  draws: z
+    .array(
+      z.object({
+        label: z.string().min(1).max(160),
+        percent: z.number().positive().max(100),
+        // Days offset from project startDate (or now if start is unset).
+        // Positive = future. Optional; leave empty for "no due date".
+        dueOffsetDays: z.number().int().optional().nullable(),
+      }),
+    )
+    .min(1)
+    .max(20),
+});
+
+router.post('/_admin/draw-schedule/:projectId', requireRole(Role.ADMIN), async (req, res, next) => {
+  try {
+    const body = drawSchema.parse(req.body);
+    const totalPercent = body.draws.reduce((s, d) => s + d.percent, 0);
+    if (Math.abs(totalPercent - 100) > 0.01) {
+      return res.status(400).json({ error: `Draws must sum to 100% (got ${totalPercent}%)` });
+    }
+    const project = await prisma.project.findUnique({
+      where: { id: req.params.projectId },
+      select: { id: true, customerId: true, startDate: true, name: true },
+    });
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const baseDate = project.startDate ?? new Date();
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    // Pre-compute per-draw amounts. Last draw absorbs the rounding so the
+    // sum always lands exactly on contractValueCents — no $0.01 surprises.
+    const amounts: number[] = [];
+    let runningTotal = 0;
+    for (let i = 0; i < body.draws.length - 1; i += 1) {
+      const cents = Math.round((body.draws[i].percent / 100) * body.contractValueCents);
+      amounts.push(cents);
+      runningTotal += cents;
+    }
+    amounts.push(body.contractValueCents - runningTotal);
+
+    // Issue invoice numbers serially so they sort sensibly.
+    const created: Array<{ id: string; number: string; amountCents: number }> = [];
+    for (let i = 0; i < body.draws.length; i += 1) {
+      const draw = body.draws[i];
+      const dueAt = draw.dueOffsetDays != null
+        ? new Date(baseDate.getTime() + draw.dueOffsetDays * dayMs)
+        : null;
+      const number = await nextInvoiceNumber();
+      const inv = await prisma.invoice.create({
+        data: {
+          number,
+          customerId: project.customerId,
+          projectId: project.id,
+          amountCents: amounts[i],
+          status: InvoiceStatus.DRAFT,
+          dueAt: dueAt ?? undefined,
+          notes: `${draw.label} (draw ${i + 1} of ${body.draws.length} — ${draw.percent}% of contract)`,
+        },
+      });
+      created.push({ id: inv.id, number: inv.number, amountCents: inv.amountCents });
+    }
+
+    audit(req, {
+      action: 'invoice.draw_schedule_generated',
+      resourceType: 'project',
+      resourceId: project.id,
+      meta: {
+        contractValueCents: body.contractValueCents,
+        drawCount: body.draws.length,
+        invoiceIds: created.map((c) => c.id),
+      },
+    }).catch(() => undefined);
+
+    res.status(201).json({
+      project: { id: project.id, name: project.name },
+      contractValueCents: body.contractValueCents,
+      invoices: created,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Manual run of the invoice reminder cron. Used by admin from the Finance
 // dashboard when they want to nudge customers on demand instead of waiting
 // for the scheduled job.
