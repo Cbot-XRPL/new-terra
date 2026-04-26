@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { formatCents } from '../../lib/format';
@@ -12,6 +13,9 @@ interface Product {
   defaultUnitPriceCents: number;
   category: string | null;
   active: boolean;
+  trackInventory?: boolean;
+  onHandQtyMilli?: number;
+  reorderThresholdMilli?: number;
   vendor: { id: string; name: string } | null;
 }
 
@@ -189,13 +193,18 @@ export default function CatalogPage() {
 
   return (
     <div className="dashboard">
-      <header>
-        <h1>Catalog</h1>
-        <p className="muted">
-          Products are the SKUs you order from vendors. Assemblies are reusable bundles of
-          products + labor that drop into estimates as a group. Sales reps see both when
-          drafting an estimate.
-        </p>
+      <header className="row-between">
+        <div>
+          <h1>Catalog</h1>
+          <p className="muted">
+            Products are the SKUs you order from vendors. Assemblies are reusable bundles of
+            products + labor that drop into estimates as a group. Sales reps see both when
+            drafting an estimate.
+          </p>
+        </div>
+        <Link to="/portal/catalog/inventory" className="button-ghost button-small">
+          Inventory →
+        </Link>
       </header>
 
       {error && <div className="form-error">{error}</div>}
@@ -316,7 +325,7 @@ export default function CatalogPage() {
                         />
                       </th>
                     )}
-                    <th>Name</th><th>SKU</th><th>Kind</th><th>Unit</th><th>Price</th><th>Category</th><th>Status</th>
+                    <th>Name</th><th>SKU</th><th>Kind</th><th>Unit</th><th>Price</th><th>Category</th><th>Status</th><th>Inventory</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -339,6 +348,36 @@ export default function CatalogPage() {
                       <td>{formatCents(p.defaultUnitPriceCents)}</td>
                       <td>{p.category ?? <span className="muted">—</span>}</td>
                       <td>{p.active ? <span className="muted">active</span> : <em className="muted">archived</em>}</td>
+                      <td>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            className={`button-small ${p.trackInventory ? '' : 'button-ghost'}`}
+                            onClick={async () => {
+                              if (!p.trackInventory) {
+                                const raw = prompt(`Current on-hand qty for ${p.name} (in ${p.unit ?? 'units'}):`, '0');
+                                if (raw == null) return;
+                                const qty = Number(raw);
+                                if (!Number.isFinite(qty) || qty < 0) return;
+                                await api(`/api/inventory/products/${p.id}`, {
+                                  method: 'PATCH',
+                                  body: JSON.stringify({ trackInventory: true, onHandQty: qty }),
+                                }).catch((err) => setError(err instanceof ApiError ? err.message : 'Update failed'));
+                              } else {
+                                if (!confirm(`Stop tracking inventory for ${p.name}?`)) return;
+                                await api(`/api/inventory/products/${p.id}`, {
+                                  method: 'PATCH',
+                                  body: JSON.stringify({ trackInventory: false }),
+                                }).catch((err) => setError(err instanceof ApiError ? err.message : 'Update failed'));
+                              }
+                              await load();
+                            }}
+                            title={p.trackInventory ? 'Inventory tracked — click to disable' : 'Click to start tracking inventory'}
+                          >
+                            {p.trackInventory ? `${(p.onHandQtyMilli ?? 0) / 1000} on hand` : 'Track stock'}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

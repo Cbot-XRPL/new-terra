@@ -49,6 +49,7 @@ import ReportsPage from './pages/portal/ReportsPage';
 import Form1099Page from './pages/portal/Form1099Page';
 import MileagePage from './pages/portal/MileagePage';
 import SatisfactionDashboardPage from './pages/portal/SatisfactionDashboardPage';
+import InventoryPage from './pages/portal/InventoryPage';
 import CalculatorsPage from './pages/portal/CalculatorsPage';
 import CatalogPage from './pages/portal/CatalogPage';
 import TimePage from './pages/portal/TimePage';
@@ -197,6 +198,14 @@ export default function App() {
           element={
             <RequireAuth accountingAccess>
               <SatisfactionDashboardPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="catalog/inventory"
+          element={
+            <RequireAuth salesAccess>
+              <InventoryPage />
             </RequireAuth>
           }
         />
