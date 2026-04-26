@@ -85,9 +85,10 @@ export default function CompanySettingsPage() {
   }, []);
 
   // Settings hold mixed string + number fields; the form always emits
-  // strings so we cast on the way in and coerce on save.
-  function patch(key: keyof Settings, value: string) {
-    setSettings((s) => (s ? { ...s, [key]: value as unknown as never } : s));
+  // strings (input-controlled), so we widen the property type while the
+  // user is editing and coerce numeric keys back to numbers on save.
+  function patch<K extends keyof Settings>(key: K, value: string) {
+    setSettings((s) => (s ? ({ ...s, [key]: value }) as Settings : s));
     setSaved(false);
   }
 

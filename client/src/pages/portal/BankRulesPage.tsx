@@ -42,6 +42,7 @@ export default function BankRulesPage() {
   }
   useEffect(() => { load(); }, []);
 
+  const [creating, setCreating] = useState(false);
   async function create(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -49,6 +50,8 @@ export default function BankRulesPage() {
       setError('Match text and category are required');
       return;
     }
+    if (creating) return;
+    setCreating(true);
     try {
       await api('/api/banking/rules', {
         method: 'POST',
@@ -64,6 +67,8 @@ export default function BankRulesPage() {
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Create failed');
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -144,7 +149,9 @@ export default function BankRulesPage() {
             </div>
           </div>
           <div className="form-actions">
-            <button type="submit">Create rule</button>
+            <button type="submit" disabled={creating}>
+              {creating ? 'Saving…' : 'Create rule'}
+            </button>
             <button type="button" className="button-ghost" onClick={applyAll}>
               Apply to existing transactions
             </button>

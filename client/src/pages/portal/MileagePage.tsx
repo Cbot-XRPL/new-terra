@@ -51,6 +51,7 @@ export default function MileagePage() {
   }
   useEffect(() => { load(); }, []);
 
+  const [logging, setLogging] = useState(false);
   async function add(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -59,6 +60,8 @@ export default function MileagePage() {
       setError('Enter a positive miles value');
       return;
     }
+    if (logging) return;
+    setLogging(true);
     try {
       await api('/api/mileage', {
         method: 'POST',
@@ -74,6 +77,8 @@ export default function MileagePage() {
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Add failed');
+    } finally {
+      setLogging(false);
     }
   }
 
@@ -125,7 +130,9 @@ export default function MileagePage() {
               <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Supply run, customer site visit, etc." />
             </div>
           </div>
-          <button type="submit">+ Log trip</button>
+          <button type="submit" disabled={logging || !miles}>
+            {logging ? 'Logging…' : '+ Log trip'}
+          </button>
         </form>
       </section>
 

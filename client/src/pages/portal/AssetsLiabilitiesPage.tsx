@@ -39,6 +39,10 @@ export default function AssetsLiabilitiesPage() {
   const [lCategory, setLCategory] = useState('Loan');
   const [lBalance, setLBalance] = useState('');
 
+  // Submit guards so a fast double-click doesn't create two rows.
+  const [savingAsset, setSavingAsset] = useState(false);
+  const [savingLiability, setSavingLiability] = useState(false);
+
   async function load() {
     try {
       const [a, l] = await Promise.all([
@@ -55,6 +59,8 @@ export default function AssetsLiabilitiesPage() {
 
   async function createAsset(e: FormEvent) {
     e.preventDefault();
+    if (savingAsset) return;
+    setSavingAsset(true);
     try {
       await api('/api/banking/assets', {
         method: 'POST',
@@ -69,11 +75,15 @@ export default function AssetsLiabilitiesPage() {
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Create failed');
+    } finally {
+      setSavingAsset(false);
     }
   }
 
   async function createLiability(e: FormEvent) {
     e.preventDefault();
+    if (savingLiability) return;
+    setSavingLiability(true);
     try {
       await api('/api/banking/liabilities', {
         method: 'POST',
@@ -87,6 +97,8 @@ export default function AssetsLiabilitiesPage() {
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Create failed');
+    } finally {
+      setSavingLiability(false);
     }
   }
 
@@ -180,7 +192,9 @@ export default function AssetsLiabilitiesPage() {
                 <input type="date" value={aAcquired} onChange={(e) => setAAcquired(e.target.value)} />
               </div>
             </div>
-            <button type="submit">+ Add asset</button>
+            <button type="submit" disabled={savingAsset || !aName || !aValue}>
+              {savingAsset ? 'Saving…' : '+ Add asset'}
+            </button>
           </form>
 
           <table className="table" style={{ marginTop: '0.75rem' }}>
@@ -244,7 +258,9 @@ export default function AssetsLiabilitiesPage() {
                 <input type="number" step="0.01" min="0" value={lBalance} onChange={(e) => setLBalance(e.target.value)} required />
               </div>
             </div>
-            <button type="submit">+ Add liability</button>
+            <button type="submit" disabled={savingLiability || !lName || !lBalance}>
+              {savingLiability ? 'Saving…' : '+ Add liability'}
+            </button>
           </form>
 
           <table className="table" style={{ marginTop: '0.75rem' }}>
