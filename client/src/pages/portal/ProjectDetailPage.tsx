@@ -5,6 +5,7 @@ import { useAuth, type Role } from '../../auth/AuthContext';
 import { formatDate, formatDateTime, toDatetimeLocal } from '../../lib/format';
 import ProjectGallery from './ProjectGallery';
 import ProjectDocuments from './ProjectDocuments';
+import PunchListSection from './PunchListSection';
 import InvoicesSection from './InvoicesSection';
 import SelectionsSection from './SelectionsSection';
 import LogEntriesSection from './LogEntriesSection';
@@ -310,6 +311,7 @@ export default function ProjectDetailPage() {
 
       <ProjectGallery projectId={project.id} />
       <ProjectDocuments projectId={project.id} />
+      <PunchListSection projectId={project.id} />
 
       <SelectionsSection projectId={project.id} />
 

@@ -155,6 +155,7 @@ model User {
   subBillsApproved      SubcontractorBill[] @relation("SubBillApprover")
   subBillAttachments    SubcontractorBillAttachment[] @relation("SubBillAttachmentUploader")
   mileageEntries        MileageEntry[] @relation("MileageDriver")
+  punchListItems        PunchListItem[] @relation("PunchListAuthor")
 
   // Bidirectional messaging — staff can message customers and vice versa.
   // Cross-role permission (no customer↔customer) is enforced in the route.
@@ -269,6 +270,7 @@ model Project {
   subcontractorBills SubcontractorBill[]
   bankRules          BankCategorizationRule[]
   mileageEntries     MileageEntry[]
+  punchListItems     PunchListItem[]
 
   @@index([projectManagerId])
 }
@@ -803,6 +805,48 @@ model ProjectImage {
   createdAt   DateTime @default(now())
 
   @@index([projectId, takenAt])
+}
+
+// Walk-through punch-list item — one per task remaining at substantial
+// completion. Customer reviews each item and either signs off (DONE) or
+// flags an issue (REOPENED). Staff resolve REOPENED items and re-mark them
+// READY_FOR_REVIEW so the customer can re-confirm.
+//
+// Signature capture is per-item: customer types their name + we stamp IP +
+// timestamp when they mark DONE. order is admin-controlled so the list
+// reads in walk-through order, not alphabetical.
+model PunchListItem {
+  id              String        @id @default(cuid())
+  projectId       String
+  project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  description     String
+  notes           String?
+  // Optional room / area tag so the list groups naturally on the customer
+  // walk-through ('Kitchen', 'Master bath', etc.).
+  area            String?
+  status          PunchListStatus @default(OPEN)
+  position        Int           @default(0)
+  createdById     String
+  createdBy       User          @relation("PunchListAuthor", fields: [createdById], references: [id])
+  // Customer signoff fields — populated when status flips to DONE.
+  signedAt        DateTime?
+  signatureName   String?
+  signatureIp     String?
+  // When the customer reopens an item with a reason, we keep the latest
+  // reason here for staff to triage.
+  reopenedAt      DateTime?
+  reopenReason    String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([projectId, position])
+}
+
+enum PunchListStatus {
+  OPEN              // staff is still working on it
+  READY_FOR_REVIEW  // staff thinks it's done; awaiting customer signoff
+  DONE              // customer signed off
+  REOPENED          // customer pushed back; staff to address again
 }
 
 // Non-photo project documents: permits, drawings, manuals, specs, etc.
