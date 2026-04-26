@@ -46,18 +46,48 @@ const SYNC_BADGE: Record<SyncStatus, string> = {
   ERROR: 'badge-overdue',
 };
 
+interface ArBucket {
+  key: string;
+  label: string;
+  totalCents: number;
+  count: number;
+}
+
+interface ArSummary {
+  asOf: string;
+  buckets: ArBucket[];
+  totalOpenBalanceCents: number;
+  drafts: { totalCents: number; count: number };
+  expectedCash: { next30Cents: number; next60Cents: number; next90Cents: number };
+  topOverdue: Array<{
+    id: string;
+    number: string;
+    customer: { id: string; name: string };
+    balanceCents: number;
+    dueAt: string | null;
+    daysPastDue: number;
+    bucket: string;
+  }>;
+}
+
 export default function FinanceOverviewPage() {
   const { user } = useAuth();
   const [data, setData] = useState<Summary | null>(null);
+  const [ar, setAr] = useState<ArSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const isAccounting = user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isAccounting);
 
   useEffect(() => {
     api<Summary>('/api/finance/summary')
       .then(setData)
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load'));
-  }, []);
-
-  const isAccounting = user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isAccounting);
+    if (isAccounting) {
+      api<ArSummary>('/api/finance/ar')
+        .then(setAr)
+        .catch(() => undefined);
+    }
+  }, [isAccounting]);
 
   return (
     <div className="dashboard">
@@ -118,6 +148,90 @@ export default function FinanceOverviewPage() {
               is ever wired — entries simply stay LOCAL_ONLY.
             */}
           </section>
+
+          {isAccounting && ar && (
+            <section className="card">
+              <div className="row-between">
+                <h2>Accounts receivable</h2>
+                <Link to="/portal/invoices" className="button-ghost button-small">All invoices →</Link>
+              </div>
+              <div className="invoice-stats" style={{ marginBottom: '1rem' }}>
+                <div>
+                  <div className="stat-label">Open balance</div>
+                  <div className="stat-value">{formatCents(ar.totalOpenBalanceCents)}</div>
+                </div>
+                <div>
+                  <div className="stat-label">Drafts not sent</div>
+                  <div className="stat-value">{formatCents(ar.drafts.totalCents)}</div>
+                  <div className="muted" style={{ fontSize: '0.85rem' }}>
+                    {ar.drafts.count} entr{ar.drafts.count === 1 ? 'y' : 'ies'}
+                  </div>
+                </div>
+                <div>
+                  <div className="stat-label">Expected next 30 days</div>
+                  <div className="stat-value">{formatCents(ar.expectedCash.next30Cents)}</div>
+                </div>
+                <div>
+                  <div className="stat-label">Next 60 days</div>
+                  <div className="stat-value">{formatCents(ar.expectedCash.next60Cents)}</div>
+                </div>
+                <div>
+                  <div className="stat-label">Next 90 days</div>
+                  <div className="stat-value">{formatCents(ar.expectedCash.next90Cents)}</div>
+                </div>
+              </div>
+
+              <h3 style={{ margin: '0.5rem 0' }}>Aging</h3>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Bucket</th>
+                    <th style={{ textAlign: 'right' }}>Amount</th>
+                    <th style={{ textAlign: 'right' }}>Invoices</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ar.buckets.map((b) => (
+                    <tr key={b.key}>
+                      <td>{b.label}</td>
+                      <td style={{ textAlign: 'right' }}>{formatCents(b.totalCents)}</td>
+                      <td style={{ textAlign: 'right' }}>{b.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {ar.topOverdue.length > 0 && (
+                <>
+                  <h3 style={{ margin: '0.75rem 0 0.5rem' }}>Worst offenders</h3>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Customer</th>
+                        <th>Due</th>
+                        <th style={{ textAlign: 'right' }}>Days past due</th>
+                        <th style={{ textAlign: 'right' }}>Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ar.topOverdue.map((row) => (
+                        <tr key={row.id}>
+                          <td>{row.number}</td>
+                          <td>{row.customer.name}</td>
+                          <td>{row.dueAt ? formatDate(row.dueAt) : <span className="muted">no due date</span>}</td>
+                          <td style={{ textAlign: 'right', color: row.daysPastDue > 30 ? 'var(--danger)' : undefined }}>
+                            {row.daysPastDue > 0 ? row.daysPastDue : <span className="muted">—</span>}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>{formatCents(row.balanceCents)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
+            </section>
+          )}
 
           <div className="form-row">
             <section className="card">

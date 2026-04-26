@@ -307,6 +307,130 @@ router.get('/expenses', async (req, res, next) => {
 
 // Aggregate dashboard for the finance landing page. Cheap, single round-trip,
 // scoped per role the same way the list endpoint is.
+// AR aging + expected-cash rollup. Pulls every non-VOID, non-PAID-in-full
+// invoice and buckets the outstanding balance into current / 30 / 60 / 90+
+// days from dueAt (current = "due in the future or no due date set"). The
+// expected-cash window sums every invoice with dueAt within the next N
+// days so admin can eyeball the runway.
+router.get('/ar', async (req, res, next) => {
+  try {
+    const me = await loadMe(req.user!.sub);
+    if (!me || !hasAccountingAccess(me)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const now = new Date();
+    const open = await prisma.invoice.findMany({
+      where: {
+        status: { in: ['SENT', 'OVERDUE', 'DRAFT'] },
+      },
+      include: {
+        payments: { select: { amountCents: true } },
+        customer: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    interface Bucket {
+      label: string;
+      totalCents: number;
+      count: number;
+    }
+    const buckets: Record<'current' | 'd30' | 'd60' | 'd90' | 'd90plus', Bucket> = {
+      current: { label: 'Current / not yet due', totalCents: 0, count: 0 },
+      d30:    { label: '1–30 days', totalCents: 0, count: 0 },
+      d60:    { label: '31–60 days', totalCents: 0, count: 0 },
+      d90:    { label: '61–90 days', totalCents: 0, count: 0 },
+      d90plus:{ label: '90+ days', totalCents: 0, count: 0 },
+    };
+
+    interface OpenInvoice {
+      id: string;
+      number: string;
+      customer: { id: string; name: string; email: string };
+      amountCents: number;
+      balanceCents: number;
+      dueAt: string | null;
+      daysPastDue: number; // negative if not yet due, 0 if today
+      bucket: keyof typeof buckets;
+    }
+    const list: OpenInvoice[] = [];
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    let totalDraftCents = 0;
+    let totalDraftCount = 0;
+    let totalOpenBalance = 0;
+
+    for (const inv of open) {
+      const paid = inv.payments.reduce((s, p) => s + p.amountCents, 0);
+      const balance = inv.amountCents - paid;
+      if (balance <= 0) continue;
+      if (inv.status === 'DRAFT') {
+        // Drafts aren't in AR yet — surface separately so admin can chase
+        // them out the door.
+        totalDraftCents += balance;
+        totalDraftCount += 1;
+        continue;
+      }
+      totalOpenBalance += balance;
+      const due = inv.dueAt;
+      let bucket: keyof typeof buckets = 'current';
+      let daysPastDue = -1;
+      if (due) {
+        const diff = Math.floor((now.getTime() - due.getTime()) / dayMs);
+        daysPastDue = diff;
+        if (diff <= 0) bucket = 'current';
+        else if (diff <= 30) bucket = 'd30';
+        else if (diff <= 60) bucket = 'd60';
+        else if (diff <= 90) bucket = 'd90';
+        else bucket = 'd90plus';
+      }
+      buckets[bucket].totalCents += balance;
+      buckets[bucket].count += 1;
+      list.push({
+        id: inv.id,
+        number: inv.number,
+        customer: inv.customer,
+        amountCents: inv.amountCents,
+        balanceCents: balance,
+        dueAt: due ? due.toISOString() : null,
+        daysPastDue,
+        bucket,
+      });
+    }
+    list.sort((a, b) => b.daysPastDue - a.daysPastDue);
+
+    // Expected cash: sum balances on every open SENT/OVERDUE invoice whose
+    // dueAt falls in the next 30 / 60 / 90 days. We don't include invoices
+    // already past due in the "next X days" — those are AR aging fodder.
+    const horizon30 = new Date(now.getTime() + 30 * dayMs);
+    const horizon60 = new Date(now.getTime() + 60 * dayMs);
+    const horizon90 = new Date(now.getTime() + 90 * dayMs);
+    let exp30 = 0;
+    let exp60 = 0;
+    let exp90 = 0;
+    for (const inv of open) {
+      if (inv.status === 'DRAFT' || !inv.dueAt || inv.dueAt < now) continue;
+      const paid = inv.payments.reduce((s, p) => s + p.amountCents, 0);
+      const balance = inv.amountCents - paid;
+      if (balance <= 0) continue;
+      if (inv.dueAt <= horizon30) exp30 += balance;
+      if (inv.dueAt <= horizon60) exp60 += balance;
+      if (inv.dueAt <= horizon90) exp90 += balance;
+    }
+
+    res.json({
+      asOf: now.toISOString(),
+      buckets: Object.entries(buckets).map(([key, b]) => ({ key, ...b })),
+      totalOpenBalanceCents: totalOpenBalance,
+      drafts: { totalCents: totalDraftCents, count: totalDraftCount },
+      expectedCash: { next30Cents: exp30, next60Cents: exp60, next90Cents: exp90 },
+      // Top 10 most-overdue rows so admin can chase the worst first.
+      topOverdue: list.slice(0, 10),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/summary', async (req, res, next) => {
   try {
     const me = await loadMe(req.user!.sub);
