@@ -1,10 +1,11 @@
 import crypto from 'node:crypto';
 import express, { Router } from 'express';
-import { ContractStatus, InvoiceStatus } from '@prisma/client';
+import { ContractStatus, InvoiceStatus, PaymentMethod } from '@prisma/client';
 import { prisma } from '../db.js';
 import { mapEnvelopeStatus, verifyConnectSignature } from '../lib/docusign.js';
 import { sendContractDecidedEmail } from '../lib/mailer.js';
 import { audit } from '../lib/audit.js';
+import { recomputeInvoiceStatus } from '../lib/payments.js';
 
 const router = Router();
 
@@ -214,26 +215,50 @@ router.post('/stripe', async (req, res, next) => {
     if (!invoice) {
       return res.json({ ok: true, ignored: 'no matching invoice' });
     }
-    if (invoice.status === InvoiceStatus.PAID) {
-      return res.json({ ok: true, alreadyPaid: true });
+    if (invoice.status === InvoiceStatus.VOID) {
+      return res.json({ ok: true, ignored: 'invoice voided' });
     }
 
-    const updated = await prisma.invoice.update({
-      where: { id: invoice.id },
-      data: { status: InvoiceStatus.PAID, paidAt: new Date() },
+    // Stripe sends both checkout.session.completed and payment_intent.succeeded
+    // for the same checkout — same id surfaces in either as event.data.object.id
+    // for sessions or .payment_intent for intents. We dedupe on the most stable
+    // value we have (the event id), persisted as the payment's referenceNumber.
+    const reference = event.id ?? null;
+    if (reference) {
+      const dup = await prisma.payment.findFirst({
+        where: { invoiceId: invoice.id, referenceNumber: reference },
+        select: { id: true },
+      });
+      if (dup) return res.json({ ok: true, alreadyRecorded: true });
+    }
+
+    const amount = obj.amount_received ?? obj.amount_total ?? invoice.amountCents;
+    const payment = await prisma.payment.create({
+      data: {
+        invoiceId: invoice.id,
+        amountCents: amount,
+        method: PaymentMethod.STRIPE,
+        referenceNumber: reference,
+        notes: `Stripe ${event.type}`,
+      },
     });
+    const totals = await recomputeInvoiceStatus(invoice.id);
+
     audit(null, {
-      action: 'invoice.paid_via_stripe',
+      action: 'invoice.payment_recorded',
       resourceType: 'invoice',
       resourceId: invoice.id,
       meta: {
+        source: 'stripe',
+        paymentId: payment.id,
         stripeEventId: event.id,
         stripeEventType: event.type,
-        amountReceived: obj.amount_received ?? obj.amount_total ?? null,
+        amountCents: amount,
+        newStatus: totals.status,
       },
     }).catch(() => undefined);
 
-    res.json({ ok: true, invoiceId: updated.id });
+    res.json({ ok: true, invoiceId: invoice.id, paymentId: payment.id, status: totals.status });
   } catch (err) {
     next(err);
   }

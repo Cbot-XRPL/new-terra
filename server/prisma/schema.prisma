@@ -133,6 +133,9 @@ model User {
   selections    Selection[]
   membership    Membership?
 
+  // Staff who recorded payments (bookkeeping audit trail).
+  paymentsRecorded Payment[] @relation("RecordedPayments")
+
   // Bidirectional messaging — staff can message customers and vice versa.
   // Cross-role permission (no customer↔customer) is enforced in the route.
   messagesSent     Message[] @relation("MessagesFromUser")
@@ -266,6 +269,44 @@ model Invoice {
   // Hosted-payment URL (Stripe payment link, QuickBooks, Square, etc.).
   // Set by the admin; rendered as a "Pay now" button on the customer side.
   paymentUrl  String?
+  payments    Payment[]
+}
+
+// One row per payment received against an invoice. Most invoices get one
+// payment (a check, a Zelle transfer); partial payments stack as multiple
+// rows. The invoice status flips to PAID automatically when the sum of
+// payment amounts hits the invoice total — the recompute helper lives in
+// server/src/lib/payments.ts so the API and the Stripe webhook share it.
+model Payment {
+  id              String        @id @default(cuid())
+  invoiceId       String
+  invoice         Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amountCents     Int
+  method          PaymentMethod
+  // Free-text reference: check number, Zelle confirmation code, ACH trace
+  // number, Stripe payment_intent id, etc. Indexed so admins can search a
+  // bounced check or duplicate transfer fast.
+  referenceNumber String?
+  receivedAt      DateTime      @default(now())
+  notes           String?
+  recordedById    String?
+  recordedBy      User?         @relation("RecordedPayments", fields: [recordedById], references: [id])
+  createdAt       DateTime      @default(now())
+
+  @@index([invoiceId])
+  @@index([referenceNumber])
+}
+
+enum PaymentMethod {
+  CASH
+  CHECK
+  ZELLE
+  ACH
+  WIRE
+  CARD
+  STRIPE
+  QUICKBOOKS
+  OTHER
 }
 
 model Selection {

@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { Role, InvoiceStatus } from '@prisma/client';
+import { Role, InvoiceStatus, PaymentMethod } from '@prisma/client';
 import { prisma } from '../db.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { audit } from '../lib/audit.js';
 import { createPaymentLinkForInvoice, isStripeConfigured } from '../lib/stripe.js';
+import { ALL_PAYMENT_METHODS, computeTotals, recomputeInvoiceStatus } from '../lib/payments.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -59,9 +60,17 @@ router.get('/', async (req, res, next) => {
       include: {
         customer: { select: { id: true, name: true, email: true } },
         project: { select: { id: true, name: true } },
+        payments: { select: { amountCents: true } },
       },
     });
-    res.json({ invoices });
+    // Decorate with running totals so the list page can show balance/paid
+    // without per-row API calls. Drop the raw payments after computing.
+    const decorated = invoices.map((inv) => {
+      const totals = computeTotals(inv.amountCents, inv.payments.map((p) => p.amountCents));
+      const { payments, ...rest } = inv;
+      return { ...rest, paidCents: totals.paidCents, balanceCents: totals.balanceCents };
+    });
+    res.json({ invoices: decorated });
   } catch (err) {
     next(err);
   }
@@ -75,13 +84,27 @@ router.get('/:id', async (req, res, next) => {
       include: {
         customer: { select: { id: true, name: true, email: true } },
         project: { select: { id: true, name: true } },
+        payments: {
+          orderBy: { receivedAt: 'desc' },
+          include: { recordedBy: { select: { id: true, name: true } } },
+        },
       },
     });
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
     if (role === Role.CUSTOMER && invoice.customerId !== sub) {
       return res.status(404).json({ error: 'Invoice not found' });
     }
-    res.json({ invoice });
+    const totals = computeTotals(
+      invoice.amountCents,
+      invoice.payments.map((p) => p.amountCents),
+    );
+    res.json({
+      invoice: {
+        ...invoice,
+        paidCents: totals.paidCents,
+        balanceCents: totals.balanceCents,
+      },
+    });
   } catch (err) {
     next(err);
   }
@@ -194,6 +217,113 @@ router.post('/:id/payment-link', requireRole(Role.ADMIN), async (req, res, next)
   } catch (err) {
     next(err);
   }
+});
+
+// ----- Payments ledger -----
+//
+// Anyone with accounting or admin can record a payment. We don't open this
+// up to plain employees so a misclick doesn't accidentally close out an
+// invoice; sales staff who need to confirm receipt should ping accounting.
+
+const recordPaymentSchema = z.object({
+  amountCents: z.number().int().positive(),
+  method: z.nativeEnum(PaymentMethod),
+  referenceNumber: z.string().max(80).optional().nullable(),
+  receivedAt: z.string().datetime().optional(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+
+async function loadAccountingActor(userId: string) {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true, isAccounting: true },
+  });
+}
+
+router.post('/:id/payments', async (req, res, next) => {
+  try {
+    const me = await loadAccountingActor(req.user!.sub);
+    if (!me || (me.role !== Role.ADMIN && !(me.role === Role.EMPLOYEE && me.isAccounting))) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const body = recordPaymentSchema.parse(req.body);
+    const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    if (invoice.status === InvoiceStatus.VOID) {
+      return res.status(409).json({ error: 'Cannot record a payment on a voided invoice' });
+    }
+
+    const payment = await prisma.payment.create({
+      data: {
+        invoiceId: invoice.id,
+        amountCents: body.amountCents,
+        method: body.method,
+        referenceNumber: body.referenceNumber ?? null,
+        receivedAt: body.receivedAt ? new Date(body.receivedAt) : new Date(),
+        notes: body.notes ?? null,
+        recordedById: me.id,
+      },
+      include: { recordedBy: { select: { id: true, name: true } } },
+    });
+
+    const totals = await recomputeInvoiceStatus(invoice.id);
+    audit(req, {
+      action: 'invoice.payment_recorded',
+      resourceType: 'invoice',
+      resourceId: invoice.id,
+      meta: {
+        paymentId: payment.id,
+        amountCents: payment.amountCents,
+        method: payment.method,
+        referenceNumber: payment.referenceNumber,
+        newStatus: totals.status,
+      },
+    }).catch(() => undefined);
+
+    res.status(201).json({
+      payment,
+      paidCents: totals.paidCents,
+      balanceCents: totals.balanceCents,
+      status: totals.status,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:id/payments/:paymentId', async (req, res, next) => {
+  try {
+    const me = await loadAccountingActor(req.user!.sub);
+    if (!me || (me.role !== Role.ADMIN && !(me.role === Role.EMPLOYEE && me.isAccounting))) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const payment = await prisma.payment.findUnique({ where: { id: req.params.paymentId } });
+    if (!payment || payment.invoiceId !== req.params.id) {
+      return res.status(404).json({ error: 'Payment not found' });
+    }
+    await prisma.payment.delete({ where: { id: payment.id } });
+    const totals = await recomputeInvoiceStatus(payment.invoiceId);
+    audit(req, {
+      action: 'invoice.payment_deleted',
+      resourceType: 'invoice',
+      resourceId: payment.invoiceId,
+      meta: { paymentId: payment.id, amountCents: payment.amountCents, newStatus: totals.status },
+    }).catch(() => undefined);
+    res.json({
+      ok: true,
+      paidCents: totals.paidCents,
+      balanceCents: totals.balanceCents,
+      status: totals.status,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Surface the available methods for the client dropdown so we don't fork the
+// list across the codebase.
+router.get('/_meta/payment-methods', (_req, res) => {
+  res.json({ methods: ALL_PAYMENT_METHODS });
 });
 
 export default router;

@@ -1,7 +1,8 @@
-import { type FormEvent, useEffect, useState } from 'react';
+import { Fragment, type FormEvent, useEffect, useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { formatCents, formatDate } from '../../lib/format';
+import PaymentsPanel from './PaymentsPanel';
 
 type InvoiceStatus = 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE' | 'VOID';
 
@@ -9,6 +10,8 @@ interface Invoice {
   id: string;
   number: string;
   amountCents: number;
+  paidCents: number;
+  balanceCents: number;
   status: InvoiceStatus;
   issuedAt: string;
   dueAt: string | null;
@@ -34,6 +37,7 @@ export default function InvoicesSection({ projectId, customerId, customerName }:
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [openPayments, setOpenPayments] = useState<string | null>(null);
 
   const [amount, setAmount] = useState('');
   const [dueAt, setDueAt] = useState('');
@@ -179,59 +183,90 @@ export default function InvoicesSection({ projectId, customerId, customerName }:
         <table className="table">
           <thead>
             <tr>
-              <th>#</th><th>Issued</th><th>Due</th><th>Amount</th><th>Status</th>
+              <th>#</th><th>Issued</th><th>Due</th>
+              <th style={{ textAlign: 'right' }}>Amount</th>
+              <th style={{ textAlign: 'right' }}>Balance</th>
+              <th>Status</th>
+              <th></th>
               <th>{isAdmin ? '' : 'Pay'}</th>
               {isAdmin && <th></th>}
             </tr>
           </thead>
           <tbody>
             {invoices.map((inv) => (
-              <tr key={inv.id}>
-                <td>{inv.number}</td>
-                <td>{formatDate(inv.issuedAt)}</td>
-                <td>{formatDate(inv.dueAt)}</td>
-                <td>{formatCents(inv.amountCents)}</td>
-                <td>
-                  <span className={`badge badge-${inv.status.toLowerCase()}`}>
-                    {inv.status.toLowerCase()}
-                  </span>
-                </td>
-                <td>
-                  {inv.paymentUrl && inv.status !== 'PAID' && inv.status !== 'VOID' ? (
-                    <a
-                      className="button button-small"
-                      href={inv.paymentUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Pay now
-                    </a>
-                  ) : isAdmin && inv.status !== 'PAID' && inv.status !== 'VOID' ? (
+              <Fragment key={inv.id}>
+                <tr>
+                  <td>{inv.number}</td>
+                  <td>{formatDate(inv.issuedAt)}</td>
+                  <td>{formatDate(inv.dueAt)}</td>
+                  <td style={{ textAlign: 'right' }}>{formatCents(inv.amountCents)}</td>
+                  <td
+                    style={{
+                      textAlign: 'right',
+                      color: inv.balanceCents > 0 ? 'var(--accent)' : undefined,
+                    }}
+                  >
+                    {formatCents(inv.balanceCents)}
+                  </td>
+                  <td>
+                    <span className={`badge badge-${inv.status.toLowerCase()}`}>
+                      {inv.status.toLowerCase()}
+                    </span>
+                  </td>
+                  <td>
                     <button
                       type="button"
                       className="button-ghost button-small"
-                      onClick={() => generatePaymentLink(inv.id)}
-                      title="Create a Stripe payment link tagged with this invoice id"
+                      onClick={() => setOpenPayments(openPayments === inv.id ? null : inv.id)}
                     >
-                      Generate link
+                      {openPayments === inv.id ? 'Hide' : 'Payments'}
                     </button>
-                  ) : (
-                    <span className="muted">—</span>
-                  )}
-                </td>
-                {isAdmin && (
-                  <td>
-                    <select
-                      value={inv.status}
-                      onChange={(e) => setStatus(inv.id, e.target.value as InvoiceStatus)}
-                    >
-                      {STATUSES.map((s) => (
-                        <option key={s} value={s}>{s.toLowerCase()}</option>
-                      ))}
-                    </select>
                   </td>
+                  <td>
+                    {inv.paymentUrl && inv.status !== 'PAID' && inv.status !== 'VOID' ? (
+                      <a
+                        className="button button-small"
+                        href={inv.paymentUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Pay now
+                      </a>
+                    ) : isAdmin && inv.status !== 'PAID' && inv.status !== 'VOID' ? (
+                      <button
+                        type="button"
+                        className="button-ghost button-small"
+                        onClick={() => generatePaymentLink(inv.id)}
+                        title="Optional Stripe payment link — most teams just use Record payment instead"
+                      >
+                        Generate link
+                      </button>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
+                  {isAdmin && (
+                    <td>
+                      <select
+                        value={inv.status}
+                        onChange={(e) => setStatus(inv.id, e.target.value as InvoiceStatus)}
+                        title="Manual override — payments will recompute on the next change"
+                      >
+                        {STATUSES.map((s) => (
+                          <option key={s} value={s}>{s.toLowerCase()}</option>
+                        ))}
+                      </select>
+                    </td>
+                  )}
+                </tr>
+                {openPayments === inv.id && (
+                  <tr>
+                    <td colSpan={isAdmin ? 9 : 8} style={{ background: 'var(--surface)' }}>
+                      <PaymentsPanel invoiceId={inv.id} onChange={load} />
+                    </td>
+                  </tr>
                 )}
-              </tr>
+              </Fragment>
             ))}
           </tbody>
         </table>

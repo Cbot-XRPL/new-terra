@@ -8,6 +8,8 @@ interface Invoice {
   id: string;
   number: string;
   amountCents: number;
+  paidCents: number;
+  balanceCents: number;
   status: string;
   issuedAt: string;
   dueAt: string | null;
@@ -28,9 +30,12 @@ export default function InvoicesPage() {
   }, []);
 
   const total = invoices.reduce((sum, i) => sum + i.amountCents, 0);
+  // Outstanding = sum of remaining balances on every non-VOID invoice. This
+  // is the number accountants actually want — partial payments shrink it
+  // straight away instead of waiting for the status to flip to PAID.
   const outstanding = invoices
-    .filter((i) => i.status === 'SENT' || i.status === 'OVERDUE')
-    .reduce((sum, i) => sum + i.amountCents, 0);
+    .filter((i) => i.status !== 'VOID')
+    .reduce((sum, i) => sum + Math.max(0, i.balanceCents), 0);
 
   return (
     <div className="dashboard">
@@ -70,7 +75,8 @@ export default function InvoicesPage() {
                 <th>Due</th>
                 {user?.role !== 'CUSTOMER' && <th>Customer</th>}
                 <th>Project</th>
-                <th>Amount</th>
+                <th style={{ textAlign: 'right' }}>Amount</th>
+                <th style={{ textAlign: 'right' }}>Balance</th>
                 <th>Status</th>
                 <th></th>
               </tr>
@@ -89,7 +95,15 @@ export default function InvoicesPage() {
                       <span className="muted">—</span>
                     )}
                   </td>
-                  <td>{formatCents(inv.amountCents)}</td>
+                  <td style={{ textAlign: 'right' }}>{formatCents(inv.amountCents)}</td>
+                  <td
+                    style={{
+                      textAlign: 'right',
+                      color: inv.balanceCents > 0 && inv.status !== 'VOID' ? 'var(--accent)' : undefined,
+                    }}
+                  >
+                    {formatCents(inv.balanceCents)}
+                  </td>
                   <td>
                     <span className={`badge badge-${inv.status.toLowerCase()}`}>
                       {inv.status.toLowerCase()}

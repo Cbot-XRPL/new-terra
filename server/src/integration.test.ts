@@ -217,6 +217,92 @@ d('integration · sales gate', () => {
   });
 });
 
+d('integration · payments ledger', () => {
+  it('admin records a partial payment, then a final payment, status auto-flips', async () => {
+    // Use the seeded customer to own the invoice so cleanup is predictable.
+    const number = `IT-${Date.now()}`;
+    const invoice = await prisma.invoice.create({
+      data: {
+        number,
+        customerId: seeded.customer.id,
+        amountCents: 10_000,
+        status: 'SENT',
+      },
+    });
+
+    try {
+      // Partial first.
+      const r1 = await request(app)
+        .post(`/api/invoices/${invoice.id}/payments`)
+        .set('Authorization', `Bearer ${seeded.admin.token}`)
+        .send({ amountCents: 4_000, method: 'CHECK', referenceNumber: 'CHK-1' });
+      expect(r1.status).toBe(201);
+      expect(r1.body.balanceCents).toBe(6_000);
+      expect(r1.body.status).toBe('SENT');
+
+      // Final remainder flips it.
+      const r2 = await request(app)
+        .post(`/api/invoices/${invoice.id}/payments`)
+        .set('Authorization', `Bearer ${seeded.admin.token}`)
+        .send({ amountCents: 6_000, method: 'ZELLE', referenceNumber: 'ZL-9' });
+      expect(r2.status).toBe(201);
+      expect(r2.body.balanceCents).toBe(0);
+      expect(r2.body.status).toBe('PAID');
+
+      // Detail reflects both payments + paidAt.
+      const detail = await request(app)
+        .get(`/api/invoices/${invoice.id}`)
+        .set('Authorization', `Bearer ${seeded.admin.token}`);
+      expect(detail.status).toBe(200);
+      expect(detail.body.invoice.payments).toHaveLength(2);
+      expect(detail.body.invoice.paidAt).toBeTruthy();
+
+      // Delete the second payment → drops back to SENT.
+      const lastPaymentId = r2.body.payment.id;
+      const del = await request(app)
+        .delete(`/api/invoices/${invoice.id}/payments/${lastPaymentId}`)
+        .set('Authorization', `Bearer ${seeded.admin.token}`);
+      expect(del.status).toBe(200);
+      expect(del.body.status).toBe('SENT');
+      expect(del.body.balanceCents).toBe(6_000);
+    } finally {
+      // Cascade deletes the payments rows too.
+      await prisma.invoice.delete({ where: { id: invoice.id } });
+    }
+  });
+
+  it('plain employee cannot record a payment', async () => {
+    const number = `IT-${Date.now() + 1}`;
+    const invoice = await prisma.invoice.create({
+      data: {
+        number,
+        customerId: seeded.customer.id,
+        amountCents: 5_000,
+        status: 'SENT',
+      },
+    });
+    try {
+      const res = await request(app)
+        .post(`/api/invoices/${invoice.id}/payments`)
+        .set('Authorization', `Bearer ${seeded.plain.token}`)
+        .send({ amountCents: 1_000, method: 'CASH' });
+      expect(res.status).toBe(403);
+    } finally {
+      await prisma.invoice.delete({ where: { id: invoice.id } });
+    }
+  });
+
+  it('payment-methods meta endpoint lists all enum values', async () => {
+    const res = await request(app)
+      .get('/api/invoices/_meta/payment-methods')
+      .set('Authorization', `Bearer ${seeded.admin.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.methods).toEqual(
+      expect.arrayContaining(['CASH', 'CHECK', 'ZELLE', 'ACH', 'WIRE', 'STRIPE']),
+    );
+  });
+});
+
 d('integration · time tracking is per-user scoped', () => {
   it('plain employee can list their own time entries', async () => {
     const res = await request(app)
