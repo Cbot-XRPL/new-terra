@@ -144,6 +144,11 @@ model User {
   recurringInvoices       RecurringInvoice[] @relation("RecurringInvoiceCustomer")
   recurringInvoicesAuthored RecurringInvoice[] @relation("RecurringInvoiceAuthor")
 
+  // Subcontractor compensation: bills the sub submits to us + the
+  // accounting approver (any role).
+  subcontractorBills    SubcontractorBill[] @relation("SubBillSubcontractor")
+  subBillsApproved      SubcontractorBill[] @relation("SubBillApprover")
+
   // Bidirectional messaging — staff can message customers and vice versa.
   // Cross-role permission (no customer↔customer) is enforced in the route.
   messagesSent     Message[] @relation("MessagesFromUser")
@@ -248,6 +253,7 @@ model Project {
   timeEntries        TimeEntry[]
   changeOrders       ChangeOrder[]
   recurringInvoices  RecurringInvoice[]
+  subcontractorBills SubcontractorBill[]
 
   @@index([projectManagerId])
 }
@@ -447,6 +453,50 @@ model RecurringInvoice {
   updatedAt    DateTime            @updatedAt
 
   @@index([active, nextRunAt])
+}
+
+// A bill the company OWES to a subcontractor — the inverse of customer
+// invoices. Sub uploads (or admin enters) it, accounting approves, then
+// marks paid. On PAID we automatically write an Expense row tagged to
+// the same project so it shows up as Cost-of-Goods-Sold in the job-cost
+// rollup. The auto-created expense's id is stored back on the bill so
+// admin can navigate or unwind cleanly.
+model SubcontractorBill {
+  id              String                  @id @default(cuid())
+  number          String                  @unique           // SB-YYYY-####
+  // Sub's own invoice number (their reference) — not unique across subs.
+  externalNumber  String?
+  subcontractorId String
+  subcontractor   User                    @relation("SubBillSubcontractor", fields: [subcontractorId], references: [id])
+  projectId       String?
+  project         Project?                @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  amountCents     Int
+  status          SubcontractorBillStatus @default(PENDING)
+  receivedAt      DateTime                @default(now())
+  approvedAt      DateTime?
+  approvedById    String?
+  approvedBy      User?                   @relation("SubBillApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  paidAt          DateTime?
+  paidMethod      PaymentMethod?
+  paidReference   String?
+  notes           String?
+  // Pointer to the auto-issued expense row so we can find/remove it on
+  // status change. Null until PAID.
+  expenseId       String?                 @unique
+  expense         Expense?                @relation("SubBillExpense", fields: [expenseId], references: [id])
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@index([subcontractorId])
+  @@index([projectId])
+  @@index([status])
+}
+
+enum SubcontractorBillStatus {
+  PENDING       // received, not yet approved
+  APPROVED      // accounting OK'd; ready to pay
+  PAID          // money out the door + expense row written
+  VOID          // rejected or cancelled
 }
 
 enum RecurringFrequency {
@@ -782,6 +832,10 @@ model Expense {
   qbExpenseId    String?           @unique
   lastSyncAttemptAt DateTime?
   lastSyncError  String?
+
+  // Optional back-link populated when the expense was auto-created from
+  // a SubcontractorBill being marked PAID.
+  subcontractorBill SubcontractorBill? @relation("SubBillExpense")
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

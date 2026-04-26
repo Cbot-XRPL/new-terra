@@ -1,0 +1,284 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { PaymentMethod, Role, SubcontractorBillStatus } from '@prisma/client';
+import { prisma } from '../db.js';
+import { requireAuth } from '../middleware/auth.js';
+import { hasAccountingAccess } from '../lib/permissions.js';
+import { audit } from '../lib/audit.js';
+
+const router = Router();
+router.use(requireAuth);
+
+async function nextBillNumber(): Promise<string> {
+  const year = new Date().getFullYear();
+  const prefix = `SB-${year}-`;
+  const last = await prisma.subcontractorBill.findFirst({
+    where: { number: { startsWith: prefix } },
+    orderBy: { number: 'desc' },
+    select: { number: true },
+  });
+  const n = last ? Number(last.number.slice(prefix.length)) + 1 : 1;
+  return `${prefix}${String(n).padStart(4, '0')}`;
+}
+
+async function loadActor(userId: string) {
+  return prisma.user.findUnique({ where: { id: userId } });
+}
+
+// Subcontractors see only their own bills. Admin / accounting see everything.
+// Plain employees never see them — this is a finance/COGS surface.
+router.get('/', async (req, res, next) => {
+  try {
+    const me = await loadActor(req.user!.sub);
+    if (!me) return res.status(401).json({ error: 'Unauthenticated' });
+    let where: { subcontractorId?: string } = {};
+    if (me.role === Role.SUBCONTRACTOR) {
+      where = { subcontractorId: me.id };
+    } else if (!hasAccountingAccess(me)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const bills = await prisma.subcontractorBill.findMany({
+      where,
+      orderBy: [{ status: 'asc' }, { receivedAt: 'desc' }],
+      include: {
+        subcontractor: { select: { id: true, name: true, email: true } },
+        project: { select: { id: true, name: true } },
+        approvedBy: { select: { id: true, name: true } },
+        expense: { select: { id: true } },
+      },
+    });
+    res.json({ bills });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const createSchema = z.object({
+  // Optional: admin/accounting can record on a sub's behalf. When omitted
+  // and the caller is a sub, defaults to themselves.
+  subcontractorId: z.string().min(1).optional(),
+  projectId: z.string().min(1).nullable().optional(),
+  externalNumber: z.string().max(60).nullable().optional(),
+  amountCents: z.number().int().positive(),
+  receivedAt: z.string().datetime().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+router.post('/', async (req, res, next) => {
+  try {
+    const me = await loadActor(req.user!.sub);
+    if (!me) return res.status(401).json({ error: 'Unauthenticated' });
+    const data = createSchema.parse(req.body);
+
+    // Subs can only file their own; staff with accounting can file on
+    // behalf of a sub.
+    let subId: string;
+    if (me.role === Role.SUBCONTRACTOR) {
+      subId = me.id;
+    } else if (hasAccountingAccess(me)) {
+      if (!data.subcontractorId) return res.status(400).json({ error: 'subcontractorId is required' });
+      const sub = await prisma.user.findUnique({ where: { id: data.subcontractorId } });
+      if (!sub || sub.role !== Role.SUBCONTRACTOR) {
+        return res.status(400).json({ error: 'subcontractorId must reference a subcontractor' });
+      }
+      subId = sub.id;
+    } else {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const number = await nextBillNumber();
+    const bill = await prisma.subcontractorBill.create({
+      data: {
+        number,
+        subcontractorId: subId,
+        projectId: data.projectId ?? null,
+        externalNumber: data.externalNumber ?? null,
+        amountCents: data.amountCents,
+        receivedAt: data.receivedAt ? new Date(data.receivedAt) : new Date(),
+        notes: data.notes ?? null,
+        status: SubcontractorBillStatus.PENDING,
+      },
+    });
+    audit(req, {
+      action: 'subBill.created',
+      resourceType: 'subcontractorBill',
+      resourceId: bill.id,
+      meta: { amountCents: data.amountCents, projectId: data.projectId, subcontractorId: subId },
+    }).catch(() => undefined);
+    res.status(201).json({ bill });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const patchSchema = z.object({
+  externalNumber: z.string().max(60).nullable().optional(),
+  amountCents: z.number().int().positive().optional(),
+  projectId: z.string().min(1).nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+});
+
+router.patch('/:id', async (req, res, next) => {
+  try {
+    const me = await loadActor(req.user!.sub);
+    if (!me || !hasAccountingAccess(me)) return res.status(403).json({ error: 'Forbidden' });
+    const data = patchSchema.parse(req.body);
+    const existing = await prisma.subcontractorBill.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: 'Bill not found' });
+    if (existing.status === SubcontractorBillStatus.PAID) {
+      return res.status(409).json({ error: 'Cannot edit a paid bill — void and resubmit instead' });
+    }
+    const bill = await prisma.subcontractorBill.update({
+      where: { id: existing.id },
+      data: {
+        externalNumber: data.externalNumber === null ? null : data.externalNumber,
+        amountCents: data.amountCents,
+        projectId: data.projectId === null ? null : data.projectId,
+        notes: data.notes === null ? null : data.notes,
+      },
+    });
+    res.json({ bill });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/approve', async (req, res, next) => {
+  try {
+    const me = await loadActor(req.user!.sub);
+    if (!me || !hasAccountingAccess(me)) return res.status(403).json({ error: 'Forbidden' });
+    const existing = await prisma.subcontractorBill.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: 'Bill not found' });
+    if (existing.status !== SubcontractorBillStatus.PENDING) {
+      return res.status(409).json({ error: `Cannot approve a ${existing.status.toLowerCase()} bill` });
+    }
+    const bill = await prisma.subcontractorBill.update({
+      where: { id: existing.id },
+      data: {
+        status: SubcontractorBillStatus.APPROVED,
+        approvedAt: new Date(),
+        approvedById: me.id,
+      },
+    });
+    res.json({ bill });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const paySchema = z.object({
+  paidMethod: z.nativeEnum(PaymentMethod),
+  paidReference: z.string().max(80).nullable().optional(),
+  paidAt: z.string().datetime().optional(),
+});
+
+// Mark a bill PAID and auto-write an Expense row tagged to the project
+// so the cost lands in job costing. Wrapped in a transaction so a half-
+// finished pay action can't leave a "PAID bill with no expense".
+router.post('/:id/pay', async (req, res, next) => {
+  try {
+    const me = await loadActor(req.user!.sub);
+    if (!me || !hasAccountingAccess(me)) return res.status(403).json({ error: 'Forbidden' });
+    const data = paySchema.parse(req.body);
+    const existing = await prisma.subcontractorBill.findUnique({
+      where: { id: req.params.id },
+      include: { subcontractor: { select: { id: true, name: true } } },
+    });
+    if (!existing) return res.status(404).json({ error: 'Bill not found' });
+    if (existing.status === SubcontractorBillStatus.PAID) {
+      return res.status(409).json({ error: 'Already paid' });
+    }
+    if (existing.status === SubcontractorBillStatus.VOID) {
+      return res.status(409).json({ error: 'Cannot pay a voided bill' });
+    }
+
+    // Find the "Subcontractors" category, creating it on first use so admins
+    // don't have to seed it manually.
+    const category = await prisma.expenseCategory.upsert({
+      where: { id: '__sub_cat_seed__' }, // dummy key — real lookup is by name
+      update: {},
+      create: { id: '__sub_cat_seed__', name: 'Subcontractors' },
+    }).catch(async () => {
+      // If the seed-id collision logic above is awkward, fall back to a
+      // plain "find by name" upsert.
+      const found = await prisma.expenseCategory.findFirst({ where: { name: 'Subcontractors' } });
+      return found ?? prisma.expenseCategory.create({ data: { name: 'Subcontractors' } });
+    });
+
+    const paidAt = data.paidAt ? new Date(data.paidAt) : new Date();
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const expense = await tx.expense.create({
+        data: {
+          projectId: existing.projectId,
+          categoryId: category.id,
+          paidByUserId: me.id,
+          submittedById: me.id,
+          amountCents: existing.amountCents,
+          date: paidAt,
+          description: `Subcontractor: ${existing.subcontractor.name}${existing.externalNumber ? ` (#${existing.externalNumber})` : ''}`,
+          notes: existing.notes,
+        },
+      });
+      return tx.subcontractorBill.update({
+        where: { id: existing.id },
+        data: {
+          status: SubcontractorBillStatus.PAID,
+          paidAt,
+          paidMethod: data.paidMethod,
+          paidReference: data.paidReference ?? null,
+          expenseId: expense.id,
+        },
+        include: { expense: { select: { id: true } } },
+      });
+    });
+
+    audit(req, {
+      action: 'subBill.paid',
+      resourceType: 'subcontractorBill',
+      resourceId: updated.id,
+      meta: { amountCents: updated.amountCents, expenseId: updated.expenseId, method: data.paidMethod },
+    }).catch(() => undefined);
+    res.json({ bill: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/void', async (req, res, next) => {
+  try {
+    const me = await loadActor(req.user!.sub);
+    if (!me || !hasAccountingAccess(me)) return res.status(403).json({ error: 'Forbidden' });
+    const existing = await prisma.subcontractorBill.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: 'Bill not found' });
+    if (existing.status === SubcontractorBillStatus.PAID) {
+      return res.status(409).json({ error: 'Cannot void a paid bill — delete the expense first if needed' });
+    }
+    const bill = await prisma.subcontractorBill.update({
+      where: { id: existing.id },
+      data: { status: SubcontractorBillStatus.VOID },
+    });
+    res.json({ bill });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const me = await loadActor(req.user!.sub);
+    if (!me || !hasAccountingAccess(me)) return res.status(403).json({ error: 'Forbidden' });
+    const existing = await prisma.subcontractorBill.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: 'Bill not found' });
+    if (existing.status === SubcontractorBillStatus.PAID && existing.expenseId) {
+      // Drop the auto-created expense alongside so job costing stays accurate.
+      await prisma.expense.delete({ where: { id: existing.expenseId } }).catch(() => undefined);
+    }
+    await prisma.subcontractorBill.delete({ where: { id: existing.id } });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+export default router;
