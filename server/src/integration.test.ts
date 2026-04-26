@@ -635,3 +635,340 @@ d('integration · time tracking is per-user scoped', () => {
     expect(res.text.split('\n')[0]).toContain('user_id');
   });
 });
+
+// ----- Accounting endpoints (P&L, balance sheet, AR/AP, 1099,
+// profitability). These read raw rows; we set up specific scenarios
+// inline so the assertions can pin exact dollar amounts.
+
+d('integration · accounting · P&L', () => {
+  it('counts revenue from payments + bank inflows; expense from expenses + bank outflows', async () => {
+    // Project with one $1000 invoice, paid in full this week.
+    const project = await prisma.project.create({
+      data: { name: 'PL test', customerId: seeded.customer.id, budgetCents: 0 },
+    });
+    const inv = await prisma.invoice.create({
+      data: {
+        number: `IT-PL-${Date.now()}`,
+        customerId: seeded.customer.id,
+        projectId: project.id,
+        amountCents: 100_000,
+        status: 'PAID',
+      },
+    });
+    const payment = await prisma.payment.create({
+      data: {
+        invoiceId: inv.id,
+        amountCents: 100_000,
+        method: 'CHECK',
+        receivedAt: new Date(),
+      },
+    });
+    // One categorized expense + one categorized bank-outflow that doesn't
+    // match anything — both should land in the expense bucket without
+    // double-counting.
+    const cat = await prisma.expenseCategory.create({ data: { name: `IT-Cat-${Date.now()}` } });
+    const expense = await prisma.expense.create({
+      data: {
+        amountCents: 25_000,
+        date: new Date(),
+        description: 'PL test expense',
+        categoryId: cat.id,
+        projectId: project.id,
+      },
+    });
+    const acct = await prisma.bankAccount.create({
+      data: { name: `IT-Acct-${Date.now()}`, kind: 'CHECKING', currentBalanceCents: 0 },
+    });
+    const bankExpense = await prisma.bankTransaction.create({
+      data: {
+        accountId: acct.id,
+        date: new Date(),
+        amountCents: -10_000,
+        description: 'PL test bank outflow',
+        categoryId: cat.id,
+      },
+    });
+    const bankRevenue = await prisma.bankTransaction.create({
+      data: {
+        accountId: acct.id,
+        date: new Date(),
+        amountCents: 5_000,
+        description: 'PL test bank inflow',
+      },
+    });
+    try {
+      const from = new Date(Date.now() - 86_400_000).toISOString();
+      const to = new Date(Date.now() + 86_400_000).toISOString();
+      const res = await request(app)
+        .get(`/api/finance/pl?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
+        .set('Authorization', `Bearer ${seeded.admin.token}`);
+      expect(res.status).toBe(200);
+      // Assertions are >= because the test DB may carry rows from earlier
+      // groups in this same suite; we want to confirm OUR contributions
+      // are reflected, not pin the absolute totals.
+      expect(res.body.revenue.invoicePaymentsCents).toBeGreaterThanOrEqual(100_000);
+      expect(res.body.revenue.bankInflowsCents).toBeGreaterThanOrEqual(5_000);
+      expect(res.body.expense.fromExpensesCents).toBeGreaterThanOrEqual(25_000);
+      expect(res.body.expense.fromBankCents).toBeGreaterThanOrEqual(10_000);
+      // netIncome = totalRevenue - totalExpense
+      const expectedNet = res.body.revenue.totalCents - res.body.expense.totalCents;
+      expect(res.body.netIncomeCents).toBe(expectedNet);
+    } finally {
+      await prisma.bankTransaction.deleteMany({ where: { id: { in: [bankExpense.id, bankRevenue.id] } } });
+      await prisma.bankAccount.delete({ where: { id: acct.id } });
+      await prisma.expense.delete({ where: { id: expense.id } });
+      await prisma.expenseCategory.delete({ where: { id: cat.id } });
+      await prisma.payment.delete({ where: { id: payment.id } });
+      await prisma.invoice.delete({ where: { id: inv.id } });
+      await prisma.project.delete({ where: { id: project.id } });
+    }
+  });
+
+  it('non-accounting role gets 403', async () => {
+    const from = new Date(Date.now() - 86_400_000).toISOString();
+    const to = new Date(Date.now() + 86_400_000).toISOString();
+    const res = await request(app)
+      .get(`/api/finance/pl?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
+      .set('Authorization', `Bearer ${seeded.plain.token}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('CSV variant returns text/csv with a Total row', async () => {
+    const from = new Date(Date.now() - 86_400_000).toISOString();
+    const to = new Date(Date.now() + 86_400_000).toISOString();
+    const res = await request(app)
+      .get(`/api/finance/pl.csv?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
+      .set('Authorization', `Bearer ${seeded.admin.token}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/csv/);
+    expect(res.text).toContain('Total revenue');
+    expect(res.text).toContain('Net income');
+  });
+});
+
+d('integration · accounting · balance sheet', () => {
+  it('sums cash assets + other assets minus liabilities = equity', async () => {
+    const cash = await prisma.bankAccount.create({
+      data: { name: `IT-BS-Cash-${Date.now()}`, kind: 'CHECKING', currentBalanceCents: 50_000 },
+    });
+    const card = await prisma.bankAccount.create({
+      data: { name: `IT-BS-Card-${Date.now()}`, kind: 'CREDIT_CARD', currentBalanceCents: 12_000 },
+    });
+    const asset = await prisma.otherAsset.create({
+      data: { name: `IT-BS-Asset-${Date.now()}`, currentValueCents: 100_000 },
+    });
+    const liab = await prisma.otherLiability.create({
+      data: { name: `IT-BS-Liab-${Date.now()}`, currentBalanceCents: 30_000 },
+    });
+    try {
+      const res = await request(app)
+        .get('/api/finance/balance-sheet')
+        .set('Authorization', `Bearer ${seeded.admin.token}`);
+      expect(res.status).toBe(200);
+      const totalA = res.body.assets.totalCents;
+      const totalL = res.body.liabilities.totalCents;
+      expect(totalA - totalL).toBe(res.body.equityCents);
+      // Our specific contributions are included.
+      const cashIds = res.body.assets.cashAccounts.map((a: { id: string }) => a.id);
+      expect(cashIds).toContain(cash.id);
+      const cardIds = res.body.liabilities.bankAccounts.map((a: { id: string }) => a.id);
+      expect(cardIds).toContain(card.id);
+    } finally {
+      await prisma.bankAccount.deleteMany({ where: { id: { in: [cash.id, card.id] } } });
+      await prisma.otherAsset.delete({ where: { id: asset.id } });
+      await prisma.otherLiability.delete({ where: { id: liab.id } });
+    }
+  });
+});
+
+d('integration · accounting · AR aging', () => {
+  it('buckets open balances by days past due, drafts separately', async () => {
+    const overdue = await prisma.invoice.create({
+      data: {
+        number: `IT-AR1-${Date.now()}`,
+        customerId: seeded.customer.id,
+        amountCents: 70_000,
+        status: 'OVERDUE',
+        issuedAt: new Date(Date.now() - 60 * 86_400_000),
+        dueAt: new Date(Date.now() - 45 * 86_400_000),
+      },
+    });
+    const draft = await prisma.invoice.create({
+      data: {
+        number: `IT-AR2-${Date.now()}`,
+        customerId: seeded.customer.id,
+        amountCents: 30_000,
+        status: 'DRAFT',
+      },
+    });
+    try {
+      const res = await request(app)
+        .get('/api/finance/ar')
+        .set('Authorization', `Bearer ${seeded.admin.token}`);
+      expect(res.status).toBe(200);
+      // Our $700 overdue lands in the 31–60 bucket.
+      const d60 = res.body.buckets.find((b: { key: string }) => b.key === 'd60');
+      expect(d60.totalCents).toBeGreaterThanOrEqual(70_000);
+      // Drafts are reported separately, not in any aging bucket.
+      expect(res.body.drafts.totalCents).toBeGreaterThanOrEqual(30_000);
+      expect(res.body.totalOpenBalanceCents).toBeGreaterThanOrEqual(70_000);
+    } finally {
+      await prisma.invoice.deleteMany({ where: { id: { in: [overdue.id, draft.id] } } });
+    }
+  });
+});
+
+d('integration · accounting · AP aging', () => {
+  it('buckets open sub bills by days received', async () => {
+    const sub = await seedUser({
+      email: `it-ap-sub-${Date.now()}@vitest.local`,
+      name: 'IT AP Sub',
+      role: Role.SUBCONTRACTOR,
+    });
+    const oldBill = await prisma.subcontractorBill.create({
+      data: {
+        number: `IT-AP-${Date.now()}-1`,
+        subcontractorId: sub.id,
+        amountCents: 50_000,
+        status: 'APPROVED',
+        receivedAt: new Date(Date.now() - 45 * 86_400_000),
+      },
+    });
+    const newBill = await prisma.subcontractorBill.create({
+      data: {
+        number: `IT-AP-${Date.now()}-2`,
+        subcontractorId: sub.id,
+        amountCents: 20_000,
+        status: 'PENDING',
+        receivedAt: new Date(),
+      },
+    });
+    try {
+      const res = await request(app)
+        .get('/api/finance/ap')
+        .set('Authorization', `Bearer ${seeded.admin.token}`);
+      expect(res.status).toBe(200);
+      const d60 = res.body.buckets.find((b: { key: string }) => b.key === 'd60');
+      const cur = res.body.buckets.find((b: { key: string }) => b.key === 'current');
+      expect(d60.totalCents).toBeGreaterThanOrEqual(50_000);
+      expect(cur.totalCents).toBeGreaterThanOrEqual(20_000);
+      const subRow = res.body.bySub.find((s: { id: string }) => s.id === sub.id);
+      expect(subRow.totalCents).toBe(70_000);
+    } finally {
+      await prisma.subcontractorBill.deleteMany({ where: { id: { in: [oldBill.id, newBill.id] } } });
+      await prisma.user.delete({ where: { id: sub.id } });
+    }
+  });
+});
+
+d('integration · accounting · 1099 export', () => {
+  it('flags subs over $600 + missing tax info', async () => {
+    const subBig = await seedUser({
+      email: `it-1099-big-${Date.now()}@vitest.local`,
+      name: 'Big Sub',
+      role: Role.SUBCONTRACTOR,
+    });
+    const subSmall = await seedUser({
+      email: `it-1099-small-${Date.now()}@vitest.local`,
+      name: 'Small Sub',
+      role: Role.SUBCONTRACTOR,
+    });
+    const year = 2023; // any past year so the test data is deterministic
+    const paidAt = new Date(Date.UTC(year, 5, 15));
+    const big1 = await prisma.subcontractorBill.create({
+      data: {
+        number: `IT-1099-1-${Date.now()}`,
+        subcontractorId: subBig.id,
+        amountCents: 80_000, // $800 — over threshold
+        status: 'PAID', paidAt,
+      },
+    });
+    const small1 = await prisma.subcontractorBill.create({
+      data: {
+        number: `IT-1099-2-${Date.now()}`,
+        subcontractorId: subSmall.id,
+        amountCents: 30_000, // $300 — under
+        status: 'PAID', paidAt,
+      },
+    });
+    try {
+      const res = await request(app)
+        .get(`/api/finance/1099?year=${year}`)
+        .set('Authorization', `Bearer ${seeded.admin.token}`);
+      expect(res.status).toBe(200);
+      const big = res.body.subs.find((s: { id: string }) => s.id === subBig.id);
+      const small = res.body.subs.find((s: { id: string }) => s.id === subSmall.id);
+      expect(big.totalCents).toBe(80_000);
+      expect(small.totalCents).toBe(30_000);
+      // CSV variant flags 'YES' on the big sub since its tax info is missing.
+      const csv = await request(app)
+        .get(`/api/finance/1099.csv?year=${year}`)
+        .set('Authorization', `Bearer ${seeded.admin.token}`);
+      expect(csv.status).toBe(200);
+      const bigLine = csv.text.split('\n').find((l) => l.includes('Big Sub'));
+      expect(bigLine).toBeTruthy();
+      // Last two columns are 'Needs 1099' + 'Missing tax info'.
+      expect(bigLine).toMatch(/YES,YES$/);
+    } finally {
+      await prisma.subcontractorBill.deleteMany({ where: { id: { in: [big1.id, small1.id] } } });
+      await prisma.user.deleteMany({ where: { id: { in: [subBig.id, subSmall.id] } } });
+    }
+  });
+});
+
+d('integration · accounting · profitability', () => {
+  it('computes per-project margin from payments minus expenses + labor', async () => {
+    const project = await prisma.project.create({
+      data: { name: `IT-Prof-${Date.now()}`, customerId: seeded.customer.id, budgetCents: 200_000 },
+    });
+    const inv = await prisma.invoice.create({
+      data: {
+        number: `IT-Prof-INV-${Date.now()}`,
+        customerId: seeded.customer.id,
+        projectId: project.id,
+        amountCents: 100_000,
+        status: 'PAID',
+      },
+    });
+    const pay = await prisma.payment.create({
+      data: { invoiceId: inv.id, amountCents: 100_000, method: 'CHECK', receivedAt: new Date() },
+    });
+    const expense = await prisma.expense.create({
+      data: {
+        amountCents: 30_000,
+        date: new Date(),
+        description: 'Materials',
+        projectId: project.id,
+      },
+    });
+    const time = await prisma.timeEntry.create({
+      data: {
+        userId: seeded.plain.id,
+        projectId: project.id,
+        startedAt: new Date(Date.now() - 7_200_000),
+        endedAt: new Date(),
+        minutes: 120,
+        hourlyRateCents: 7500,
+      },
+    });
+    try {
+      const res = await request(app)
+        .get('/api/finance/profitability')
+        .set('Authorization', `Bearer ${seeded.admin.token}`);
+      expect(res.status).toBe(200);
+      const row = res.body.rows.find((r: { projectId: string }) => r.projectId === project.id);
+      expect(row.collectedCents).toBe(100_000);
+      // expense + labor (2hrs × $75 = $150 = 15000c)
+      expect(row.costCents).toBe(30_000 + 15_000);
+      expect(row.marginCents).toBe(100_000 - 45_000);
+      // 55%
+      expect(row.marginPct).toBeCloseTo(55, 0);
+    } finally {
+      await prisma.timeEntry.delete({ where: { id: time.id } });
+      await prisma.expense.delete({ where: { id: expense.id } });
+      await prisma.payment.delete({ where: { id: pay.id } });
+      await prisma.invoice.delete({ where: { id: inv.id } });
+      await prisma.project.delete({ where: { id: project.id } });
+    }
+  });
+});
