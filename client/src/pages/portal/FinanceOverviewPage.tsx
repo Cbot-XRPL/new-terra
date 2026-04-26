@@ -53,6 +53,34 @@ interface ArBucket {
   count: number;
 }
 
+interface ApSummary {
+  asOf: string;
+  buckets: ArBucket[];
+  totalOwedToSubsCents: number;
+  totalOtherLiabilitiesCents: number;
+  totalOwedCents: number;
+  bySub: Array<{
+    id: string;
+    name: string;
+    totalCents: number;
+    pendingCents: number;
+    approvedCents: number;
+    billCount: number;
+    oldestDays: number;
+  }>;
+  otherLiabilities: Array<{ id: string; name: string; category: string | null; cents: number }>;
+  topOverdue: Array<{
+    id: string;
+    number: string;
+    subName: string;
+    project: string | null;
+    status: string;
+    amountCents: number;
+    receivedAt: string;
+    daysOld: number;
+  }>;
+}
+
 interface ArSummary {
   asOf: string;
   buckets: ArBucket[];
@@ -74,6 +102,7 @@ export default function FinanceOverviewPage() {
   const { user } = useAuth();
   const [data, setData] = useState<Summary | null>(null);
   const [ar, setAr] = useState<ArSummary | null>(null);
+  const [ap, setAp] = useState<ApSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const isAccounting = user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isAccounting);
@@ -85,6 +114,9 @@ export default function FinanceOverviewPage() {
     if (isAccounting) {
       api<ArSummary>('/api/finance/ar')
         .then(setAr)
+        .catch(() => undefined);
+      api<ApSummary>('/api/finance/ap')
+        .then(setAp)
         .catch(() => undefined);
     }
   }, [isAccounting]);
@@ -240,6 +272,119 @@ export default function FinanceOverviewPage() {
                             {row.daysPastDue > 0 ? row.daysPastDue : <span className="muted">—</span>}
                           </td>
                           <td style={{ textAlign: 'right' }}>{formatCents(row.balanceCents)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
+            </section>
+          )}
+
+          {isAccounting && ap && (
+            <section className="card">
+              <div className="row-between">
+                <h2>Accounts payable</h2>
+                <Link to="/portal/subcontractor-bills" className="button-ghost button-small">All sub bills →</Link>
+              </div>
+              <div className="invoice-stats" style={{ marginBottom: '1rem' }}>
+                <div>
+                  <div className="stat-label">Owed to subs</div>
+                  <div className="stat-value" style={{ color: 'var(--accent)' }}>
+                    {formatCents(ap.totalOwedToSubsCents)}
+                  </div>
+                </div>
+                <div>
+                  <div className="stat-label">Other liabilities</div>
+                  <div className="stat-value" style={{ color: 'var(--accent)' }}>
+                    {formatCents(ap.totalOtherLiabilitiesCents)}
+                  </div>
+                </div>
+                <div>
+                  <div className="stat-label">Total owed</div>
+                  <div className="stat-value" style={{ color: 'var(--accent)' }}>
+                    {formatCents(ap.totalOwedCents)}
+                  </div>
+                </div>
+              </div>
+
+              <h3 style={{ margin: '0.5rem 0' }}>Aging</h3>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Bucket</th>
+                    <th style={{ textAlign: 'right' }}>Amount</th>
+                    <th style={{ textAlign: 'right' }}>Bills</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ap.buckets.map((b) => (
+                    <tr key={b.key}>
+                      <td>{b.label}</td>
+                      <td style={{ textAlign: 'right' }}>{formatCents(b.totalCents)}</td>
+                      <td style={{ textAlign: 'right' }}>{b.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {ap.bySub.length > 0 && (
+                <>
+                  <h3 style={{ margin: '0.75rem 0 0.5rem' }}>By subcontractor</h3>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Sub</th>
+                        <th style={{ textAlign: 'right' }}>Bills</th>
+                        <th style={{ textAlign: 'right' }}>Pending</th>
+                        <th style={{ textAlign: 'right' }}>Approved</th>
+                        <th style={{ textAlign: 'right' }}>Total owed</th>
+                        <th style={{ textAlign: 'right' }}>Oldest</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ap.bySub.map((s) => (
+                        <tr key={s.id}>
+                          <td>{s.name}</td>
+                          <td style={{ textAlign: 'right' }}>{s.billCount}</td>
+                          <td style={{ textAlign: 'right' }}>{formatCents(s.pendingCents)}</td>
+                          <td style={{ textAlign: 'right' }}>{formatCents(s.approvedCents)}</td>
+                          <td style={{ textAlign: 'right' }}>{formatCents(s.totalCents)}</td>
+                          <td style={{ textAlign: 'right', color: s.oldestDays > 30 ? 'var(--danger, #d93025)' : undefined }}>
+                            {s.oldestDays} days
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
+
+              {ap.topOverdue.length > 0 && (
+                <>
+                  <h3 style={{ margin: '0.75rem 0 0.5rem' }}>Oldest open bills</h3>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Sub</th>
+                        <th>Project</th>
+                        <th>Status</th>
+                        <th style={{ textAlign: 'right' }}>Days old</th>
+                        <th style={{ textAlign: 'right' }}>Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ap.topOverdue.map((row) => (
+                        <tr key={row.id}>
+                          <td>{row.number}</td>
+                          <td>{row.subName}</td>
+                          <td>{row.project ?? <span className="muted">overhead</span>}</td>
+                          <td><span className="muted">{row.status.toLowerCase()}</span></td>
+                          <td style={{ textAlign: 'right', color: row.daysOld > 30 ? 'var(--danger, #d93025)' : undefined }}>
+                            {row.daysOld}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>{formatCents(row.amountCents)}</td>
                         </tr>
                       ))}
                     </tbody>

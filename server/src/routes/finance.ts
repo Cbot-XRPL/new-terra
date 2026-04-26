@@ -924,6 +924,134 @@ router.get('/profitability', async (req, res, next) => {
   }
 });
 
+// AP (accounts payable) aging — the inverse of AR. Reports what the
+// company OWES, bucketed by days since the bill was received. Includes:
+//   * SubcontractorBill rows in PENDING / APPROVED status (not yet PAID,
+//     not VOID), grouped by sub
+//   * standalone OtherLiability rows (loans, leases, tax payable)
+//
+// Bucket calculation runs from receivedAt (or createdAt for liabilities
+// without a date), same shape as the AR aging endpoint so the UI can
+// reuse rendering. Subs / customers / plain employees stay locked out.
+router.get('/ap', async (_req, res, next) => {
+  try {
+    const me = await loadMe(_req.user!.sub);
+    if (!me || !hasAccountingAccess(me)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const now = new Date();
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    interface Bucket {
+      label: string;
+      totalCents: number;
+      count: number;
+    }
+    const buckets: Record<'current' | 'd30' | 'd60' | 'd90' | 'd90plus', Bucket> = {
+      current: { label: 'New (≤7 days)', totalCents: 0, count: 0 },
+      d30:    { label: '8–30 days', totalCents: 0, count: 0 },
+      d60:    { label: '31–60 days', totalCents: 0, count: 0 },
+      d90:    { label: '61–90 days', totalCents: 0, count: 0 },
+      d90plus:{ label: '90+ days', totalCents: 0, count: 0 },
+    };
+    function bucketKey(daysOld: number): keyof typeof buckets {
+      if (daysOld <= 7) return 'current';
+      if (daysOld <= 30) return 'd30';
+      if (daysOld <= 60) return 'd60';
+      if (daysOld <= 90) return 'd90';
+      return 'd90plus';
+    }
+
+    const openBills = await prisma.subcontractorBill.findMany({
+      where: { status: { in: ['PENDING', 'APPROVED'] } },
+      include: {
+        subcontractor: { select: { id: true, name: true, email: true } },
+        project: { select: { id: true, name: true } },
+      },
+    });
+
+    interface SubRow {
+      id: string;
+      name: string;
+      email: string;
+      totalCents: number;
+      pendingCents: number;
+      approvedCents: number;
+      billCount: number;
+      oldestDays: number;
+    }
+    const bySub = new Map<string, SubRow>();
+    let totalOwedToSubsCents = 0;
+
+    for (const b of openBills) {
+      const days = Math.max(0, Math.floor((now.getTime() - b.receivedAt.getTime()) / dayMs));
+      const key = bucketKey(days);
+      buckets[key].totalCents += b.amountCents;
+      buckets[key].count += 1;
+      totalOwedToSubsCents += b.amountCents;
+
+      const ex = bySub.get(b.subcontractor.id) ?? {
+        id: b.subcontractor.id,
+        name: b.subcontractor.name,
+        email: b.subcontractor.email,
+        totalCents: 0,
+        pendingCents: 0,
+        approvedCents: 0,
+        billCount: 0,
+        oldestDays: 0,
+      };
+      ex.totalCents += b.amountCents;
+      if (b.status === 'PENDING') ex.pendingCents += b.amountCents;
+      else ex.approvedCents += b.amountCents;
+      ex.billCount += 1;
+      if (days > ex.oldestDays) ex.oldestDays = days;
+      bySub.set(b.subcontractor.id, ex);
+    }
+
+    // Other liabilities (loans/leases/tax payable). Treated as one bucket
+    // each — they're typically slow-moving balances, not aged invoices.
+    const otherLiabilities = await prisma.otherLiability.findMany({
+      where: { archived: false },
+    });
+    const totalOtherLiabilitiesCents = otherLiabilities.reduce(
+      (s, l) => s + l.currentBalanceCents, 0,
+    );
+
+    const bySubArr = [...bySub.values()].sort((a, b) => b.totalCents - a.totalCents);
+
+    res.json({
+      asOf: now.toISOString(),
+      buckets: Object.entries(buckets).map(([key, b]) => ({ key, ...b })),
+      totalOwedToSubsCents,
+      totalOtherLiabilitiesCents,
+      totalOwedCents: totalOwedToSubsCents + totalOtherLiabilitiesCents,
+      bySub: bySubArr,
+      otherLiabilities: otherLiabilities.map((l) => ({
+        id: l.id,
+        name: l.name,
+        category: l.category,
+        cents: l.currentBalanceCents,
+      })),
+      // Top-10 most-overdue bills so admin can chase the longest-aged.
+      topOverdue: openBills
+        .map((b) => ({
+          id: b.id,
+          number: b.number,
+          subName: b.subcontractor.name,
+          project: b.project ? b.project.name : null,
+          status: b.status,
+          amountCents: b.amountCents,
+          receivedAt: b.receivedAt.toISOString(),
+          daysOld: Math.max(0, Math.floor((now.getTime() - b.receivedAt.getTime()) / dayMs)),
+        }))
+        .sort((a, b) => b.daysOld - a.daysOld)
+        .slice(0, 10),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // AR aging + expected-cash rollup. Pulls every non-VOID, non-PAID-in-full
 // invoice and buckets the outstanding balance into current / 30 / 60 / 90+
 // days from dueAt (current = "due in the future or no due date set"). The
