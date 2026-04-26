@@ -70,6 +70,9 @@ export default function PortalLayout() {
           {(user?.role === 'EMPLOYEE' ||
             user?.role === 'SUBCONTRACTOR' ||
             user?.role === 'ADMIN') && <NavLink to="/portal/calculators">Calculators</NavLink>}
+          {(user?.role === 'EMPLOYEE' ||
+            user?.role === 'SUBCONTRACTOR' ||
+            user?.role === 'ADMIN') && <NavLink to="/portal/time">Time</NavLink>}
           {(user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isSales)) && (
             <NavLink to="/portal/catalog">Catalog</NavLink>
           )}

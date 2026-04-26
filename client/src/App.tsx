@@ -36,6 +36,7 @@ import NewEstimatePage from './pages/portal/NewEstimatePage';
 import EstimateDetailPage from './pages/portal/EstimateDetailPage';
 import CalculatorsPage from './pages/portal/CalculatorsPage';
 import CatalogPage from './pages/portal/CatalogPage';
+import TimePage from './pages/portal/TimePage';
 
 function PortalIndex() {
   const { user } = useAuth();
@@ -216,6 +217,14 @@ export default function App() {
           element={
             <RequireAuth salesAccess>
               <CatalogPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="time"
+          element={
+            <RequireAuth roles={['ADMIN', 'EMPLOYEE', 'SUBCONTRACTOR']}>
+              <TimePage />
             </RequireAuth>
           }
         />

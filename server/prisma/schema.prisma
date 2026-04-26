@@ -170,6 +170,9 @@ model User {
   estimateTemplates EstimateTemplate[] @relation("EstimateTemplateAuthor")
   estimatesCreated  Estimate[]         @relation("EstimatesCreated")
   estimatesReceived Estimate[]         @relation("EstimatesForCustomer")
+
+  // Time tracking
+  timeEntries       TimeEntry[]        @relation("TimeEntries")
 }
 
 model Invitation {
@@ -221,6 +224,7 @@ model Project {
   // Optional back-link to the estimate that birthed this project (null
   // until an estimate is converted; never re-bound).
   estimatesConverted Estimate[] @relation("ProjectFromEstimate")
+  timeEntries        TimeEntry[]
 
   @@index([projectManagerId])
 }
@@ -864,4 +868,37 @@ model AssemblyLine {
   position      Int @default(0)
 
   @@index([assemblyId])
+}
+
+// TimeEntry — per-user labor on a project. Used for two things:
+//   1. Payroll prep: total hours × hourly rate per user per pay period.
+//   2. Job-cost rollup: labor cost vs. budgeted Labor category.
+//
+// Punch-in/out style: startedAt always set; endedAt null while clocked in.
+// minutes is denormalised (computed when endedAt is set) so reports don't
+// recompute on every read.
+model TimeEntry {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation("TimeEntries", fields: [userId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  startedAt   DateTime
+  endedAt     DateTime?
+  minutes     Int @default(0)
+
+  // Snapshot of the hourly rate at recording time so historical labor cost
+  // is immune to later rate changes.
+  hourlyRateCents Int @default(0)
+  // Whether the time is billable to the project (vs internal/admin time).
+  billable    Boolean @default(true)
+  notes       String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([startedAt])
 }
