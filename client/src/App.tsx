@@ -34,6 +34,7 @@ import QuickBooksPage from './pages/portal/QuickBooksPage';
 import EstimatesPage from './pages/portal/EstimatesPage';
 import NewEstimatePage from './pages/portal/NewEstimatePage';
 import EstimateDetailPage from './pages/portal/EstimateDetailPage';
+import CalculatorsPage from './pages/portal/CalculatorsPage';
 
 function PortalIndex() {
   const { user } = useAuth();
@@ -201,6 +202,14 @@ export default function App() {
           }
         />
         <Route path="estimates/:id" element={<EstimateDetailPage />} />
+        <Route
+          path="calculators"
+          element={
+            <RequireAuth roles={['ADMIN', 'EMPLOYEE', 'SUBCONTRACTOR']}>
+              <CalculatorsPage />
+            </RequireAuth>
+          }
+        />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
