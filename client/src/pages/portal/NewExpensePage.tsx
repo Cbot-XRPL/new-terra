@@ -68,6 +68,59 @@ export default function NewExpensePage() {
     setReceiptPreview(file ? URL.createObjectURL(file) : null);
   }
 
+  // Hits the server-side OCR endpoint with the currently picked receipt
+  // and prefills amount + description from whatever Tesseract finds.
+  // Best-effort — admin can edit anything before saving.
+  const [scanning, setScanning] = useState(false);
+  const [ocrInfo, setOcrInfo] = useState<string | null>(null);
+  async function scanReceipt() {
+    if (!receiptFile) return;
+    setScanning(true);
+    setOcrInfo(null);
+    setError(null);
+    try {
+      const apiBase = import.meta.env.VITE_API_URL ?? '';
+      const token = localStorage.getItem('nt_token');
+      const form = new FormData();
+      form.append('receipt', receiptFile);
+      const res = await fetch(`${apiBase}/api/finance/expenses/_ocr/scan`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(data?.error ?? 'Receipt scan failed');
+        return;
+      }
+      const ex = data.extraction as {
+        vendorGuess: string | null;
+        totalCents: number | null;
+        dateGuess: string | null;
+      };
+      const filled: string[] = [];
+      if (ex.totalCents != null && !amount) {
+        setAmount((ex.totalCents / 100).toFixed(2));
+        filled.push(`amount $${(ex.totalCents / 100).toFixed(2)}`);
+      }
+      if (ex.vendorGuess && !description) {
+        setDescription(ex.vendorGuess);
+        filled.push(`description "${ex.vendorGuess}"`);
+      }
+      if (ex.dateGuess) {
+        setDate(ex.dateGuess);
+        filled.push(`date ${ex.dateGuess}`);
+      }
+      setOcrInfo(filled.length > 0
+        ? `Filled ${filled.join(', ')} — edit anything before saving.`
+        : 'OCR ran but couldn\'t guess fields. Fill in manually.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Scan failed');
+    } finally {
+      setScanning(false);
+    }
+  }
+
   async function quickCreateVendor() {
     if (!newVendorName.trim()) return;
     setCreatingVendor(true);
@@ -142,6 +195,7 @@ export default function NewExpensePage() {
       </header>
 
       {error && <div className="form-error">{error}</div>}
+      {ocrInfo && <div className="form-success">{ocrInfo}</div>}
 
       {queueInfo.pending > 0 && (
         <div className="form-success">
@@ -288,6 +342,18 @@ export default function NewExpensePage() {
               >
                 {receiptFile ? 'Change photo' : 'Upload / take photo'}
               </button>
+              {receiptFile && (
+                <button
+                  type="button"
+                  className="button-ghost button-small"
+                  onClick={scanReceipt}
+                  disabled={scanning}
+                  style={{ marginLeft: '0.5rem' }}
+                  title="Run OCR to fill amount + description"
+                >
+                  {scanning ? 'Scanning…' : 'Scan to prefill'}
+                </button>
+              )}
               {receiptFile && (
                 <button
                   type="button"

@@ -5,8 +5,10 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { z } from 'zod';
 import { ExpenseSyncStatus, Role, type Prisma } from '@prisma/client';
+import os from 'node:os';
 import { prisma } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
+import { extractReceipt, resolvePublicUrl } from '../lib/receiptOcr.js';
 import {
   canSubmitExpense,
   hasAccountingAccess,
@@ -27,6 +29,41 @@ const upload = multer({
     }
     cb(null, true);
   },
+});
+
+// ----- OCR -----
+//
+// Two endpoints. /expenses/_ocr/scan accepts a fresh upload (form field
+// 'receipt'), runs Tesseract over it, and returns the extraction without
+// touching the DB — front-end uses it to prefill the new-expense form.
+// /expenses/:id/rescan re-runs OCR on an existing expense's stored
+// receipt and returns the extraction so admin can update fields by hand.
+router.post('/expenses/_ocr/scan', upload.single('receipt'), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No receipt uploaded' });
+    // Tesseract.js wants a file path (or Buffer); we drop the upload to a
+    // tmpfile so we can hand it the path. The tmpdir is per-OS so this
+    // works on macOS dev and Linux prod alike.
+    const tmpPath = path.join(os.tmpdir(), `ocr-${Date.now()}-${process.pid}.jpg`);
+    await fs.writeFile(tmpPath, req.file.buffer);
+    try {
+      const extraction = await extractReceipt(tmpPath);
+      res.json({ extraction });
+    } finally {
+      await fs.unlink(tmpPath).catch(() => undefined);
+    }
+  } catch (err) { next(err); }
+});
+
+router.post('/expenses/:id/rescan', async (req, res, next) => {
+  try {
+    const expense = await prisma.expense.findUnique({ where: { id: req.params.id } });
+    if (!expense) return res.status(404).json({ error: 'Expense not found' });
+    if (!expense.receiptUrl) return res.status(409).json({ error: 'Expense has no receipt to scan' });
+    const filePath = resolvePublicUrl(expense.receiptUrl);
+    const extraction = await extractReceipt(filePath);
+    res.json({ extraction });
+  } catch (err) { next(err); }
 });
 
 async function loadMe(userId: string) {
