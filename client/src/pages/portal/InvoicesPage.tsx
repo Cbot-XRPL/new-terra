@@ -18,16 +18,48 @@ interface Invoice {
   project: { id: string; name: string } | null;
 }
 
+interface ReminderResult {
+  considered: number;
+  upcomingReminded: number;
+  overdueReminded: number;
+  flippedToOverdue: number;
+  skippedCooldown: number;
+}
+
 export default function InvoicesPage() {
   const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [reminderInfo, setReminderInfo] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
 
-  useEffect(() => {
+  function load() {
     api<{ invoices: Invoice[] }>('/api/invoices')
       .then((d) => setInvoices(d.invoices))
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load'));
-  }, []);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function runReminders() {
+    if (!confirm('Email customers about upcoming-due and overdue invoices? Each invoice has a 3-day cooldown so this is safe to click more than once.')) return;
+    setRunning(true);
+    setReminderInfo(null);
+    setError(null);
+    try {
+      const r = await api<ReminderResult>('/api/invoices/_admin/run-reminders', { method: 'POST' });
+      setReminderInfo(
+        `Considered ${r.considered}; emailed ${r.upcomingReminded} upcoming + ${r.overdueReminded} overdue` +
+        (r.flippedToOverdue ? `; flipped ${r.flippedToOverdue} to OVERDUE` : '') +
+        (r.skippedCooldown ? `; ${r.skippedCooldown} skipped (cooldown)` : ''),
+      );
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Reminder run failed');
+    } finally {
+      setRunning(false);
+    }
+  }
 
   const total = invoices.reduce((sum, i) => sum + i.amountCents, 0);
   // Outstanding = sum of remaining balances on every non-VOID invoice. This
@@ -39,14 +71,28 @@ export default function InvoicesPage() {
 
   return (
     <div className="dashboard">
-      <header>
-        <h1>Invoices</h1>
-        <p className="muted">
-          {user?.role === 'CUSTOMER' ? 'Your invoices.' : 'All invoices across projects.'}
-        </p>
+      <header className="row-between">
+        <div>
+          <h1>Invoices</h1>
+          <p className="muted">
+            {user?.role === 'CUSTOMER' ? 'Your invoices.' : 'All invoices across projects.'}
+          </p>
+        </div>
+        {isAdmin && (
+          <button
+            type="button"
+            className="button-ghost button-small"
+            onClick={runReminders}
+            disabled={running}
+            title="Email upcoming-due + overdue customers now (also flips past-due invoices to OVERDUE)"
+          >
+            {running ? 'Sending…' : 'Run invoice reminders'}
+          </button>
+        )}
       </header>
 
       {error && <div className="form-error">{error}</div>}
+      {reminderInfo && <div className="form-success">{reminderInfo}</div>}
 
       <section className="card">
         <div className="invoice-stats">

@@ -1,6 +1,11 @@
-import { ContractStatus, LeadStatus } from '@prisma/client';
+import { ContractStatus, InvoiceStatus, LeadStatus } from '@prisma/client';
 import { prisma } from '../db.js';
-import { sendContractReminderEmail, sendStaleLeadEmail } from './mailer.js';
+import {
+  sendContractReminderEmail,
+  sendInvoiceReminderEmail,
+  sendStaleLeadEmail,
+} from './mailer.js';
+import { computeTotals } from './payments.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -132,4 +137,114 @@ export async function notifyStaleLeads(opts: { staleAfterDays?: number } = {}): 
     }
   }
   return { considered: candidates.length, notified, skippedNoOwner };
+}
+
+export interface InvoiceReminderResult {
+  considered: number;
+  upcomingReminded: number;
+  overdueReminded: number;
+  flippedToOverdue: number;
+  skippedCooldown: number;
+  skippedNoBalance: number;
+}
+
+interface InvoiceReminderOptions {
+  /** Email customers when an invoice is due in the next N days. Default 3. */
+  upcomingWindowDays?: number;
+  /** Don't email the same invoice more often than this. Default 3 days. */
+  cooldownDays?: number;
+}
+
+/**
+ * Twin job: bumps SENT invoices to OVERDUE once dueAt passes, and emails
+ * customers about either upcoming-due or already-overdue invoices. Same
+ * env-var-cron wiring as the other reminders (INVOICE_REMINDER_CRON in the
+ * server env). Skips PAID, VOID, DRAFT, anything with zero balance, and
+ * anything reminded inside the cooldown window so we don't spam.
+ */
+export async function remindInvoices(opts: InvoiceReminderOptions = {}): Promise<InvoiceReminderResult> {
+  const upcomingWindowDays = opts.upcomingWindowDays ?? 3;
+  const cooldownDays = opts.cooldownDays ?? 3;
+  const now = new Date();
+  const upcomingHorizon = new Date(now.getTime() + upcomingWindowDays * DAY_MS);
+  const cooldownBefore = new Date(now.getTime() - cooldownDays * DAY_MS);
+
+  // Auto-flip SENT → OVERDUE for anything past due. We do this in a single
+  // updateMany so the email loop below can rely on the status being current.
+  const flip = await prisma.invoice.updateMany({
+    where: {
+      status: InvoiceStatus.SENT,
+      dueAt: { lt: now },
+    },
+    data: { status: InvoiceStatus.OVERDUE },
+  });
+
+  // Pull every candidate (SENT in the upcoming window or already OVERDUE)
+  // with their payments so we can decide who actually has a balance.
+  const candidates = await prisma.invoice.findMany({
+    where: {
+      OR: [
+        { status: InvoiceStatus.SENT, dueAt: { not: null, lte: upcomingHorizon, gte: now } },
+        { status: InvoiceStatus.OVERDUE },
+      ],
+    },
+    include: {
+      customer: { select: { id: true, name: true, email: true } },
+      payments: { select: { amountCents: true } },
+    },
+  });
+
+  let upcomingReminded = 0;
+  let overdueReminded = 0;
+  let skippedCooldown = 0;
+  let skippedNoBalance = 0;
+
+  for (const inv of candidates) {
+    const totals = computeTotals(inv.amountCents, inv.payments.map((p) => p.amountCents));
+    if (totals.balanceCents <= 0) {
+      // Edge case: status hasn't been recomputed yet (e.g. payments rows
+      // exist but the auto-flip helper hasn't run). Skip without complaint.
+      skippedNoBalance += 1;
+      continue;
+    }
+    if (inv.lastReminderAt && inv.lastReminderAt > cooldownBefore) {
+      skippedCooldown += 1;
+      continue;
+    }
+
+    const isOverdue = inv.status === InvoiceStatus.OVERDUE;
+    const offsetMs = inv.dueAt ? Math.abs(now.getTime() - inv.dueAt.getTime()) : 0;
+    const daysOffset = Math.max(1, Math.floor(offsetMs / DAY_MS));
+
+    try {
+      await sendInvoiceReminderEmail({
+        to: inv.customer.email,
+        customerName: inv.customer.name,
+        invoiceNumber: inv.number,
+        invoiceId: inv.id,
+        amountDueCents: totals.balanceCents,
+        dueAt: inv.dueAt,
+        kind: isOverdue ? 'overdue' : 'upcoming',
+        daysOffset,
+        paymentUrl: inv.paymentUrl,
+      });
+      await prisma.invoice.update({
+        where: { id: inv.id },
+        data: { lastReminderAt: new Date() },
+      });
+      if (isOverdue) overdueReminded += 1;
+      else upcomingReminded += 1;
+    } catch (err) {
+      console.warn('[reminders] invoice email failed for', inv.id, err);
+    }
+  }
+
+  return {
+    considered: candidates.length,
+    upcomingReminded,
+    overdueReminded,
+    flippedToOverdue: flip.count,
+    skippedCooldown,
+    skippedNoBalance,
+  };
 }

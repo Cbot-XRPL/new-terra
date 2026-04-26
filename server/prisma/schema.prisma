@@ -269,6 +269,9 @@ model Invoice {
   // Hosted-payment URL (Stripe payment link, QuickBooks, Square, etc.).
   // Set by the admin; rendered as a "Pay now" button on the customer side.
   paymentUrl  String?
+  // Set by the reminder cron after each successful nudge — used to keep one
+  // invoice from getting emailed every day. Null means never reminded.
+  lastReminderAt DateTime?
   payments    Payment[]
 }
 

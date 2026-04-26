@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { env } from './env.js';
 import { createApp } from './app.js';
-import { notifyStaleLeads, remindStaleContracts } from './lib/reminders.js';
+import { notifyStaleLeads, remindInvoices, remindStaleContracts } from './lib/reminders.js';
 
 const app = createApp();
 
@@ -39,5 +39,23 @@ if (staleLeadSchedule) {
     console.log(`[cron] stale-lead nudges scheduled "${staleLeadSchedule}"`);
   } else {
     console.warn(`[cron] STALE_LEAD_CRON="${staleLeadSchedule}" is not a valid expression; skipping`);
+  }
+}
+
+// Invoice reminders — flips SENT → OVERDUE once dueAt passes and emails
+// customers about upcoming-due + overdue invoices. INVOICE_REMINDER_CRON
+// e.g. "0 9 * * 1-5" runs every weekday at 9am. Cooldown is 3 days inside
+// the helper so a single invoice never gets emailed more than ~twice a week.
+const invoiceReminderSchedule = process.env.INVOICE_REMINDER_CRON;
+if (invoiceReminderSchedule) {
+  if (cron.validate(invoiceReminderSchedule)) {
+    cron.schedule(invoiceReminderSchedule, () => {
+      remindInvoices()
+        .then((r) => console.log('[cron:invoice-reminders]', r))
+        .catch((err) => console.warn('[cron:invoice-reminders] failed', err));
+    });
+    console.log(`[cron] invoice reminders scheduled "${invoiceReminderSchedule}"`);
+  } else {
+    console.warn(`[cron] INVOICE_REMINDER_CRON="${invoiceReminderSchedule}" is not a valid expression; skipping`);
   }
 }

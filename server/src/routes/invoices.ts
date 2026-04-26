@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { audit } from '../lib/audit.js';
 import { createPaymentLinkForInvoice, isStripeConfigured } from '../lib/stripe.js';
 import { ALL_PAYMENT_METHODS, computeTotals, recomputeInvoiceStatus } from '../lib/payments.js';
+import { remindInvoices } from '../lib/reminders.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -324,6 +325,22 @@ router.delete('/:id/payments/:paymentId', async (req, res, next) => {
 // list across the codebase.
 router.get('/_meta/payment-methods', (_req, res) => {
   res.json({ methods: ALL_PAYMENT_METHODS });
+});
+
+// Manual run of the invoice reminder cron. Used by admin from the Finance
+// dashboard when they want to nudge customers on demand instead of waiting
+// for the scheduled job.
+router.post('/_admin/run-reminders', requireRole(Role.ADMIN), async (req, res, next) => {
+  try {
+    const result = await remindInvoices();
+    audit(req, {
+      action: 'invoice.reminders_triggered',
+      meta: { ...result },
+    }).catch(() => undefined);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
 });
 
 export default router;

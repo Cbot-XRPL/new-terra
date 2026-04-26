@@ -103,6 +103,38 @@ export async function sendContractReminderEmail(input: {
   await transporter.sendMail({ to: input.to, from: env.smtp.from, subject, text });
 }
 
+export async function sendInvoiceReminderEmail(input: {
+  to: string;
+  customerName: string;
+  invoiceNumber: string;
+  invoiceId: string;
+  amountDueCents: number;
+  dueAt: Date | null;
+  // 'upcoming' = due in the next few days; 'overdue' = past due. Drives the
+  // tone of the email so we don't sound aggressive on a not-yet-due nudge.
+  kind: 'upcoming' | 'overdue';
+  daysOffset: number; // upcoming: days until due; overdue: days past due
+  paymentUrl: string | null;
+}) {
+  const url = `${env.appUrl}/portal/invoices`;
+  const dueLine = input.dueAt ? ` (due ${input.dueAt.toLocaleDateString()})` : '';
+  const amountStr = `$${(input.amountDueCents / 100).toFixed(2)}`;
+  const subject = input.kind === 'upcoming'
+    ? `Friendly reminder: invoice ${input.invoiceNumber} due soon`
+    : `Past-due notice: invoice ${input.invoiceNumber} (${input.daysOffset}d overdue)`;
+
+  const body = input.kind === 'upcoming'
+    ? `Hi ${input.customerName},\n\nJust a heads-up that invoice ${input.invoiceNumber} for ${amountStr}${dueLine} is coming up in ${input.daysOffset} days. You can review it here:\n${url}\n\n${input.paymentUrl ? `Pay now: ${input.paymentUrl}\n\n` : ''}Reply to this email if you have any questions.\n\n— New Terra Construction`
+    : `Hi ${input.customerName},\n\nOur records show invoice ${input.invoiceNumber} for ${amountStr}${dueLine} is now ${input.daysOffset} days past due.\n\nPlease review here:\n${url}\n\n${input.paymentUrl ? `Pay now: ${input.paymentUrl}\n\n` : ''}If you've already sent payment via check or Zelle, please reply with the reference so we can match it up.\n\n— New Terra Construction`;
+
+  if (!transporter) {
+    console.log(`[mailer:dev] Invoice ${input.kind} reminder to`, input.to, '·', input.invoiceNumber);
+    console.log('[mailer:dev]', url);
+    return;
+  }
+  await transporter.sendMail({ to: input.to, from: env.smtp.from, subject, text: body });
+}
+
 export async function sendStaleLeadEmail(input: {
   to: string;
   ownerName: string;
