@@ -1,13 +1,15 @@
+import crypto from 'node:crypto';
 import express, { Router } from 'express';
-import { ContractStatus } from '@prisma/client';
+import { ContractStatus, InvoiceStatus } from '@prisma/client';
 import { prisma } from '../db.js';
 import { mapEnvelopeStatus, verifyConnectSignature } from '../lib/docusign.js';
 import { sendContractDecidedEmail } from '../lib/mailer.js';
+import { audit } from '../lib/audit.js';
 
 const router = Router();
 
 // Webhooks bypass our normal JSON middleware so we can verify the HMAC
-// against the exact bytes DocuSign signed. Cap at 5 MB to leave headroom
+// against the exact bytes the sender signed. Cap at 5 MB to leave headroom
 // for Connect events that include attached documents.
 router.use(express.raw({ type: 'application/json', limit: '5mb' }));
 
@@ -118,6 +120,120 @@ router.post('/docusign', async (req, res, next) => {
     }
 
     res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---- Stripe ----
+//
+// Verifies signatures the same way Stripe's SDK does internally (HMAC-SHA256
+// over `${timestamp}.${payload}`). Skips verification when STRIPE_WEBHOOK_SECRET
+// isn't set so local dev can post mock events through curl. Production must
+// set the secret.
+//
+// We listen for two events:
+//   - payment_intent.succeeded — flips an invoice with metadata.invoiceId to PAID
+//   - checkout.session.completed — same, when the rep used a Checkout link
+//
+// Either event can include an Invoice id either via metadata.invoiceId or
+// metadata.nt_invoice_id (older convention). Both are accepted.
+
+interface StripeEventLike {
+  id?: string;
+  type?: string;
+  data?: { object?: Record<string, unknown> };
+}
+
+function verifyStripeSignature(
+  rawBody: Buffer,
+  signatureHeader: string | undefined,
+  secret: string,
+): boolean {
+  if (!signatureHeader) return false;
+  // Header format: t=1614265330,v1=hex,v0=hex
+  const parts = signatureHeader.split(',').reduce<Record<string, string>>((acc, p) => {
+    const [k, v] = p.split('=');
+    if (k && v) acc[k.trim()] = v.trim();
+    return acc;
+  }, {});
+  if (!parts.t || !parts.v1) return false;
+  const signedPayload = `${parts.t}.${rawBody.toString('utf8')}`;
+  const expected = crypto.createHmac('sha256', secret).update(signedPayload).digest('hex');
+  const a = Buffer.from(expected);
+  const b = Buffer.from(parts.v1);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+function pickInvoiceId(meta: Record<string, unknown> | undefined): string | undefined {
+  if (!meta) return undefined;
+  const a = typeof meta.invoiceId === 'string' ? meta.invoiceId : undefined;
+  const b = typeof meta.nt_invoice_id === 'string' ? meta.nt_invoice_id : undefined;
+  return a ?? b;
+}
+
+router.post('/stripe', async (req, res, next) => {
+  try {
+    const raw = req.body as Buffer;
+    const secret = process.env.STRIPE_WEBHOOK_SECRET;
+    const signature = req.header('Stripe-Signature') ?? req.header('stripe-signature');
+    if (secret && !verifyStripeSignature(raw, signature, secret)) {
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    let event: StripeEventLike;
+    try {
+      event = JSON.parse(raw.toString('utf8')) as StripeEventLike;
+    } catch {
+      return res.status(400).json({ error: 'Invalid JSON' });
+    }
+
+    const obj = (event.data?.object ?? {}) as {
+      metadata?: Record<string, unknown>;
+      amount_received?: number;
+      amount_total?: number;
+    };
+    const invoiceId = pickInvoiceId(obj.metadata);
+
+    if (!invoiceId) {
+      // Acknowledge so Stripe doesn't retry; we just don't have a local row.
+      return res.json({ ok: true, ignored: 'no invoiceId metadata' });
+    }
+
+    const eventsThatMarkPaid = new Set([
+      'payment_intent.succeeded',
+      'checkout.session.completed',
+      'invoice.paid',
+    ]);
+    if (!event.type || !eventsThatMarkPaid.has(event.type)) {
+      return res.json({ ok: true, ignored: `unhandled event type: ${event.type ?? 'unknown'}` });
+    }
+
+    const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
+    if (!invoice) {
+      return res.json({ ok: true, ignored: 'no matching invoice' });
+    }
+    if (invoice.status === InvoiceStatus.PAID) {
+      return res.json({ ok: true, alreadyPaid: true });
+    }
+
+    const updated = await prisma.invoice.update({
+      where: { id: invoice.id },
+      data: { status: InvoiceStatus.PAID, paidAt: new Date() },
+    });
+    audit(null, {
+      action: 'invoice.paid_via_stripe',
+      resourceType: 'invoice',
+      resourceId: invoice.id,
+      meta: {
+        stripeEventId: event.id,
+        stripeEventType: event.type,
+        amountReceived: obj.amount_received ?? obj.amount_total ?? null,
+      },
+    }).catch(() => undefined);
+
+    res.json({ ok: true, invoiceId: updated.id });
   } catch (err) {
     next(err);
   }

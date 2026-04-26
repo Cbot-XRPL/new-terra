@@ -1,13 +1,20 @@
 import { type FormEvent, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
+  asphaltSealcoat,
   concreteSlab,
   deckFraming,
+  drywall,
   fenceLayout,
+  frenchDrain,
   mulchCoverage,
   paintCoverage,
   retainingWall,
+  sonotubeFooting,
+  tileFloor,
   type CalcResult,
 } from '../../lib/calculators';
+import { useAuth } from '../../auth/AuthContext';
 
 interface FieldDef {
   key: string;
@@ -120,9 +127,85 @@ const CALCS: CalcDef[] = [
         hasGates: v.hasGates,
       }),
   },
+  {
+    id: 'drywall',
+    name: 'Drywall sheets',
+    description: 'Sheets, mud, tape, and screws for a wall area.',
+    fields: [
+      { key: 'wallSqft', label: 'Wall area', unit: 'sqft', default: 800, step: '10', min: 0 },
+      { key: 'sheetSqft', label: 'Sheet size', unit: 'sqft', default: 32, step: '4', min: 16, optional: true },
+      { key: 'cornerLf', label: 'Corner bead', unit: 'lf', default: 0, step: '1', min: 0, optional: true },
+    ],
+    run: (v) => drywall({ wallSqft: v.wallSqft, sheetSqft: v.sheetSqft, cornerLf: v.cornerLf }),
+  },
+  {
+    id: 'sonotube',
+    name: 'Sonotube footings',
+    description: 'Round concrete piers for decks / posts.',
+    fields: [
+      { key: 'diameterInches', label: 'Tube diameter', unit: 'in', default: 12, step: '1', min: 6, max: 24 },
+      { key: 'depthFt', label: 'Depth', unit: 'ft', default: 3, step: '0.5', min: 0 },
+      { key: 'count', label: 'Number of footings', default: 6, step: '1', min: 1 },
+    ],
+    run: (v) => sonotubeFooting({ diameterInches: v.diameterInches, depthFt: v.depthFt, count: v.count }),
+  },
+  {
+    id: 'tile',
+    name: 'Tile floor',
+    description: 'Tiles + thinset + grout for a floor area.',
+    fields: [
+      { key: 'areaSqft', label: 'Floor area', unit: 'sqft', default: 100, step: '1', min: 0 },
+      { key: 'tileSizeInches', label: 'Tile size (square)', unit: 'in', default: 12, step: '1', min: 1 },
+      { key: 'wastePct', label: 'Waste %', default: 10, step: '1', min: 0, max: 30, optional: true },
+    ],
+    run: (v) => tileFloor({ areaSqft: v.areaSqft, tileSizeInches: v.tileSizeInches, wastePct: v.wastePct }),
+  },
+  {
+    id: 'sealcoat',
+    name: 'Asphalt sealcoat',
+    description: 'Sealer for a driveway.',
+    fields: [
+      { key: 'drivewaySqft', label: 'Driveway', unit: 'sqft', default: 600, step: '10', min: 0 },
+      { key: 'coats', label: 'Coats', default: 2, step: '1', min: 1, max: 3, optional: true },
+    ],
+    run: (v) => asphaltSealcoat({ drivewaySqft: v.drivewaySqft, coats: v.coats }),
+  },
+  {
+    id: 'frenchdrain',
+    name: 'French drain',
+    description: 'Trench gravel + fabric + pipe lf.',
+    fields: [
+      { key: 'trenchLengthFt', label: 'Trench length', unit: 'ft', default: 50, step: '1', min: 0 },
+      { key: 'trenchWidthInches', label: 'Trench width', unit: 'in', default: 12, step: '1', min: 4 },
+      { key: 'trenchDepthInches', label: 'Trench depth', unit: 'in', default: 18, step: '1', min: 6 },
+      { key: 'pipeDiameterInches', label: 'Pipe diameter', unit: 'in', default: 4, step: '1', min: 3, max: 8, optional: true },
+    ],
+    run: (v) =>
+      frenchDrain({
+        trenchLengthFt: v.trenchLengthFt,
+        trenchWidthInches: v.trenchWidthInches,
+        trenchDepthInches: v.trenchDepthInches,
+        pipeDiameterInches: v.pipeDiameterInches,
+      }),
+  },
 ];
 
+// Build a URL for the new-estimate page with a single line prefilled from a
+// calculator's primary result. The new-estimate page already supports a
+// `seed` query param (added below).
+function estimatePrefillUrl(calcName: string, result: CalcResult): string {
+  const params = new URLSearchParams();
+  params.set('description', `${calcName}: ${result.primary.label}`);
+  params.set('quantity', result.primary.value.replace(/[^0-9.]/g, '') || '1');
+  // Strip non-letters so "cu yd" / "blocks" survive but "$1.25" doesn't.
+  params.set('unit', result.primary.value.replace(/[\d.,]+/g, '').trim() || 'ea');
+  return `/portal/estimates/new?seed=${encodeURIComponent(params.toString())}`;
+}
+
 function CalculatorCard({ def }: { def: CalcDef }) {
+  const { user } = useAuth();
+  const canEstimate = user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isSales);
+
   const [values, setValues] = useState<Record<string, number>>(
     () => Object.fromEntries(def.fields.map((f) => [f.key, f.default])),
   );
@@ -164,9 +247,19 @@ function CalculatorCard({ def }: { def: CalcDef }) {
 
       {result && (
         <div style={{ marginTop: '1rem' }}>
-          <div className="result-headline">
-            <div className="muted" style={{ fontSize: '0.85rem' }}>{result.primary.label}</div>
-            <div style={{ fontSize: '1.75rem', fontWeight: 700 }}>{result.primary.value}</div>
+          <div className="row-between" style={{ alignItems: 'flex-start' }}>
+            <div className="result-headline">
+              <div className="muted" style={{ fontSize: '0.85rem' }}>{result.primary.label}</div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 700 }}>{result.primary.value}</div>
+            </div>
+            {canEstimate && (
+              <Link
+                to={estimatePrefillUrl(def.name, result)}
+                className="button button-ghost button-small"
+              >
+                + Add to estimate
+              </Link>
+            )}
           </div>
           <table className="table" style={{ marginTop: '0.75rem' }}>
             <tbody>

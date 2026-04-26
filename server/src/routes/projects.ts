@@ -85,6 +85,13 @@ router.get('/', async (req, res, next) => {
       // Admins, sales-flagged employees, and subs see the full list.
       where = { projectManagerId: userId };
     }
+    // Default to hiding archived projects so the active list isn't drowned;
+    // ?archived=true (admin-only) reveals them.
+    if (req.query.archived !== 'true') {
+      where.archivedAt = null;
+    } else if (me?.role !== Role.ADMIN) {
+      where.archivedAt = null;
+    }
     const projects = await prisma.project.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -193,6 +200,34 @@ router.delete('/:id', requireRole(Role.ADMIN), async (req, res, next) => {
   try {
     await prisma.project.delete({ where: { id: req.params.id } });
     res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Soft archive — admin only. Project keeps all data; just falls out of the
+// default project list. Pair with /unarchive.
+router.post('/:id/archive', requireRole(Role.ADMIN), async (req, res, next) => {
+  try {
+    const project = await prisma.project.update({
+      where: { id: req.params.id },
+      data: { archivedAt: new Date() },
+      include: projectInclude,
+    });
+    res.json({ project });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/unarchive', requireRole(Role.ADMIN), async (req, res, next) => {
+  try {
+    const project = await prisma.project.update({
+      where: { id: req.params.id },
+      data: { archivedAt: null },
+      include: projectInclude,
+    });
+    res.json({ project });
   } catch (err) {
     next(err);
   }

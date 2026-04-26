@@ -203,6 +203,9 @@ model Project {
   // Top-level project budget. Per-category line items live in ProjectBudgetLine
   // and supersede this number when present in the job-cost rollup.
   budgetCents Int?
+  // Soft-archive timestamp. Archived projects fall out of default lists but
+  // keep all their data; admins can unarchive at any time.
+  archivedAt  DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -468,6 +471,10 @@ model ProjectComment {
   authorId  String
   author    User     @relation(fields: [authorId], references: [id])
   body      String
+  // Optional attachments (images for now): [{url, thumbnailUrl, filename}].
+  // Stored as JSON so adding more attachment metadata later (mime type,
+  // bytes) doesn't require a migration.
+  attachments Json?
   createdAt DateTime @default(now())
 
   @@index([projectId])

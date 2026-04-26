@@ -178,6 +178,153 @@ export function paintCoverage(input: {
 //
 // Posts = ceil(length / spacing) + 1. Panels = posts - 1 (if linear; closed
 // loops would differ but residential fences are almost always linear).
+// --- Drywall sheets ---
+//
+// Sheets = ceil(area / sheet area). Default sheet is 4×8 (32 sqft). Mud
+// + tape + corner bead are estimated per 1000 sqft of board.
+export function drywall(input: {
+  wallSqft: number;
+  sheetSqft?: number;
+  cornerLf?: number; // linear feet of inside/outside corners
+}): CalcResult {
+  const sheetSize = input.sheetSqft ?? 32;
+  const sheets = Math.ceil(input.wallSqft / sheetSize);
+  // ~3.5 gal of all-purpose mud per 1000 sqft of board, 1 roll tape per 250 sqft.
+  const mudGal = Math.ceil((input.wallSqft / 1000) * 3.5);
+  const tapeRolls = Math.ceil(input.wallSqft / 250);
+  const screws5lb = Math.ceil(input.wallSqft / 1000); // ~1 box per 1000 sqft
+  const corner = input.cornerLf ? Math.ceil(input.cornerLf / 8) : 0; // 8' bead pieces
+  return {
+    primary: { label: 'Drywall sheets', value: `${sheets} sheets` },
+    breakdown: [
+      { label: 'Sheet size assumed', value: `${sheetSize} sqft (e.g. 4×8)` },
+      { label: 'Joint compound', value: `${mudGal} gal` },
+      { label: 'Joint tape', value: `${tapeRolls} rolls (250 lf each)` },
+      { label: 'Screws (5 lb boxes)', value: `${screws5lb} box(es)` },
+      ...(corner ? [{ label: 'Corner bead (8 lf pieces)', value: `${corner} pcs` }] : []),
+    ],
+    notes: [
+      'Coverage rounds up; cuts are figured into the sheet count assumption.',
+      'Switch to 4×12 sheets on large open ceilings to reduce seams (set sheetSqft=48).',
+    ],
+  };
+}
+
+// --- Sonotube footings (round concrete pier) ---
+//
+// Volume per pier = π × r² × depth. Diameter is the most common variable
+// for residential decks (10" or 12" common).
+export function sonotubeFooting(input: {
+  diameterInches: number;
+  depthFt: number;
+  count: number;
+}): CalcResult {
+  const r = input.diameterInches / 2 / 12; // ft
+  const cuFtPer = Math.PI * r * r * input.depthFt;
+  const totalCuFt = cuFtPer * input.count;
+  const cuYd = totalCuFt / 27;
+  const eightyBags = Math.ceil(totalCuFt / 0.6);
+  return {
+    primary: { label: 'Concrete', value: `${roundUpTo(cuYd, 0.25).toFixed(2)} cu yd` },
+    breakdown: [
+      { label: 'Per footing', value: `${cuFtPer.toFixed(2)} cu ft` },
+      { label: 'All footings', value: `${totalCuFt.toFixed(1)} cu ft` },
+      { label: '80 lb bags', value: `${eightyBags}` },
+    ],
+    notes: [
+      'Local frost depth wins — the depthFt input must clear it (24" GA, 36"+ TN/NC mountains).',
+      'Add 5–10% for over-fill at the top.',
+    ],
+  };
+}
+
+// --- Tile floor coverage ---
+//
+// Tiles = ceil(area / tile area) + 10% waste (more for diagonal layouts).
+export function tileFloor(input: {
+  areaSqft: number;
+  tileSizeInches: number; // square tile, e.g. 12 for 12x12
+  wastePct?: number;
+}): CalcResult {
+  const tileSqft = (input.tileSizeInches * input.tileSizeInches) / 144;
+  const waste = (input.wastePct ?? 10) / 100;
+  const tiles = Math.ceil((input.areaSqft / tileSqft) * (1 + waste));
+  const thinsetBags = Math.ceil(input.areaSqft / 95); // ~95 sqft per 50lb bag of thinset
+  const groutLb = Math.ceil(input.areaSqft / 100); // very rough — depends on joint width
+  return {
+    primary: { label: 'Tiles', value: `${tiles} pcs` },
+    breakdown: [
+      { label: 'Tile size', value: `${input.tileSizeInches}" × ${input.tileSizeInches}"` },
+      { label: 'Waste assumed', value: `${(waste * 100).toFixed(0)}%` },
+      { label: 'Thinset (50 lb bags @ ~95 sqft)', value: `${thinsetBags}` },
+      { label: 'Grout (rough)', value: `${groutLb} lb` },
+    ],
+    notes: [
+      'Bump waste to 15% for diagonal / herringbone, 20% for mosaics.',
+      'Buy from one dye lot — tiles vary across runs.',
+    ],
+  };
+}
+
+// --- Asphalt sealcoat ---
+//
+// Sealer coverage ≈ 80 sqft/gal for fresh asphalt, less for very rough.
+export function asphaltSealcoat(input: {
+  drivewaySqft: number;
+  coats?: number;
+  coverageSqftPerGal?: number;
+}): CalcResult {
+  const coats = input.coats ?? 2;
+  const coverage = input.coverageSqftPerGal ?? 80;
+  const gallons = Math.ceil((input.drivewaySqft * coats) / coverage);
+  // 5-gal pails are the standard retail format.
+  const pails = Math.ceil(gallons / 5);
+  return {
+    primary: { label: 'Sealer', value: `${gallons} gal` },
+    breakdown: [
+      { label: 'Coats', value: String(coats) },
+      { label: 'Coverage assumption', value: `${coverage} sqft / gal` },
+      { label: '5 gal pails', value: `${pails}` },
+    ],
+    notes: [
+      'Rough or porous asphalt drops coverage to ~60 sqft/gal.',
+      'Crack filler is separate — measure crack lf and budget ~1 gal per 80 lf.',
+    ],
+  };
+}
+
+// --- Drainage gravel (French drain trench) ---
+//
+// Trench volume = length × width × depth. Subtract pipe volume so the gravel
+// estimate isn't over-stated.
+export function frenchDrain(input: {
+  trenchLengthFt: number;
+  trenchWidthInches: number;
+  trenchDepthInches: number;
+  pipeDiameterInches?: number; // default 4
+}): CalcResult {
+  const widthFt = input.trenchWidthInches / 12;
+  const depthFt = input.trenchDepthInches / 12;
+  const trenchCuFt = input.trenchLengthFt * widthFt * depthFt;
+  const pipeR = (input.pipeDiameterInches ?? 4) / 2 / 12;
+  const pipeCuFt = Math.PI * pipeR * pipeR * input.trenchLengthFt;
+  const gravelCuFt = Math.max(0, trenchCuFt - pipeCuFt);
+  const gravelCuYd = gravelCuFt / 27;
+  return {
+    primary: { label: 'Drainage gravel', value: `${roundUpTo(gravelCuYd, 0.25).toFixed(2)} cu yd` },
+    breakdown: [
+      { label: 'Trench volume', value: `${trenchCuFt.toFixed(1)} cu ft` },
+      { label: 'Pipe displacement', value: `${pipeCuFt.toFixed(1)} cu ft` },
+      { label: 'Pipe length', value: `${input.trenchLengthFt} lf` },
+      { label: 'Filter fabric', value: `${Math.ceil(input.trenchLengthFt * (widthFt + 1))} sqft` },
+    ],
+    notes: [
+      'Wrap pipe in fabric to keep silt out; the surface area accounts for over-wrap.',
+      'Slope at least 1% — every 100 ft drops 12".',
+    ],
+  };
+}
+
 export function fenceLayout(input: {
   lengthFt: number;
   postSpacingFt: number;

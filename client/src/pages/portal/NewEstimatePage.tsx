@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { formatCents } from '../../lib/format';
 
@@ -54,6 +54,33 @@ function fromTemplate(t: Template): WorkingLine[] {
 
 export default function NewEstimatePage() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+
+  // Optional `seed` query param packs description/quantity/unit so the
+  // calculators page can hand off a starting line without us needing a
+  // dedicated round-trip API.
+  const seedLine = useMemo<WorkingLine | null>(() => {
+    const raw = params.get('seed');
+    if (!raw) return null;
+    try {
+      const inner = new URLSearchParams(raw);
+      const description = inner.get('description') ?? '';
+      const quantity = Number(inner.get('quantity') ?? '1');
+      const unit = inner.get('unit') ?? '';
+      if (!description) return null;
+      return {
+        description,
+        quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+        unit,
+        unitPriceCents: 0,
+        category: 'Materials',
+        notes: '',
+        position: 0,
+      };
+    } catch {
+      return null;
+    }
+  }, [params]);
 
   const [templates, setTemplates] = useState<Template[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
@@ -71,7 +98,9 @@ export default function NewEstimatePage() {
   );
   const [taxRatePct, setTaxRatePct] = useState('0');
   const [validUntil, setValidUntil] = useState('');
-  const [lines, setLines] = useState<WorkingLine[]>([blankLine(0)]);
+  const [lines, setLines] = useState<WorkingLine[]>(() =>
+    seedLine ? [seedLine] : [blankLine(0)],
+  );
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
