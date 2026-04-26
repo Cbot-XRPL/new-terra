@@ -8,6 +8,11 @@ export interface JwtPayload {
   sub: string;
   role: Role;
   email: string;
+  // Version stamp from User.tokenVersion at sign time. The auth middleware
+  // re-reads the user on each request and rejects when tokenVersion drifts,
+  // which is how we revoke tokens (password reset, role change, sign-out-
+  // everywhere) without a session table.
+  tv?: number;
 }
 
 export function signJwt(payload: JwtPayload): string {

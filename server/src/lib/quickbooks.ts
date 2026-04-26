@@ -13,6 +13,7 @@
 import crypto from 'node:crypto';
 import { prisma } from '../db.js';
 import type { QbConnection } from '@prisma/client';
+import { decryptString, encryptString } from './crypto.js';
 
 const REQUIRED = ['QB_CLIENT_ID', 'QB_CLIENT_SECRET', 'QB_REDIRECT_URI'] as const;
 const SANDBOX_API = 'https://sandbox-quickbooks.api.intuit.com/v3';
@@ -103,16 +104,16 @@ export async function exchangeCode(input: {
     where: { realmId: input.realmId },
     create: {
       realmId: input.realmId,
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
+      accessToken: encryptString(tokens.access_token),
+      refreshToken: encryptString(tokens.refresh_token),
       accessTokenExpiresAt: new Date(now + tokens.expires_in * 1000),
       refreshTokenExpiresAt: new Date(now + tokens.x_refresh_token_expires_in * 1000),
       scope: tokens.scope ?? null,
       connectedById: input.connectedById ?? null,
     },
     update: {
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
+      accessToken: encryptString(tokens.access_token),
+      refreshToken: encryptString(tokens.refresh_token),
       accessTokenExpiresAt: new Date(now + tokens.expires_in * 1000),
       refreshTokenExpiresAt: new Date(now + tokens.x_refresh_token_expires_in * 1000),
       scope: tokens.scope ?? null,
@@ -132,15 +133,15 @@ async function refreshIfNeeded(connection: QbConnection): Promise<QbConnection> 
   }
   const body = new URLSearchParams({
     grant_type: 'refresh_token',
-    refresh_token: connection.refreshToken,
+    refresh_token: decryptString(connection.refreshToken),
   });
   const tokens = await postToToken(body);
   const now = Date.now();
   return prisma.qbConnection.update({
     where: { id: connection.id },
     data: {
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
+      accessToken: encryptString(tokens.access_token),
+      refreshToken: encryptString(tokens.refresh_token),
       accessTokenExpiresAt: new Date(now + tokens.expires_in * 1000),
       refreshTokenExpiresAt: new Date(now + tokens.x_refresh_token_expires_in * 1000),
     },
@@ -157,7 +158,7 @@ async function qbFetch<T>(
   const res = await fetch(url, {
     ...init,
     headers: {
-      Authorization: `Bearer ${fresh.accessToken}`,
+      Authorization: `Bearer ${decryptString(fresh.accessToken)}`,
       Accept: 'application/json',
       'Content-Type': 'application/json',
       ...(init.headers ?? {}),

@@ -114,6 +114,11 @@ model User {
   // and can manage vendors + expense categories. Toggleable by admin.
   isAccounting  Boolean  @default(false)
   isActive      Boolean  @default(true)
+  // Bumped on password reset, role change, and admin "sign out everywhere".
+  // The auth middleware compares this against the JWT claim and rejects
+  // tokens whose version is stale — that's how we revoke without a session
+  // table.
+  tokenVersion  Int      @default(0)
   // Profile picture — main display image (512px webp) and a small
   // thumbnail (96px webp) used in the nav bar and dense lists. Both URLs
   // are produced by the avatar upload pipeline (sharp resize).

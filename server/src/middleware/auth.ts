@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { Role } from '@prisma/client';
 import { verifyJwt, type JwtPayload } from '../lib/auth.js';
+import { prisma } from '../db.js';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -25,12 +26,33 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!token) {
     return res.status(401).json({ error: 'Missing bearer token' });
   }
+  let payload: JwtPayload;
   try {
-    req.user = verifyJwt(token);
-    next();
+    payload = verifyJwt(token);
   } catch {
-    res.status(401).json({ error: 'Invalid or expired token' });
+    return res.status(401).json({ error: 'Invalid or expired token' });
   }
+  // Verify the token version still matches the user record. Tokens minted
+  // before a password reset / sign-out-everywhere / disable have a stale
+  // `tv` and get rejected here. We also block disabled accounts.
+  void (async () => {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: { isActive: true, tokenVersion: true },
+      });
+      if (!user || !user.isActive) {
+        return res.status(401).json({ error: 'Account disabled' });
+      }
+      if (typeof payload.tv === 'number' && payload.tv !== user.tokenVersion) {
+        return res.status(401).json({ error: 'Token revoked — please sign in again' });
+      }
+      req.user = payload;
+      next();
+    } catch (err) {
+      next(err);
+    }
+  })();
 }
 
 export function requireRole(...roles: Role[]) {

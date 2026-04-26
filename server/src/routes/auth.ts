@@ -80,7 +80,12 @@ router.post('/login', loginLimiter, async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const token = signJwt({ sub: user.id, role: user.role, email: user.email });
+    const token = signJwt({
+      sub: user.id,
+      role: user.role,
+      email: user.email,
+      tv: user.tokenVersion,
+    });
     res.json({
       token,
       user: {
@@ -164,7 +169,12 @@ router.post('/accept-invite', acceptInviteLimiter, async (req, res, next) => {
       return created;
     });
 
-    const jwtToken = signJwt({ sub: user.id, role: user.role, email: user.email });
+    const jwtToken = signJwt({
+      sub: user.id,
+      role: user.role,
+      email: user.email,
+      tv: user.tokenVersion,
+    });
     res.json({
       token: jwtToken,
       user: {
@@ -267,7 +277,10 @@ router.post('/reset-password', acceptInviteLimiter, async (req, res, next) => {
     await prisma.$transaction([
       prisma.user.update({
         where: { id: record.userId },
-        data: { passwordHash },
+        // Bump tokenVersion so any sessions logged in with the old password
+        // are invalidated immediately. Defence against the "I think someone
+        // got my laptop" reset flow.
+        data: { passwordHash, tokenVersion: { increment: 1 } },
       }),
       prisma.passwordResetToken.update({
         where: { id: record.id },
@@ -284,6 +297,29 @@ router.post('/reset-password', acceptInviteLimiter, async (req, res, next) => {
       action: 'auth.password_reset_completed',
       resourceType: 'user',
       resourceId: record.userId,
+    }).catch(() => undefined);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Sign out everywhere — bumps tokenVersion so every issued JWT for this
+// user is rejected at the auth middleware. Useful when a user thinks their
+// account was compromised; admin can also call this on a user via /admin
+// once we wire that up.
+router.post('/sign-out-everywhere', requireAuth, async (req, res, next) => {
+  try {
+    const updated = await prisma.user.update({
+      where: { id: req.user!.sub },
+      data: { tokenVersion: { increment: 1 } },
+      select: { tokenVersion: true },
+    });
+    audit(req, {
+      action: 'auth.sign_out_everywhere',
+      resourceType: 'user',
+      resourceId: req.user!.sub,
+      meta: { newTokenVersion: updated.tokenVersion },
     }).catch(() => undefined);
     res.json({ ok: true });
   } catch (err) {
