@@ -363,43 +363,84 @@ router.post('/accounts/:id/import', upload.single('file'), async (req, res, next
       where: { active: true, OR: [{ accountId: null }, { accountId: account.id }] },
     });
 
+    // Pre-fetch existing rows on this account in two batched queries so a
+    // 500-row import is two reads + one createMany instead of 500 round
+    // trips. Dedupe key is externalId when present; otherwise the
+    // (date, amount, description) tuple — same fallback as before.
+    const externalIds = parsed.rows
+      .map((r) => r.externalId)
+      .filter((id): id is string => !!id);
+    const existingExternal = externalIds.length > 0
+      ? new Set(
+          (await prisma.bankTransaction.findMany({
+            where: { accountId: account.id, externalId: { in: externalIds } },
+            select: { externalId: true },
+          })).map((t) => t.externalId).filter((x): x is string => !!x),
+        )
+      : new Set<string>();
+
+    // For rows without an externalId, build a Set of "date|amount|desc"
+    // composite keys we already have in the DB. We bound the date range to
+    // the parsed window to keep the query small.
+    const noExternal = parsed.rows.filter((r) => !r.externalId);
+    let existingTuples = new Set<string>();
+    if (noExternal.length > 0) {
+      const minDate = noExternal.reduce((d, r) => r.date < d ? r.date : d, noExternal[0].date);
+      const maxDate = noExternal.reduce((d, r) => r.date > d ? r.date : d, noExternal[0].date);
+      const rows = await prisma.bankTransaction.findMany({
+        where: {
+          accountId: account.id,
+          date: { gte: minDate, lte: maxDate },
+        },
+        select: { date: true, amountCents: true, description: true },
+      });
+      existingTuples = new Set(
+        rows.map((t) => `${t.date.getTime()}|${t.amountCents}|${t.description}`),
+      );
+    }
+
     let created = 0;
     let skipped = 0;
     let categorized = 0;
+    const toInsert: Array<{
+      accountId: string;
+      date: Date;
+      amountCents: number;
+      description: string;
+      runningBalanceCents: number | null;
+      categoryId: string | null;
+      externalId: string | null;
+    }> = [];
+
     for (const row of parsed.rows) {
-      // Dedupe by externalId on this account; if no externalId we dedupe by
-      // (date, amount, description) which catches typical re-imports without
-      // accidentally suppressing two real same-day same-vendor charges
-      // (description usually includes a unique store id).
-      const dupe = await prisma.bankTransaction.findFirst({
-        where: row.externalId
-          ? { accountId: account.id, externalId: row.externalId }
-          : {
-              accountId: account.id,
-              date: row.date,
-              amountCents: row.amountCents,
-              description: row.description,
-            },
-        select: { id: true },
-      });
-      if (dupe) { skipped += 1; continue; }
+      const isDupe = row.externalId
+        ? existingExternal.has(row.externalId)
+        : existingTuples.has(`${row.date.getTime()}|${row.amountCents}|${row.description}`);
+      if (isDupe) { skipped += 1; continue; }
 
       const matched = rules.find((r) =>
         row.description.toLowerCase().includes(r.matchText.toLowerCase()),
       );
-      await prisma.bankTransaction.create({
-        data: {
-          accountId: account.id,
-          date: row.date,
-          amountCents: row.amountCents,
-          description: row.description,
-          runningBalanceCents: row.balanceCents ?? null,
-          categoryId: matched?.categoryId ?? null,
-          externalId: row.externalId ?? null,
-        },
+      toInsert.push({
+        accountId: account.id,
+        date: row.date,
+        amountCents: row.amountCents,
+        description: row.description,
+        runningBalanceCents: row.balanceCents ?? null,
+        categoryId: matched?.categoryId ?? null,
+        externalId: row.externalId ?? null,
       });
+      // Also push to the in-memory dedupe set so two duplicate rows in
+      // the SAME upload don't both land.
+      if (row.externalId) existingExternal.add(row.externalId);
+      else existingTuples.add(`${row.date.getTime()}|${row.amountCents}|${row.description}`);
+
       created += 1;
       if (matched) categorized += 1;
+    }
+
+    if (toInsert.length > 0) {
+      await prisma.bankTransaction.createMany({ data: toInsert });
     }
 
     audit(req, {

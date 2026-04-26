@@ -1,13 +1,13 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { RequireAuth } from './auth/RequireAuth';
 import PublicLayout from './layouts/PublicLayout';
 import PortalLayout from './layouts/PortalLayout';
+// Eager: critical paths users hit on first load. Auth + landing + the
+// dashboards that PortalIndex routes into. Everything else is lazy so
+// the initial JS bundle stays under the Vite 500 KB warning threshold.
 import HomePage from './pages/public/HomePage';
-import ContactPage from './pages/public/ContactPage';
-import PublicGalleryPage from './pages/public/PublicGalleryPage';
-import SurveyPage from './pages/public/SurveyPage';
-import SignupPage from './pages/public/SignupPage';
 import LoginPage from './pages/auth/LoginPage';
 import AcceptInvitePage from './pages/auth/AcceptInvitePage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
@@ -15,45 +15,53 @@ import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 import CustomerDashboard from './pages/portal/CustomerDashboard';
 import StaffDashboard from './pages/portal/StaffDashboard';
 import AdminDashboard from './pages/portal/AdminDashboard';
-import ProjectsListPage from './pages/portal/ProjectsListPage';
-import ProjectDetailPage from './pages/portal/ProjectDetailPage';
-import InvoicesPage from './pages/portal/InvoicesPage';
-import MessagesPage from './pages/portal/MessagesPage';
-import MessageBoardPage from './pages/portal/MessageBoardPage';
-import CalendarPage from './pages/portal/CalendarPage';
-import ContractTemplatesPage from './pages/portal/ContractTemplatesPage';
-import ContractsPage from './pages/portal/ContractsPage';
-import NewContractPage from './pages/portal/NewContractPage';
-import ContractDetailPage from './pages/portal/ContractDetailPage';
-import BulkImportPage from './pages/portal/BulkImportPage';
-import LeadsPage from './pages/portal/LeadsPage';
-import LeadDetailPage from './pages/portal/LeadDetailPage';
-import ProfilePage from './pages/portal/ProfilePage';
-import FinanceOverviewPage from './pages/portal/FinanceOverviewPage';
-import ExpensesPage from './pages/portal/ExpensesPage';
-import NewExpensePage from './pages/portal/NewExpensePage';
-import ExpenseDetailPage from './pages/portal/ExpenseDetailPage';
-import QuickBooksPage from './pages/portal/QuickBooksPage';
-import EstimatesPage from './pages/portal/EstimatesPage';
-import NewEstimatePage from './pages/portal/NewEstimatePage';
-import EstimateDetailPage from './pages/portal/EstimateDetailPage';
-import EstimatorVisualPage from './pages/portal/EstimatorVisualPage';
-import CompanySettingsPage from './pages/portal/CompanySettingsPage';
-import ProjectTimelinePage from './pages/portal/ProjectTimelinePage';
-import RecurringInvoicesPage from './pages/portal/RecurringInvoicesPage';
-import SubcontractorBillsPage from './pages/portal/SubcontractorBillsPage';
-import ProfitabilityPage from './pages/portal/ProfitabilityPage';
-import BankingPage from './pages/portal/BankingPage';
-import BankRulesPage from './pages/portal/BankRulesPage';
-import AssetsLiabilitiesPage from './pages/portal/AssetsLiabilitiesPage';
-import ReportsPage from './pages/portal/ReportsPage';
-import Form1099Page from './pages/portal/Form1099Page';
-import MileagePage from './pages/portal/MileagePage';
-import SatisfactionDashboardPage from './pages/portal/SatisfactionDashboardPage';
-import InventoryPage from './pages/portal/InventoryPage';
-import CalculatorsPage from './pages/portal/CalculatorsPage';
-import CatalogPage from './pages/portal/CatalogPage';
-import TimePage from './pages/portal/TimePage';
+
+// Lazy: every other page. Vite splits these into their own chunks. The
+// Suspense boundary at the bottom catches them all with one shared
+// loading fallback.
+const ContactPage = lazy(() => import('./pages/public/ContactPage'));
+const PublicGalleryPage = lazy(() => import('./pages/public/PublicGalleryPage'));
+const SurveyPage = lazy(() => import('./pages/public/SurveyPage'));
+const SignupPage = lazy(() => import('./pages/public/SignupPage'));
+const ProjectsListPage = lazy(() => import('./pages/portal/ProjectsListPage'));
+const ProjectDetailPage = lazy(() => import('./pages/portal/ProjectDetailPage'));
+const InvoicesPage = lazy(() => import('./pages/portal/InvoicesPage'));
+const MessagesPage = lazy(() => import('./pages/portal/MessagesPage'));
+const MessageBoardPage = lazy(() => import('./pages/portal/MessageBoardPage'));
+const CalendarPage = lazy(() => import('./pages/portal/CalendarPage'));
+const ContractTemplatesPage = lazy(() => import('./pages/portal/ContractTemplatesPage'));
+const ContractsPage = lazy(() => import('./pages/portal/ContractsPage'));
+const NewContractPage = lazy(() => import('./pages/portal/NewContractPage'));
+const ContractDetailPage = lazy(() => import('./pages/portal/ContractDetailPage'));
+const BulkImportPage = lazy(() => import('./pages/portal/BulkImportPage'));
+const LeadsPage = lazy(() => import('./pages/portal/LeadsPage'));
+const LeadDetailPage = lazy(() => import('./pages/portal/LeadDetailPage'));
+const ProfilePage = lazy(() => import('./pages/portal/ProfilePage'));
+const FinanceOverviewPage = lazy(() => import('./pages/portal/FinanceOverviewPage'));
+const ExpensesPage = lazy(() => import('./pages/portal/ExpensesPage'));
+const NewExpensePage = lazy(() => import('./pages/portal/NewExpensePage'));
+const ExpenseDetailPage = lazy(() => import('./pages/portal/ExpenseDetailPage'));
+const QuickBooksPage = lazy(() => import('./pages/portal/QuickBooksPage'));
+const EstimatesPage = lazy(() => import('./pages/portal/EstimatesPage'));
+const NewEstimatePage = lazy(() => import('./pages/portal/NewEstimatePage'));
+const EstimateDetailPage = lazy(() => import('./pages/portal/EstimateDetailPage'));
+const EstimatorVisualPage = lazy(() => import('./pages/portal/EstimatorVisualPage'));
+const CompanySettingsPage = lazy(() => import('./pages/portal/CompanySettingsPage'));
+const ProjectTimelinePage = lazy(() => import('./pages/portal/ProjectTimelinePage'));
+const RecurringInvoicesPage = lazy(() => import('./pages/portal/RecurringInvoicesPage'));
+const SubcontractorBillsPage = lazy(() => import('./pages/portal/SubcontractorBillsPage'));
+const ProfitabilityPage = lazy(() => import('./pages/portal/ProfitabilityPage'));
+const BankingPage = lazy(() => import('./pages/portal/BankingPage'));
+const BankRulesPage = lazy(() => import('./pages/portal/BankRulesPage'));
+const AssetsLiabilitiesPage = lazy(() => import('./pages/portal/AssetsLiabilitiesPage'));
+const ReportsPage = lazy(() => import('./pages/portal/ReportsPage'));
+const Form1099Page = lazy(() => import('./pages/portal/Form1099Page'));
+const MileagePage = lazy(() => import('./pages/portal/MileagePage'));
+const SatisfactionDashboardPage = lazy(() => import('./pages/portal/SatisfactionDashboardPage'));
+const InventoryPage = lazy(() => import('./pages/portal/InventoryPage'));
+const CalculatorsPage = lazy(() => import('./pages/portal/CalculatorsPage'));
+const CatalogPage = lazy(() => import('./pages/portal/CatalogPage'));
+const TimePage = lazy(() => import('./pages/portal/TimePage'));
 
 function PortalIndex() {
   const { user } = useAuth();
@@ -65,6 +73,11 @@ function PortalIndex() {
 
 export default function App() {
   return (
+    <Suspense fallback={
+      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+        Loading…
+      </div>
+    }>
     <Routes>
       <Route element={<PublicLayout />}>
         <Route path="/" element={<HomePage />} />
@@ -357,5 +370,6 @@ export default function App() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   );
 }
