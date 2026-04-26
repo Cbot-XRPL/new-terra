@@ -108,9 +108,14 @@ export default function FinanceOverviewPage() {
             All expenses
           </Link>
           {isAccounting && (
-            <Link to="/portal/finance/profitability" className="button button-ghost">
-              Profitability
-            </Link>
+            <>
+              <Link to="/portal/finance/profitability" className="button button-ghost">
+                Profitability
+              </Link>
+              <Link to="/portal/finance/reports" className="button button-ghost">
+                P&amp;L · Balance sheet
+              </Link>
+            </>
           )}
           {isAccounting && (
             <Link to="/portal/finance/qb" className="button button-ghost">

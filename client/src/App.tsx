@@ -43,6 +43,7 @@ import ProfitabilityPage from './pages/portal/ProfitabilityPage';
 import BankingPage from './pages/portal/BankingPage';
 import BankRulesPage from './pages/portal/BankRulesPage';
 import AssetsLiabilitiesPage from './pages/portal/AssetsLiabilitiesPage';
+import ReportsPage from './pages/portal/ReportsPage';
 import CalculatorsPage from './pages/portal/CalculatorsPage';
 import CatalogPage from './pages/portal/CatalogPage';
 import TimePage from './pages/portal/TimePage';
@@ -157,6 +158,14 @@ export default function App() {
           element={
             <RequireAuth accountingAccess>
               <AssetsLiabilitiesPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="finance/reports"
+          element={
+            <RequireAuth accountingAccess>
+              <ReportsPage />
             </RequireAuth>
           }
         />
