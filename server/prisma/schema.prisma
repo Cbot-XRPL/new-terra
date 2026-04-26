@@ -154,6 +154,7 @@ model User {
   subcontractorBills    SubcontractorBill[] @relation("SubBillSubcontractor")
   subBillsApproved      SubcontractorBill[] @relation("SubBillApprover")
   subBillAttachments    SubcontractorBillAttachment[] @relation("SubBillAttachmentUploader")
+  mileageEntries        MileageEntry[] @relation("MileageDriver")
 
   // Bidirectional messaging — staff can message customers and vice versa.
   // Cross-role permission (no customer↔customer) is enforced in the route.
@@ -267,6 +268,7 @@ model Project {
   recurringInvoices  RecurringInvoice[]
   subcontractorBills SubcontractorBill[]
   bankRules          BankCategorizationRule[]
+  mileageEntries     MileageEntry[]
 
   @@index([projectManagerId])
 }
@@ -352,6 +354,34 @@ model Payment {
   @@index([referenceNumber])
 }
 
+// Mileage log — one row per trip, deductible at the IRS standard rate.
+// userId is who drove; projectId is the job they drove for (null for
+// general business overhead — supply runs, banking, etc). rateCentsPerMile
+// snapshots the IRS rate at log time so changing the rate later doesn't
+// retroactively shift every total. We store BOTH miles and the computed
+// total to keep the rollup endpoint cheap.
+model MileageEntry {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation("MileageDriver", fields: [userId], references: [id], onDelete: Cascade)
+  projectId       String?
+  project         Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  date            DateTime
+  // Stored as a Decimal-safe Int so 12.3 miles = 123 (we use tenths). Avoids
+  // float drift across thousands of trips at year-end.
+  milesTenths     Int
+  // 1 cent precision on the rate so 67.0 cents = 670. Multiplied by miles
+  // and divided back by 1000 to land on cents.
+  rateCentsPerMile Int
+  totalCents      Int
+  purpose         String?
+  notes           String?
+  createdAt       DateTime @default(now())
+
+  @@index([userId, date])
+  @@index([projectId])
+}
+
 // One-row table that holds company-wide settings the admin edits from the
 // portal: business contact info + the payment instructions that show on
 // every unpaid invoice (Zelle handle, ACH details, who to make checks out
@@ -389,6 +419,10 @@ model CompanySettings {
   // we include any URL that's set; blank ones are skipped.
   googleReviewUrl     String?
   yelpReviewUrl       String?
+  // IRS standard mileage rate, in cents per mile (e.g. 67.0¢ → 670). Admin
+  // sets this when the rate changes; mileage entries snapshot whichever
+  // value was current at log time. Defaults to 670 (2025 IRS rate).
+  mileageRateCents    Int      @default(670)
   updatedAt           DateTime @updatedAt
 }
 

@@ -37,6 +37,7 @@ import changeOrdersRouter from './routes/changeOrders.js';
 import recurringInvoicesRouter from './routes/recurringInvoices.js';
 import subcontractorBillsRouter from './routes/subcontractorBills.js';
 import bankingRouter from './routes/banking.js';
+import mileageRouter from './routes/mileage.js';
 
 // Builds an express app without binding to a port. The listen() call lives
 // in index.ts so the test suite can import this factory and hand the app to
@@ -112,6 +113,7 @@ export function createApp(): Express {
   app.use('/api/recurring-invoices', recurringInvoicesRouter);
   app.use('/api/subcontractor-bills', subcontractorBillsRouter);
   app.use('/api/banking', bankingRouter);
+  app.use('/api/mileage', mileageRouter);
 
   // In production, serve the built React client from this same process. The
   // SPA fallback comes after every /api route is registered so client routes

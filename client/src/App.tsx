@@ -45,6 +45,7 @@ import BankRulesPage from './pages/portal/BankRulesPage';
 import AssetsLiabilitiesPage from './pages/portal/AssetsLiabilitiesPage';
 import ReportsPage from './pages/portal/ReportsPage';
 import Form1099Page from './pages/portal/Form1099Page';
+import MileagePage from './pages/portal/MileagePage';
 import CalculatorsPage from './pages/portal/CalculatorsPage';
 import CatalogPage from './pages/portal/CatalogPage';
 import TimePage from './pages/portal/TimePage';
@@ -175,6 +176,14 @@ export default function App() {
           element={
             <RequireAuth accountingAccess>
               <Form1099Page />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="finance/mileage"
+          element={
+            <RequireAuth roles={['ADMIN', 'EMPLOYEE']}>
+              <MileagePage />
             </RequireAuth>
           }
         />

@@ -42,6 +42,7 @@ const settingsSchema = z.object({
   paymentNotes: z.string().max(2000).nullable().optional(),
   googleReviewUrl: z.string().url().max(500).nullable().optional(),
   yelpReviewUrl: z.string().url().max(500).nullable().optional(),
+  mileageRateCents: z.number().int().min(0).max(2000).optional(),
 });
 
 router.patch('/', requireRole(Role.ADMIN), async (req, res, next) => {

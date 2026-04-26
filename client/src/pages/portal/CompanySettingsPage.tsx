@@ -22,6 +22,9 @@ interface Settings {
   paymentNotes: string | null;
   googleReviewUrl: string | null;
   yelpReviewUrl: string | null;
+  // Server returns a number; the form holds it as a string while the user
+  // is editing. Save coerces back to number.
+  mileageRateCents: number | string | null;
 }
 
 const FIELDS: Array<{ key: keyof Settings; label: string; multiline?: boolean; placeholder?: string }> = [
@@ -81,8 +84,10 @@ export default function CompanySettingsPage() {
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load settings'));
   }, []);
 
+  // Settings hold mixed string + number fields; the form always emits
+  // strings so we cast on the way in and coerce on save.
   function patch(key: keyof Settings, value: string) {
-    setSettings((s) => (s ? { ...s, [key]: value } : s));
+    setSettings((s) => (s ? { ...s, [key]: value as unknown as never } : s));
     setSaved(false);
   }
 
@@ -94,11 +99,20 @@ export default function CompanySettingsPage() {
     setError(null);
     // Convert empty strings back to null so the field reads as "unset" rather
     // than "intentionally blank string", and the server validation skips the
-    // .email() / .url() refinements on empty input.
-    const payload: Record<string, string | null> = {};
+    // .email() / .url() refinements on empty input. Numeric fields get
+    // coerced to actual numbers so zod's .int() check is happy.
+    const numericKeys = new Set<keyof Settings>(['mileageRateCents']);
+    const payload: Record<string, string | number | null> = {};
     for (const k of Object.keys(settings) as Array<keyof Settings>) {
       const v = settings[k];
-      payload[k] = v === '' ? null : v;
+      if (v === '' || v == null) {
+        payload[k] = null;
+      } else if (numericKeys.has(k)) {
+        const n = Number(v);
+        payload[k] = Number.isFinite(n) ? Math.round(n) : null;
+      } else {
+        payload[k] = v as string;
+      }
     }
     try {
       const r = await api<{ settings: Settings }>('/api/settings', {
@@ -136,7 +150,7 @@ export default function CompanySettingsPage() {
             <SettingField
               key={f.key}
               field={f}
-              value={settings[f.key]}
+              value={settings[f.key] == null ? null : String(settings[f.key])}
               onChange={(v) => patch(f.key, v)}
             />
           ))}
@@ -153,10 +167,35 @@ export default function CompanySettingsPage() {
             <SettingField
               key={f.key}
               field={f}
-              value={settings[f.key]}
+              value={settings[f.key] == null ? null : String(settings[f.key])}
               onChange={(v) => patch(f.key, v)}
             />
           ))}
+        </section>
+
+        <section className="card" style={{ marginTop: '1rem' }}>
+          <h2>Mileage</h2>
+          <p className="muted" style={{ fontSize: '0.85rem' }}>
+            IRS standard rate in cents per mile (e.g. 67.0¢ → 670). New mileage entries
+            snapshot whichever value is current at log time, so changing this won&rsquo;t
+            retroactively shift past totals.
+          </p>
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label htmlFor="s-mileage">Rate (cents per mile, ×10)</label>
+            <input
+              id="s-mileage"
+              type="number"
+              min="0"
+              max="2000"
+              step="1"
+              value={settings.mileageRateCents ?? 670}
+              onChange={(e) => patch('mileageRateCents' as keyof Settings, e.target.value === '' ? '' : String(Math.round(Number(e.target.value))))}
+              style={{ width: 120 }}
+            />
+            <span className="muted" style={{ marginLeft: '0.5rem', fontSize: '0.85rem' }}>
+              = {((Number(settings.mileageRateCents ?? 670)) / 10).toFixed(1)}¢/mile
+            </span>
+          </div>
         </section>
 
         <section className="card" style={{ marginTop: '1rem' }}>
@@ -169,7 +208,7 @@ export default function CompanySettingsPage() {
             <SettingField
               key={f.key}
               field={f}
-              value={settings[f.key]}
+              value={settings[f.key] == null ? null : String(settings[f.key])}
               onChange={(v) => patch(f.key, v)}
             />
           ))}
