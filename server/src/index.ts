@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { env } from './env.js';
 import { createApp } from './app.js';
 import { notifyStaleLeads, remindInvoices, remindStaleContracts } from './lib/reminders.js';
+import { runRecurringInvoices } from './lib/recurringInvoices.js';
 
 const app = createApp();
 
@@ -39,6 +40,24 @@ if (staleLeadSchedule) {
     console.log(`[cron] stale-lead nudges scheduled "${staleLeadSchedule}"`);
   } else {
     console.warn(`[cron] STALE_LEAD_CRON="${staleLeadSchedule}" is not a valid expression; skipping`);
+  }
+}
+
+// Recurring invoices — checks every active template whose nextRunAt is
+// past, generates a DRAFT invoice, advances nextRunAt by the frequency.
+// RECURRING_INVOICE_CRON e.g. "0 6 * * *" runs every day at 6am. Cheap
+// to run more often (rows are pre-filtered by index).
+const recurringSchedule = process.env.RECURRING_INVOICE_CRON;
+if (recurringSchedule) {
+  if (cron.validate(recurringSchedule)) {
+    cron.schedule(recurringSchedule, () => {
+      runRecurringInvoices()
+        .then((r) => console.log('[cron:recurring-invoices]', r))
+        .catch((err) => console.warn('[cron:recurring-invoices] failed', err));
+    });
+    console.log(`[cron] recurring invoices scheduled "${recurringSchedule}"`);
+  } else {
+    console.warn(`[cron] RECURRING_INVOICE_CRON="${recurringSchedule}" is not a valid expression; skipping`);
   }
 }
 

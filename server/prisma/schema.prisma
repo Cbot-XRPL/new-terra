@@ -139,6 +139,11 @@ model User {
   // Change orders authored by this user (admin/PM/sales).
   changeOrdersAuthored ChangeOrder[] @relation("ChangeOrdersAuthored")
 
+  // Recurring invoice templates. Customers see them as "billed to me",
+  // staff (admin/accounting) author + manage them.
+  recurringInvoices       RecurringInvoice[] @relation("RecurringInvoiceCustomer")
+  recurringInvoicesAuthored RecurringInvoice[] @relation("RecurringInvoiceAuthor")
+
   // Bidirectional messaging — staff can message customers and vice versa.
   // Cross-role permission (no customer↔customer) is enforced in the route.
   messagesSent     Message[] @relation("MessagesFromUser")
@@ -242,6 +247,7 @@ model Project {
   estimatesConverted Estimate[] @relation("ProjectFromEstimate")
   timeEntries        TimeEntry[]
   changeOrders       ChangeOrder[]
+  recurringInvoices  RecurringInvoice[]
 
   @@index([projectManagerId])
 }
@@ -408,6 +414,46 @@ enum ChangeOrderStatus {
   ACCEPTED
   DECLINED
   VOID
+}
+
+// Recurring invoice template. The cron checks every active row whose
+// nextRunAt <= now, creates a DRAFT invoice from the template (carrying
+// over amount + notes + lineItems), then advances nextRunAt by one
+// frequency unit. Pause by flipping active=false; admin still sees the
+// row so they can resume later. Optional endsAt stops the schedule
+// after a fixed date.
+model RecurringInvoice {
+  id           String              @id @default(cuid())
+  customerId   String
+  customer     User                @relation("RecurringInvoiceCustomer", fields: [customerId], references: [id])
+  projectId    String?
+  project      Project?            @relation(fields: [projectId], references: [id])
+  label        String              // human description: "Monthly maintenance"
+  amountCents  Int
+  frequency    RecurringFrequency
+  // For MONTHLY/QUARTERLY/YEARLY: 1..28 (we cap at 28 to dodge end-of-month
+  // ambiguity). For WEEKLY: 0..6 (Sunday=0). Ignored for DAILY.
+  dayOfPeriod  Int?
+  notes        String?
+  lineItems    Json?
+  active       Boolean             @default(true)
+  nextRunAt    DateTime
+  lastRunAt    DateTime?
+  // Optional auto-stop date — past this we mark inactive on the next run.
+  endsAt       DateTime?
+  createdById  String
+  createdBy    User                @relation("RecurringInvoiceAuthor", fields: [createdById], references: [id])
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([active, nextRunAt])
+}
+
+enum RecurringFrequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
 }
 
 enum PaymentMethod {

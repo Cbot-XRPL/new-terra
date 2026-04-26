@@ -79,15 +79,20 @@ export default function InvoicesPage() {
           </p>
         </div>
         {isAdmin && (
-          <button
-            type="button"
-            className="button-ghost button-small"
-            onClick={runReminders}
-            disabled={running}
-            title="Email upcoming-due + overdue customers now (also flips past-due invoices to OVERDUE)"
-          >
-            {running ? 'Sending…' : 'Run invoice reminders'}
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <Link to="/portal/invoices/recurring" className="button-ghost button-small">
+              Recurring →
+            </Link>
+            <button
+              type="button"
+              className="button-ghost button-small"
+              onClick={runReminders}
+              disabled={running}
+              title="Email upcoming-due + overdue customers now (also flips past-due invoices to OVERDUE)"
+            >
+              {running ? 'Sending…' : 'Run invoice reminders'}
+            </button>
+          </div>
         )}
       </header>
 
