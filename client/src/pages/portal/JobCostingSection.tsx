@@ -17,6 +17,10 @@ interface JobCost {
   totalBudgetCents: number;
   linesBudgetCents: number;
   actualCents: number;
+  // Optional — only present when at least one closed time entry exists on
+  // this project. Used to render a separate "Labor" stat at the top.
+  laborCents?: number;
+  laborEntryCount?: number;
   varianceCents: number;
   lines: CostLine[];
 }
@@ -33,6 +37,11 @@ interface Props {
   // is accounting. Used to gate the budget editor; reads are open to anyone
   // with project access.
   canEditBudget: boolean;
+  // Whether the project is currently set to expose the budget to its
+  // customer. Admin sees a checkbox to flip it; everyone else gets a
+  // small read-only badge so they can tell at a glance.
+  showBudgetToCustomer?: boolean;
+  onShowBudgetToCustomerChange?: (next: boolean) => void;
 }
 
 function variancePill(varianceCents: number, hasBudget: boolean) {
@@ -62,8 +71,14 @@ function progressBar(actualCents: number, budgetCents: number) {
   );
 }
 
-export default function JobCostingSection({ projectId, canEditBudget }: Props) {
+export default function JobCostingSection({
+  projectId,
+  canEditBudget,
+  showBudgetToCustomer,
+  onShowBudgetToCustomerChange,
+}: Props) {
   const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
   const [data, setData] = useState<JobCost | null>(null);
   const [categories, setCategories] = useState<CategoryRef[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -171,15 +186,36 @@ export default function JobCostingSection({ projectId, canEditBudget }: Props) {
             actuals — see <Link to="/portal/finance/expenses/new">add receipt</Link>.
           </p>
         </div>
-        {(canEditBudget || isAccounting) && (
-          <button
-            type="button"
-            className="button-ghost button-small"
-            onClick={() => setShowEditor((v) => !v)}
-          >
-            {showEditor ? 'Close editor' : 'Edit budget'}
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {isAdmin && onShowBudgetToCustomerChange && (
+            <label
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}
+              title="When checked, this project's customer can see the budget + this rollup. Default off."
+            >
+              <input
+                type="checkbox"
+                checked={!!showBudgetToCustomer}
+                onChange={(e) => onShowBudgetToCustomerChange(e.target.checked)}
+                style={{ width: 'auto' }}
+              />
+              Visible to customer
+            </label>
+          )}
+          {!isAdmin && showBudgetToCustomer && (
+            <span className="badge badge-sent" title="Budget is visible to the customer for this project">
+              shared with customer
+            </span>
+          )}
+          {(canEditBudget || isAccounting) && (
+            <button
+              type="button"
+              className="button-ghost button-small"
+              onClick={() => setShowEditor((v) => !v)}
+            >
+              {showEditor ? 'Close editor' : 'Edit budget'}
+            </button>
+          )}
+        </div>
       </div>
 
       {error && <div className="form-error">{error}</div>}
@@ -193,6 +229,12 @@ export default function JobCostingSection({ projectId, canEditBudget }: Props) {
           <div className="stat-label">Actual</div>
           <div className="stat-value">{formatCents(data.actualCents)}</div>
         </div>
+        {data.laborCents !== undefined && data.laborCents > 0 && (
+          <div>
+            <div className="stat-label">of which labor</div>
+            <div className="stat-value">{formatCents(data.laborCents)}</div>
+          </div>
+        )}
         <div>
           <div className="stat-label">Variance</div>
           <div className="stat-value" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

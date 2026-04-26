@@ -19,14 +19,15 @@ const projectInclude = {
   projectManager: { select: { id: true, name: true, email: true } },
 } as const;
 
-// Customers must never see the project's budget. Strip the field from any
-// project payload before returning it to a CUSTOMER role. Internal callers
-// (admin / PM / sales / accounting) always see the full record.
-function redactForCustomer<T extends { budgetCents?: number | null }>(
+// Strip the budget from any project payload returned to a CUSTOMER unless
+// admin has explicitly opted that project in (showBudgetToCustomer). Internal
+// callers always see the full record.
+function redactForCustomer<T extends { budgetCents?: number | null; showBudgetToCustomer?: boolean }>(
   role: Role,
   project: T,
 ): T {
   if (role !== Role.CUSTOMER) return project;
+  if (project.showBudgetToCustomer) return project;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { budgetCents: _budgetCents, ...rest } = project;
   return rest as T;
@@ -57,6 +58,7 @@ const createProjectSchema = z.object({
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
   budgetCents: z.number().int().nonnegative().nullable().optional(),
+  showBudgetToCustomer: z.boolean().optional(),
 });
 
 const updateProjectSchema = createProjectSchema.partial().omit({ customerId: true });
@@ -132,6 +134,7 @@ router.post('/', requireRole(Role.ADMIN), async (req, res, next) => {
         startDate: data.startDate ? new Date(data.startDate) : undefined,
         endDate: data.endDate ? new Date(data.endDate) : undefined,
         budgetCents: data.budgetCents ?? null,
+        showBudgetToCustomer: data.showBudgetToCustomer ?? false,
       },
       include: projectInclude,
     });
@@ -187,6 +190,7 @@ router.patch('/:id', async (req, res, next) => {
         startDate: data.startDate ? new Date(data.startDate) : undefined,
         endDate: data.endDate ? new Date(data.endDate) : undefined,
         budgetCents: data.budgetCents === null ? null : data.budgetCents,
+        showBudgetToCustomer: data.showBudgetToCustomer,
       },
       include: projectInclude,
     });
@@ -324,13 +328,16 @@ router.get('/:id/job-cost', async (req, res, next) => {
     if (!project) return res.status(404).json({ error: 'Project not found' });
     if (!me) return res.status(401).json({ error: 'Unauthenticated' });
 
-    // Job costing exposes margin data — keep customers out even on their own
-    // project. Sales reps + PMs + accounting + admin see it.
+    // Customers only see job-cost data when admin has explicitly opted the
+    // project in (open-book / cost-plus). Otherwise margin info stays internal.
     if (me.role === Role.CUSTOMER) {
-      return res.status(403).json({ error: 'Forbidden' });
+      if (project.customerId !== me.id || !project.showBudgetToCustomer) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+    } else {
+      const access = canManageProject(me, project).read || hasAccountingAccess(me);
+      if (!access) return res.status(403).json({ error: 'Forbidden' });
     }
-    const access = canManageProject(me, project).read || hasAccountingAccess(me);
-    if (!access) return res.status(403).json({ error: 'Forbidden' });
 
     // Roll up actual spend per category for this project. We tolerate
     // categoryId being null (uncategorised expenses bucket together).
@@ -397,6 +404,30 @@ router.get('/:id/job-cost', async (req, res, next) => {
       return an.localeCompare(bn);
     });
 
+    // Labor cost rollup: sum (minutes × hourlyRateCents) across every closed
+    // time entry on this project. Open punch-ins are skipped — they could
+    // bloat the total mid-day before they're closed. Emitted as a synthetic
+    // "labor" row so it shows alongside the expense categories.
+    const closedEntries = await prisma.timeEntry.findMany({
+      where: { projectId: project.id, endedAt: { not: null } },
+      select: { minutes: true, hourlyRateCents: true },
+    });
+    const laborCents = closedEntries.reduce(
+      (sum, e) => sum + Math.round((e.minutes / 60) * e.hourlyRateCents),
+      0,
+    );
+    const laborEntryCount = closedEntries.length;
+
+    if (laborCents > 0 || laborEntryCount > 0) {
+      lines.push({
+        categoryId: '__labor__',
+        categoryName: 'Labor (time entries)',
+        budgetCents: 0,
+        actualCents: laborCents,
+        expenseCount: laborEntryCount,
+      });
+    }
+
     const linesBudget = lines.reduce((sum, l) => sum + l.budgetCents, 0);
     const actualTotal = lines.reduce((sum, l) => sum + l.actualCents, 0);
     // Top-level project budget overrides if set; otherwise fall back to the
@@ -408,6 +439,8 @@ router.get('/:id/job-cost', async (req, res, next) => {
       totalBudgetCents,
       linesBudgetCents: linesBudget,
       actualCents: actualTotal,
+      laborCents,
+      laborEntryCount,
       varianceCents: totalBudgetCents - actualTotal,
       lines,
     });

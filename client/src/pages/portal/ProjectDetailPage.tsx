@@ -31,6 +31,10 @@ interface ProjectDetail {
   status: ProjectStatus;
   startDate: string | null;
   endDate: string | null;
+  // Optional — only included for staff or for customers when admin has
+  // flipped showBudgetToCustomer on the project.
+  budgetCents?: number | null;
+  showBudgetToCustomer?: boolean;
   customer: { id: string; name: string; email: string };
   projectManager: { id: string; name: string; email: string } | null;
 }
@@ -126,6 +130,19 @@ export default function ProjectDetailPage() {
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Status update failed');
+    }
+  }
+
+  async function toggleBudgetVisibility(next: boolean) {
+    if (!project) return;
+    try {
+      await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ showBudgetToCustomer: next }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Update failed');
     }
   }
 
@@ -295,8 +312,15 @@ export default function ProjectDetailPage() {
         customerName={project.customer.name}
       />
 
-      {(isAdmin || (user?.role === 'EMPLOYEE' && (user.isProjectManager || user.isAccounting))) && (
-        <JobCostingSection projectId={project.id} canEditBudget={!!isPmOrAdmin} />
+      {(isAdmin
+        || (user?.role === 'EMPLOYEE' && (user.isProjectManager || user.isAccounting))
+        || (user?.role === 'CUSTOMER' && project.showBudgetToCustomer)) && (
+        <JobCostingSection
+          projectId={project.id}
+          canEditBudget={!!isPmOrAdmin}
+          showBudgetToCustomer={!!project.showBudgetToCustomer}
+          onShowBudgetToCustomerChange={isAdmin ? toggleBudgetVisibility : undefined}
+        />
       )}
 
       <LogEntriesSection projectId={project.id} />

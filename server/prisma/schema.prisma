@@ -214,6 +214,11 @@ model Project {
   // Top-level project budget. Per-category line items live in ProjectBudgetLine
   // and supersede this number when present in the job-cost rollup.
   budgetCents Int?
+  // Default false. When admin flips this on (e.g. cost-plus / open-book
+  // engagements where the customer co-owns the budget), the customer can
+  // see the project budget + the job-cost rollup. Otherwise both stay
+  // strictly internal.
+  showBudgetToCustomer Boolean @default(false)
   // Soft-archive timestamp. Archived projects fall out of default lists but
   // keep all their data; admins can unarchive at any time.
   archivedAt  DateTime?
