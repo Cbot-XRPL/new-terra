@@ -11,6 +11,7 @@ import portalRouter from './routes/portal.js';
 import projectsRouter from './routes/projects.js';
 import schedulesRouter from './routes/schedules.js';
 import projectImagesRouter from './routes/projectImages.js';
+import projectDocumentsRouter from './routes/projectDocuments.js';
 import invoicesRouter from './routes/invoices.js';
 import messagesRouter from './routes/messages.js';
 import selectionsRouter from './routes/selections.js';
@@ -85,6 +86,7 @@ export function createApp(): Express {
   app.use('/api/portal', portalRouter);
   app.use('/api/projects', projectsRouter);
   app.use('/api/projects', projectImagesRouter);
+  app.use('/api/projects', projectDocumentsRouter);
   app.use('/api/projects', selectionsRouter);
   app.use('/api/projects', logEntriesRouter);
   app.use('/api/memberships', membershipsRouter);

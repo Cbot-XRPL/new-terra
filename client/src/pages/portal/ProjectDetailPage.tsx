@@ -4,6 +4,7 @@ import { ApiError, api } from '../../lib/api';
 import { useAuth, type Role } from '../../auth/AuthContext';
 import { formatDate, formatDateTime, toDatetimeLocal } from '../../lib/format';
 import ProjectGallery from './ProjectGallery';
+import ProjectDocuments from './ProjectDocuments';
 import InvoicesSection from './InvoicesSection';
 import SelectionsSection from './SelectionsSection';
 import LogEntriesSection from './LogEntriesSection';
@@ -280,6 +281,7 @@ export default function ProjectDetailPage() {
       </section>
 
       <ProjectGallery projectId={project.id} />
+      <ProjectDocuments projectId={project.id} />
 
       <SelectionsSection projectId={project.id} />
 
