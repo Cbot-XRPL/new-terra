@@ -156,6 +156,7 @@ model User {
   subBillAttachments    SubcontractorBillAttachment[] @relation("SubBillAttachmentUploader")
   mileageEntries        MileageEntry[] @relation("MileageDriver")
   punchListItems        PunchListItem[] @relation("PunchListAuthor")
+  galleryShares         GalleryShare[]  @relation("GalleryShareAuthor")
 
   // Bidirectional messaging — staff can message customers and vice versa.
   // Cross-role permission (no customer↔customer) is enforced in the route.
@@ -271,6 +272,7 @@ model Project {
   bankRules          BankCategorizationRule[]
   mileageEntries     MileageEntry[]
   punchListItems     PunchListItem[]
+  galleryShares      GalleryShare[]
 
   @@index([projectManagerId])
 }
@@ -805,6 +807,32 @@ model ProjectImage {
   createdAt   DateTime @default(now())
 
   @@index([projectId, takenAt])
+}
+
+// Time-limited public share link for a project's photo gallery. Customer
+// generates one (or admin) and forwards the URL to friends/family without
+// requiring them to log into the portal. We store only the SHA-256 of
+// the token so a leaked DB row doesn't grant access; the raw token rides
+// in the URL. expiresAt + revokedAt let admin pull the plug.
+model GalleryShare {
+  id          String    @id @default(cuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // SHA-256 hex of the random token; the raw value lives only in the URL.
+  tokenHash   String    @unique
+  // Optional friendly label so admin can tell two links apart in the UI
+  // ("Sent to Mom 4/26", "For Houzz feature").
+  label       String?
+  createdById String
+  createdBy   User      @relation("GalleryShareAuthor", fields: [createdById], references: [id])
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  // Bumped every time the public page loads so admin can see traction.
+  viewCount   Int       @default(0)
+  lastViewedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([projectId])
 }
 
 // Walk-through punch-list item — one per task remaining at substantial

@@ -114,9 +114,14 @@ export default function ProjectGallery({ projectId }: { projectId: string }) {
     <section className="card">
       <div className="row-between">
         <h2>Photos</h2>
-        <Link to={`/portal/projects/${projectId}/timeline`} className="button-ghost button-small">
-          View timeline →
-        </Link>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <Link to={`/portal/projects/${projectId}/timeline`} className="button-ghost button-small">
+            View timeline →
+          </Link>
+          {(user?.role === 'ADMIN' || user?.role === 'EMPLOYEE' || user?.role === 'CUSTOMER') && (
+            <ShareManager projectId={projectId} />
+          )}
+        </div>
       </div>
       {error && <div className="form-error">{error}</div>}
 
@@ -192,5 +197,154 @@ export default function ProjectGallery({ projectId }: { projectId: string }) {
         <p className="muted">No photos yet.</p>
       )}
     </section>
+  );
+}
+
+interface ShareRow {
+  id: string;
+  label: string | null;
+  expiresAt: string;
+  revokedAt: string | null;
+  viewCount: number;
+  lastViewedAt: string | null;
+  createdAt: string;
+  createdBy: { id: string; name: string };
+}
+
+// Mints + lists time-limited public gallery share links. Admin sees the
+// raw token exactly once on create — copy then or revoke + remint.
+function ShareManager({ projectId }: { projectId: string }) {
+  const [open, setOpen] = useState(false);
+  const [shares, setShares] = useState<ShareRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [label, setLabel] = useState('');
+  const [days, setDays] = useState(30);
+  const [justCreatedUrl, setJustCreatedUrl] = useState<string | null>(null);
+
+  async function load() {
+    try {
+      const r = await jsonRequest<{ shares: ShareRow[] }>(`/api/projects/${projectId}/shares`);
+      setShares(r.shares);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to load shares');
+    }
+  }
+
+  useEffect(() => {
+    if (open) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  async function create() {
+    setError(null);
+    try {
+      const r = await jsonRequest<{ share: ShareRow; token: string }>(
+        `/api/projects/${projectId}/shares`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ label: label || null, expiresInDays: days }),
+        },
+      );
+      const url = `${window.location.origin}/g/${r.token}`;
+      setJustCreatedUrl(url);
+      setLabel('');
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Create failed');
+    }
+  }
+
+  async function revoke(share: ShareRow) {
+    if (!confirm(`Revoke "${share.label ?? 'unlabeled link'}"?`)) return;
+    try {
+      await jsonRequest(`/api/projects/${projectId}/shares/${share.id}/revoke`, { method: 'POST' });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Revoke failed');
+    }
+  }
+
+  return (
+    <>
+      <button type="button" className="button-ghost button-small" onClick={() => setOpen((v) => !v)}>
+        {open ? 'Close share' : 'Share gallery'}
+      </button>
+      {open && (
+        <div style={{ flexBasis: '100%', marginTop: '0.5rem', padding: '0.75rem', background: 'var(--bg-elevated)', borderRadius: 8, border: '1px solid rgba(95,99,104,0.3)' }}>
+          {error && <div className="form-error">{error}</div>}
+          {justCreatedUrl && (
+            <div className="form-success" style={{ wordBreak: 'break-all' }}>
+              <strong>New link (copy now):</strong>{' '}
+              <code>{justCreatedUrl}</code>
+              <button
+                type="button"
+                className="button-ghost button-small"
+                style={{ marginLeft: '0.5rem' }}
+                onClick={() => navigator.clipboard?.writeText(justCreatedUrl).then(() => alert('Copied'))}
+              >
+                Copy
+              </button>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+            <div>
+              <label>Label (optional)</label>
+              <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Sent to family" />
+            </div>
+            <div>
+              <label>Expires in (days)</label>
+              <input
+                type="number"
+                min="1"
+                max="365"
+                value={days}
+                onChange={(e) => setDays(Number(e.target.value))}
+                style={{ width: 100 }}
+              />
+            </div>
+            <button type="button" onClick={create}>Generate link</button>
+          </div>
+          {shares.length > 0 && (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Label</th>
+                  <th>Created</th>
+                  <th>Expires</th>
+                  <th>Status</th>
+                  <th>Views</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {shares.map((s) => {
+                  const expired = !s.revokedAt && new Date(s.expiresAt) < new Date();
+                  return (
+                    <tr key={s.id} style={{ opacity: s.revokedAt || expired ? 0.55 : 1 }}>
+                      <td>{s.label ?? <span className="muted">—</span>}</td>
+                      <td className="muted">{new Date(s.createdAt).toLocaleDateString()}</td>
+                      <td className="muted">{new Date(s.expiresAt).toLocaleDateString()}</td>
+                      <td>
+                        {s.revokedAt ? <span className="badge badge-void">revoked</span>
+                          : expired ? <span className="badge badge-overdue">expired</span>
+                          : <span className="badge badge-paid">active</span>}
+                      </td>
+                      <td>{s.viewCount}</td>
+                      <td>
+                        {!s.revokedAt && !expired && (
+                          <button type="button" className="button-ghost button-small" onClick={() => revoke(s)}>
+                            Revoke
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </>
   );
 }
