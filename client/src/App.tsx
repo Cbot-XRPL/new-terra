@@ -7,6 +7,7 @@ import HomePage from './pages/public/HomePage';
 import ContactPage from './pages/public/ContactPage';
 import PublicGalleryPage from './pages/public/PublicGalleryPage';
 import SurveyPage from './pages/public/SurveyPage';
+import SignupPage from './pages/public/SignupPage';
 import LoginPage from './pages/auth/LoginPage';
 import AcceptInvitePage from './pages/auth/AcceptInvitePage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/g/:token" element={<PublicGalleryPage />} />
         <Route path="/survey/:token" element={<SurveyPage />} />
+        <Route path="/start" element={<SignupPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/accept-invite" element={<AcceptInvitePage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />

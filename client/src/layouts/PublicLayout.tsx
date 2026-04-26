@@ -41,9 +41,14 @@ export default function PublicLayout() {
                 </span>
               </Link>
             ) : (
-              <Link to="/login" className="button button-ghost">
-                Sign in
-              </Link>
+              <>
+                <Link to="/start" className="button">
+                  Start a project
+                </Link>
+                <Link to="/login" className="button button-ghost" style={{ marginLeft: '0.5rem' }}>
+                  Sign in
+                </Link>
+              </>
             )}
           </li>
         </ul>
