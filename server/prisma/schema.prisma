@@ -159,6 +159,7 @@ model User {
   galleryShares         GalleryShare[]  @relation("GalleryShareAuthor")
   satisfactionSurveys   SatisfactionSurvey[] @relation("SatisfactionSurveyCustomer")
   inventoryAdjustments  InventoryAdjustment[] @relation("InventoryAdjuster")
+  productPriceChanges   ProductPriceHistory[] @relation("ProductPriceChanger")
 
   // Bidirectional messaging — staff can message customers and vice versa.
   // Cross-role permission (no customer↔customer) is enforced in the route.
@@ -811,6 +812,27 @@ model ProjectImage {
   createdAt   DateTime @default(now())
 
   @@index([projectId, takenAt])
+}
+
+// Append-only price history for products. We log every defaultUnitPriceCents
+// change so admin can see when materials moved (lumber spike, vendor
+// change, seasonal swings). The Product carries the current price; this
+// table is the audit trail.
+model ProductPriceHistory {
+  id            String   @id @default(cuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  // Both old + new captured so the timeline reads cleanly even after the
+  // product is later deleted (we keep the trail until the product is
+  // archived in some future commit).
+  oldPriceCents Int
+  newPriceCents Int
+  changedById   String?
+  changedBy     User?    @relation("ProductPriceChanger", fields: [changedById], references: [id], onDelete: SetNull)
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  @@index([productId, createdAt])
 }
 
 // Inventory adjustment ledger — one row per qty change. amountMilli is
@@ -1495,6 +1517,7 @@ model Product {
 
   assemblyLines   AssemblyLine[]
   inventoryAdjustments InventoryAdjustment[]
+  priceHistory    ProductPriceHistory[]
 
   @@index([category])
   @@index([kind])

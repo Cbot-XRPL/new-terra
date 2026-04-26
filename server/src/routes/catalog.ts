@@ -86,6 +86,13 @@ router.post('/products', requireRole(Role.ADMIN), async (req, res, next) => {
 router.patch('/products/:id', requireRole(Role.ADMIN), async (req, res, next) => {
   try {
     const data = productSchema.partial().parse(req.body);
+    // Capture the prior price so we can log a history row when it actually
+    // changes. Skip the log when price isn't in the patch (admin is just
+    // renaming or moving categories).
+    const before = await prisma.product.findUnique({
+      where: { id: req.params.id },
+      select: { defaultUnitPriceCents: true },
+    });
     const product = await prisma.product.update({
       where: { id: req.params.id },
       data: {
@@ -101,10 +108,38 @@ router.patch('/products/:id', requireRole(Role.ADMIN), async (req, res, next) =>
         notes: data.notes,
       },
     });
+    if (before && data.defaultUnitPriceCents !== undefined
+        && data.defaultUnitPriceCents !== before.defaultUnitPriceCents) {
+      await prisma.productPriceHistory.create({
+        data: {
+          productId: product.id,
+          oldPriceCents: before.defaultUnitPriceCents,
+          newPriceCents: data.defaultUnitPriceCents,
+          changedById: req.user!.sub,
+        },
+      }).catch(() => undefined);
+    }
     res.json({ product });
   } catch (err) {
     next(err);
   }
+});
+
+// Read endpoint for the per-product price-history timeline. Surfaced on
+// the catalog UI as a small drawer when the user clicks the price.
+router.get('/products/:id/price-history', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!me) return res.status(401).json({ error: 'Unauthenticated' });
+    if (!hasSalesAccess(me)) return res.status(403).json({ error: 'Forbidden' });
+    const history = await prisma.productPriceHistory.findMany({
+      where: { productId: req.params.id },
+      orderBy: { createdAt: 'desc' },
+      include: { changedBy: { select: { id: true, name: true } } },
+      take: 100,
+    });
+    res.json({ history });
+  } catch (err) { next(err); }
 });
 
 // ----- Assemblies -----
@@ -346,9 +381,22 @@ router.post('/products/_bulk', requireRole(Role.ADMIN), async (req, res, next) =
           select: { id: true, defaultUnitPriceCents: true },
         });
         for (const r of rows) {
+          const next = Math.max(0, Math.round(r.defaultUnitPriceCents * factor));
+          if (next === r.defaultUnitPriceCents) continue;
           await tx.product.update({
             where: { id: r.id },
-            data: { defaultUnitPriceCents: Math.max(0, Math.round(r.defaultUnitPriceCents * factor)) },
+            data: { defaultUnitPriceCents: next },
+          });
+          // Log the bulk bump in price history so admin can spot 'all
+          // lumber went up 5% on 4/26' without diffing manually.
+          await tx.productPriceHistory.create({
+            data: {
+              productId: r.id,
+              oldPriceCents: r.defaultUnitPriceCents,
+              newPriceCents: next,
+              changedById: req.user!.sub,
+              notes: `Bulk price bump (${body.percent > 0 ? '+' : ''}${body.percent}%)`,
+            },
           });
         }
         return rows.length;

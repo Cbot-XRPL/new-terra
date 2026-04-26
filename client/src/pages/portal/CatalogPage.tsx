@@ -67,6 +67,34 @@ export default function CatalogPage() {
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
   const [selectedAssemblies, setSelectedAssemblies] = useState<Set<string>>(new Set());
 
+  // Price-history popover state.
+  const [priceHistoryFor, setPriceHistoryFor] = useState<string | null>(null);
+  const [priceHistory, setPriceHistory] = useState<Array<{
+    id: string;
+    oldPriceCents: number;
+    newPriceCents: number;
+    notes: string | null;
+    createdAt: string;
+    changedBy: { id: string; name: string } | null;
+  }>>([]);
+
+  async function openPriceHistory(productId: string) {
+    if (priceHistoryFor === productId) {
+      setPriceHistoryFor(null);
+      setPriceHistory([]);
+      return;
+    }
+    try {
+      const r = await api<{ history: typeof priceHistory }>(
+        `/api/catalog/products/${productId}/price-history`,
+      );
+      setPriceHistory(r.history);
+      setPriceHistoryFor(productId);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to load price history');
+    }
+  }
+
   function toggleId(set: Set<string>, id: string): Set<string> {
     const next = new Set(set);
     if (next.has(id)) next.delete(id);
@@ -345,7 +373,16 @@ export default function CatalogPage() {
                       <td>{p.sku ?? <span className="muted">—</span>}</td>
                       <td>{p.kind}</td>
                       <td>{p.unit ?? '—'}</td>
-                      <td>{formatCents(p.defaultUnitPriceCents)}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="button-ghost button-small"
+                          onClick={() => openPriceHistory(p.id)}
+                          title="Click to see price history"
+                        >
+                          {formatCents(p.defaultUnitPriceCents)}
+                        </button>
+                      </td>
                       <td>{p.category ?? <span className="muted">—</span>}</td>
                       <td>{p.active ? <span className="muted">active</span> : <em className="muted">archived</em>}</td>
                       <td>
@@ -386,6 +423,56 @@ export default function CatalogPage() {
               <p className="muted">No products yet — add one above.</p>
             )}
           </section>
+
+          {priceHistoryFor && (
+            <section className="card">
+              <div className="row-between">
+                <h2>Price history</h2>
+                <button type="button" className="button-ghost button-small" onClick={() => setPriceHistoryFor(null)}>
+                  Close
+                </button>
+              </div>
+              {priceHistory.length === 0 ? (
+                <p className="muted">No price changes logged yet for this product.</p>
+              ) : (
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>When</th>
+                      <th>Changed by</th>
+                      <th style={{ textAlign: 'right' }}>From</th>
+                      <th style={{ textAlign: 'right' }}>To</th>
+                      <th style={{ textAlign: 'right' }}>Δ</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {priceHistory.map((h) => {
+                      const delta = h.newPriceCents - h.oldPriceCents;
+                      const deltaPct = h.oldPriceCents > 0 ? Math.round((delta / h.oldPriceCents) * 1000) / 10 : null;
+                      return (
+                        <tr key={h.id}>
+                          <td className="muted">{new Date(h.createdAt).toLocaleString()}</td>
+                          <td className="muted">{h.changedBy?.name ?? 'system'}</td>
+                          <td style={{ textAlign: 'right' }}>{formatCents(h.oldPriceCents)}</td>
+                          <td style={{ textAlign: 'right' }}>{formatCents(h.newPriceCents)}</td>
+                          <td style={{ textAlign: 'right', color: delta < 0 ? 'var(--paid, #0f9d58)' : 'var(--accent)' }}>
+                            {delta > 0 ? '+' : ''}{formatCents(delta)}
+                            {deltaPct !== null && (
+                              <span className="muted" style={{ marginLeft: '0.3rem', fontSize: '0.85rem' }}>
+                                ({deltaPct > 0 ? '+' : ''}{deltaPct}%)
+                              </span>
+                            )}
+                          </td>
+                          <td className="muted">{h.notes ?? '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </section>
+          )}
         </>
       )}
 
