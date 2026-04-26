@@ -115,6 +115,9 @@ export default function FinanceOverviewPage() {
               <Link to="/portal/finance/reports" className="button button-ghost">
                 P&amp;L · Balance sheet
               </Link>
+              <Link to="/portal/finance/1099" className="button button-ghost">
+                1099s
+              </Link>
             </>
           )}
           {isAccounting && (

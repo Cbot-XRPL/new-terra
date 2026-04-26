@@ -101,6 +101,8 @@ router.get('/users', async (req, res, next) => {
         isSales: true,
         isProjectManager: true,
         isAccounting: true,
+        taxId: true,
+        mailingAddress: true,
         createdAt: true,
       },
     });
@@ -116,6 +118,8 @@ const updateUserSchema = z.object({
   isSales: z.boolean().optional(),
   isProjectManager: z.boolean().optional(),
   isAccounting: z.boolean().optional(),
+  taxId: z.string().max(40).nullable().optional(),
+  mailingAddress: z.string().max(400).nullable().optional(),
 });
 
 router.patch('/users/:id', async (req, res, next) => {
@@ -128,7 +132,11 @@ router.patch('/users/:id', async (req, res, next) => {
     });
     const updated = await prisma.user.update({
       where: { id },
-      data,
+      data: {
+        ...data,
+        taxId: data.taxId === null ? null : data.taxId,
+        mailingAddress: data.mailingAddress === null ? null : data.mailingAddress,
+      },
       select: {
         id: true,
         email: true,
@@ -138,6 +146,8 @@ router.patch('/users/:id', async (req, res, next) => {
         isSales: true,
         isProjectManager: true,
         isAccounting: true,
+        taxId: true,
+        mailingAddress: true,
       },
     });
     // Record only the fields that actually changed so the audit trail stays

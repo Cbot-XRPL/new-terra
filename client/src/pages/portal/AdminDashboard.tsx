@@ -14,6 +14,9 @@ interface AdminUser {
   isSales: boolean;
   isProjectManager: boolean;
   isAccounting: boolean;
+  // Optional 1099 fields for subs.
+  taxId: string | null;
+  mailingAddress: string | null;
   createdAt: string;
 }
 
@@ -117,6 +120,27 @@ export default function AdminDashboard() {
       await api(`/api/admin/users/${user.id}`, {
         method: 'PATCH',
         body: JSON.stringify({ isAccounting: !user.isAccounting }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Update failed');
+    }
+  }
+
+  // Quick inline editor for 1099 fields. Two prompts is good enough for an
+  // infrequent admin task — a richer modal isn't worth the surface area.
+  async function editTaxInfo(user: AdminUser) {
+    const taxId = prompt(`Tax ID (TIN/EIN) for ${user.name}:`, user.taxId ?? '');
+    if (taxId === null) return;
+    const mailing = prompt(`Mailing address for ${user.name} (multi-line OK):`, user.mailingAddress ?? '');
+    if (mailing === null) return;
+    try {
+      await api(`/api/admin/users/${user.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          taxId: taxId.trim() || null,
+          mailingAddress: mailing.trim() || null,
+        }),
       });
       await load();
     } catch (err) {
@@ -229,6 +253,16 @@ export default function AdminDashboard() {
                 </td>
                 <td>{u.isActive ? 'Active' : 'Disabled'}</td>
                 <td>
+                  {u.role === 'SUBCONTRACTOR' && (
+                    <button
+                      className={`button-small ${u.taxId && u.mailingAddress ? '' : 'button-ghost'}`}
+                      onClick={() => editTaxInfo(u)}
+                      title="Edit 1099 tax info (TIN + mailing address)"
+                      style={{ marginRight: '0.4rem' }}
+                    >
+                      {u.taxId && u.mailingAddress ? 'W-9 ✓' : 'W-9'}
+                    </button>
+                  )}
                   <button className="button button-ghost button-small" onClick={() => toggleActive(u)}>
                     {u.isActive ? 'Disable' : 'Enable'}
                   </button>

@@ -307,6 +307,144 @@ router.get('/expenses', async (req, res, next) => {
 
 // Aggregate dashboard for the finance landing page. Cheap, single round-trip,
 // scoped per role the same way the list endpoint is.
+// ----- 1099 export -----
+//
+// Yearly summary CSV: one row per subcontractor with the total amount
+// paid via PAID SubcontractorBills inside the calendar year. IRS triggers
+// 1099-NEC at $600 — we mark those rows with a needs1099 column so the
+// CPA / admin can spot-check which subs need a form. Subs missing taxId
+// or mailingAddress get flagged in their own column so admin knows to
+// chase the W-9.
+router.get('/1099.csv', async (req, res, next) => {
+  try {
+    const me = await loadMe(req.user!.sub);
+    if (!me || !hasAccountingAccess(me)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const schema = z.object({ year: z.coerce.number().int().min(2000).max(2100) });
+    const q = schema.parse(req.query);
+
+    const yearStart = new Date(Date.UTC(q.year, 0, 1));
+    const yearEnd = new Date(Date.UTC(q.year + 1, 0, 1));
+
+    const bills = await prisma.subcontractorBill.findMany({
+      where: {
+        status: 'PAID',
+        paidAt: { gte: yearStart, lt: yearEnd },
+      },
+      include: {
+        subcontractor: {
+          select: { id: true, name: true, email: true, taxId: true, mailingAddress: true },
+        },
+      },
+    });
+
+    // Group by sub.
+    interface SubRow {
+      id: string;
+      name: string;
+      email: string;
+      taxId: string | null;
+      mailingAddress: string | null;
+      totalCents: number;
+      billCount: number;
+    }
+    const grouped = new Map<string, SubRow>();
+    for (const b of bills) {
+      const ex = grouped.get(b.subcontractorId) ?? {
+        id: b.subcontractor.id,
+        name: b.subcontractor.name,
+        email: b.subcontractor.email,
+        taxId: b.subcontractor.taxId,
+        mailingAddress: b.subcontractor.mailingAddress,
+        totalCents: 0,
+        billCount: 0,
+      };
+      ex.totalCents += b.amountCents;
+      ex.billCount += 1;
+      grouped.set(b.subcontractorId, ex);
+    }
+
+    const escape = (s: string | number | null | undefined) => {
+      if (s == null) return '';
+      const v = String(s);
+      if (/[",\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+      return v;
+    };
+
+    const lines: string[] = [];
+    lines.push(`1099 totals,${q.year}`);
+    lines.push('Sub name,Email,Tax ID,Mailing address,Bills paid,Total (USD),Needs 1099 (>= $600),Missing tax info');
+    const sorted = [...grouped.values()].sort((a, b) => b.totalCents - a.totalCents);
+    for (const r of sorted) {
+      const needs = r.totalCents >= 60000 ? 'YES' : 'no';
+      const missing = (!r.taxId || !r.mailingAddress) && r.totalCents >= 60000 ? 'YES' : 'no';
+      lines.push([
+        escape(r.name),
+        escape(r.email),
+        escape(r.taxId),
+        escape(r.mailingAddress?.replace(/\n/g, ' / ')),
+        r.billCount,
+        (r.totalCents / 100).toFixed(2),
+        needs,
+        missing,
+      ].join(','));
+    }
+    if (sorted.length === 0) {
+      lines.push('(no paid sub bills in this year)');
+    }
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="1099-${q.year}.csv"`);
+    res.send(lines.join('\n'));
+  } catch (err) { next(err); }
+});
+
+// JSON shape for the admin UI to render before downloading.
+router.get('/1099', async (req, res, next) => {
+  try {
+    const me = await loadMe(req.user!.sub);
+    if (!me || !hasAccountingAccess(me)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const schema = z.object({ year: z.coerce.number().int().min(2000).max(2100) });
+    const q = schema.parse(req.query);
+    const yearStart = new Date(Date.UTC(q.year, 0, 1));
+    const yearEnd = new Date(Date.UTC(q.year + 1, 0, 1));
+    const bills = await prisma.subcontractorBill.findMany({
+      where: { status: 'PAID', paidAt: { gte: yearStart, lt: yearEnd } },
+      include: {
+        subcontractor: { select: { id: true, name: true, email: true, taxId: true, mailingAddress: true } },
+      },
+    });
+    const grouped = new Map<string, {
+      id: string;
+      name: string;
+      email: string;
+      taxId: string | null;
+      mailingAddress: string | null;
+      totalCents: number;
+      billCount: number;
+    }>();
+    for (const b of bills) {
+      const ex = grouped.get(b.subcontractorId) ?? {
+        id: b.subcontractor.id,
+        name: b.subcontractor.name,
+        email: b.subcontractor.email,
+        taxId: b.subcontractor.taxId,
+        mailingAddress: b.subcontractor.mailingAddress,
+        totalCents: 0,
+        billCount: 0,
+      };
+      ex.totalCents += b.amountCents;
+      ex.billCount += 1;
+      grouped.set(b.subcontractorId, ex);
+    }
+    const subs = [...grouped.values()].sort((a, b) => b.totalCents - a.totalCents);
+    res.json({ year: q.year, subs });
+  } catch (err) { next(err); }
+});
+
 // ----- P&L (Profit & Loss) + Balance Sheet -----
 //
 // Cash-basis P&L for any date range. Revenue is the sum of payments

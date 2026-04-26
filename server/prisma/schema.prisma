@@ -124,6 +124,11 @@ model User {
   // are produced by the avatar upload pipeline (sharp resize).
   avatarUrl     String?
   avatarThumbnailUrl String?
+  // Tax filing fields — only relevant for subcontractors (used by the 1099
+  // export). All optional so existing users can leave them blank; the
+  // export skips subs missing data so admin sees what's incomplete.
+  taxId         String?
+  mailingAddress String?  // multi-line OK
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
