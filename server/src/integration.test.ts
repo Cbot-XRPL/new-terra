@@ -407,6 +407,64 @@ d('integration · payments ledger', () => {
   });
 });
 
+d('integration · subcontractor scope', () => {
+  it('subcontractor sees only projects they have schedules on', async () => {
+    const sub = await seedUser({
+      email: 'it-sub@vitest.local',
+      name: 'IT Sub',
+      role: Role.SUBCONTRACTOR,
+    });
+    const subTok = await login(sub.email);
+
+    // Two projects: only one has a schedule for this sub.
+    const projA = await prisma.project.create({
+      data: { name: 'Sub Project A', customerId: seeded.customer.id, budgetCents: 1000 },
+    });
+    const projB = await prisma.project.create({
+      data: { name: 'Sub Project B', customerId: seeded.customer.id, budgetCents: 1000 },
+    });
+    const sched = await prisma.schedule.create({
+      data: {
+        projectId: projA.id,
+        assigneeId: sub.id,
+        title: 'Demo install',
+        startsAt: new Date(),
+        endsAt: new Date(Date.now() + 3_600_000),
+      },
+    });
+
+    try {
+      const res = await request(app)
+        .get('/api/projects')
+        .set('Authorization', `Bearer ${subTok}`);
+      expect(res.status).toBe(200);
+      const ids = (res.body.projects as Array<{ id: string }>).map((p) => p.id);
+      expect(ids).toContain(projA.id);
+      expect(ids).not.toContain(projB.id);
+
+      // Hitting B by id should 404 the sub.
+      const detail = await request(app)
+        .get(`/api/projects/${projB.id}`)
+        .set('Authorization', `Bearer ${subTok}`);
+      expect(detail.status).toBe(404);
+
+      // Calendar is scoped to their own schedules even without ?mine=true.
+      const from = new Date(Date.now() - 86_400_000).toISOString();
+      const to = new Date(Date.now() + 86_400_000).toISOString();
+      const cal = await request(app)
+        .get(`/api/schedules?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
+        .set('Authorization', `Bearer ${subTok}`);
+      expect(cal.status).toBe(200);
+      const schedIds = (cal.body.schedules as Array<{ id: string }>).map((s) => s.id);
+      expect(schedIds).toEqual([sched.id]);
+    } finally {
+      await prisma.schedule.delete({ where: { id: sched.id } }).catch(() => undefined);
+      await prisma.project.deleteMany({ where: { id: { in: [projA.id, projB.id] } } });
+      await prisma.user.delete({ where: { id: sub.id } });
+    }
+  });
+});
+
 d('integration · time tracking is per-user scoped', () => {
   it('plain employee can list their own time entries', async () => {
     const res = await request(app)

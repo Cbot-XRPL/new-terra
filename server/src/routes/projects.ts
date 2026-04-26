@@ -43,6 +43,13 @@ async function loadProjectForUser(projectId: string, userId: string, role: Role)
   });
   if (!project) return null;
   if (role === Role.CUSTOMER && project.customerId !== userId) return null;
+  if (role === Role.SUBCONTRACTOR) {
+    // Subs only see projects they have at least one schedule on.
+    const ownsSchedule = await prisma.schedule.count({
+      where: { projectId, assigneeId: userId },
+    });
+    if (ownsSchedule === 0) return null;
+  }
   return project;
 }
 
@@ -77,6 +84,10 @@ router.get('/', async (req, res, next) => {
     let where: Prisma.ProjectWhereInput = {};
     if (role === Role.CUSTOMER) {
       where = { customerId: userId };
+    } else if (role === Role.SUBCONTRACTOR) {
+      // Subs only see projects they're scheduled on. We use a relation
+      // filter so a sub never knows another customer/project exists.
+      where = { schedules: { some: { assigneeId: userId } } };
     } else if (
       role === Role.EMPLOYEE &&
       me &&

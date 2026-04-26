@@ -24,7 +24,12 @@ router.get('/', requireRole(Role.ADMIN, Role.EMPLOYEE, Role.SUBCONTRACTOR), asyn
     } = {
       startsAt: { gte: new Date(from), lte: new Date(to) },
     };
-    if (mine === 'true') where.assigneeId = req.user!.sub;
+    // Subs are always scoped to their own schedules — they should never see
+    // the company-wide calendar. The mine=true flag is honored for staff who
+    // want to filter by themselves.
+    if (req.user!.role === Role.SUBCONTRACTOR || mine === 'true') {
+      where.assigneeId = req.user!.sub;
+    }
 
     const schedules = await prisma.schedule.findMany({
       where,
