@@ -944,6 +944,74 @@ input:focus, textarea:focus, select:focus {
 }
 .table th { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 
+/* Service detail pages (/services/:slug) — split hero with copy left
+   and image right, then bullet list, recent projects, and FAQs. */
+.service-hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+.service-hero img {
+  width: 100%;
+  border-radius: 12px;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+.service-hero h1 {
+  margin: 0.4rem 0 1rem;
+  font-size: 2.25rem;
+}
+.service-bullets {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.5rem 1.5rem;
+}
+.service-bullets li {
+  padding-left: 1.5rem;
+  position: relative;
+  line-height: 1.5;
+}
+.service-bullets li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+.service-faqs > div {
+  border-top: 1px solid var(--border);
+  padding: 1rem 0;
+}
+.service-faqs > div:first-child { border-top: 0; padding-top: 0; }
+.service-faqs dt { font-weight: 600; margin-bottom: 0.4rem; }
+.service-faqs dd { margin: 0; color: var(--text-muted); line-height: 1.6; }
+
+/* Service cards on the home page become links — keep the original card
+   look but hint at affordance with a hover lift + "Learn more" footer. */
+.service-card-link {
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.service-card-link:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+.service-card-cta {
+  margin-top: auto;
+  padding-top: 0.75rem;
+  font-size: 0.9rem;
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* Public portfolio (marketing site) — listing chips, project cards, and the
    detail page hero / before-after grid / lightbox. Tag styles are reused on
    the home page testimonial carousel and service cards once those land. */
@@ -1188,4 +1256,7 @@ input:focus, textarea:focus, select:focus {
      squashed below visible-resolution on a phone. */
   .portfolio-ba { grid-template-columns: 1fr; }
   .portfolio-lightbox { padding: 0.5rem; }
+  /* Service hero stacks copy over image on phones. */
+  .service-hero { grid-template-columns: 1fr; gap: 1rem; }
+  .service-hero h1 { font-size: 1.75rem; }
 }

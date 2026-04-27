@@ -4,26 +4,31 @@ import { Link } from 'react-router-dom';
 const services = [
   {
     img: '/media/siding.png',
+    slug: 'remodeling',
     title: 'Remodeling & New Construction',
     body: 'From new home builds to interior transformations: framing, electrical, plumbing, HVAC, drywall, roofing, gutters, doors, windows, flooring, kitchens, baths, and basements.',
   },
   {
     img: '/media/deck.png',
+    slug: 'decks',
     title: 'Custom Decks',
     body: 'Deck renovation, covered decks, screen porches, and under-decking systems built with high-quality materials and modern techniques.',
   },
   {
     img: '/media/fence.png',
+    slug: 'fencing',
     title: 'Fencing',
     body: 'Wood, vinyl, and aluminum fences for security, privacy, and curb appeal — dog-ear, capped, scalloped, Dato post, and railing options.',
   },
   {
     img: '/media/patio2.png',
+    slug: 'hardscape',
     title: 'Hardscape Design',
     body: 'Patios, walkways, retaining walls, fire pits, and stone seating using pavers, stamped concrete, and flagstone.',
   },
   {
     img: '/media/garden.jpg',
+    slug: 'landscape',
     title: 'Landscape Design',
     body: 'Irrigation, landscape lighting, design, plant and bed installation — bridging construction and landscaping under one agreement.',
   },
@@ -170,11 +175,12 @@ export default function HomePage() {
         </p>
         <div className="service-grid">
           {services.map((s) => (
-            <article key={s.title} className="service-card">
+            <Link key={s.title} to={`/services/${s.slug}`} className="service-card service-card-link">
               <img src={s.img} alt={s.title} />
               <h3>{s.title}</h3>
               <p>{s.body}</p>
-            </article>
+              <span className="service-card-cta">Learn more →</span>
+            </Link>
           ))}
         </div>
         <p style={{ textAlign: 'center', marginTop: '1.5rem' }}>
