@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
+import { usePageMeta } from '../../lib/pageMeta';
 
 // Service detail content lives here (not in the DB) — these pages are
 // long-form marketing copy curated by the owner, not user-generated.
@@ -140,6 +141,19 @@ export default function ServiceDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const service = useMemo(() => SERVICES.find((s) => s.slug === slug), [slug]);
   const [recent, setRecent] = useState<PortfolioCard[]>([]);
+
+  usePageMeta({
+    title: service?.title ?? 'Services',
+    description: service?.tagline,
+    image: service?.hero,
+    jsonLd: service ? {
+      '@context': 'https://schema.org',
+      '@type': 'Service',
+      serviceType: service.title,
+      provider: { '@type': 'GeneralContractor', name: 'New Terra Construction' },
+      description: service.intro,
+    } : null,
+  });
 
   useEffect(() => {
     if (!service) return;

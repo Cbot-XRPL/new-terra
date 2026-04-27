@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { usePageMeta } from '../../lib/pageMeta';
 
 interface Photo {
   id: string;
@@ -47,6 +48,26 @@ export default function PortfolioDetailPage() {
       })
       .catch(() => setError('Could not load this project.'));
   }, [slug]);
+
+  const heroForMeta = data?.photos.find((p) => p.id === data?.heroImageId)
+    ?? data?.photos.find((p) => (p.phase ?? '').toLowerCase().includes('after'))
+    ?? data?.photos[0];
+
+  usePageMeta({
+    title: data?.title ?? 'Project',
+    description: data?.publicSummary
+      ?? (data ? `A ${data.serviceCategory ?? 'recent'} project completed by New Terra Construction.` : undefined),
+    image: heroForMeta?.url ?? null,
+    jsonLd: data ? {
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      headline: data.title,
+      description: data.publicSummary ?? undefined,
+      image: heroForMeta?.url ? [heroForMeta.url] : undefined,
+      datePublished: data.completedAt ?? undefined,
+      author: { '@type': 'Organization', name: 'New Terra Construction' },
+    } : null,
+  });
 
   // Pull a matched before/after pair when both phases exist. We use
   // string includes so 'before-demo' or 'after-touchup' still match.

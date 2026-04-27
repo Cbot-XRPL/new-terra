@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { BUSINESS_JSON_LD, usePageMeta } from '../../lib/pageMeta';
 
 const services = [
   {
@@ -75,6 +76,13 @@ const API_BASE = import.meta.env.VITE_API_URL ?? '';
 export default function HomePage() {
   const [testimonials, setTestimonials] = useState<Testimonial[] | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
+
+  usePageMeta({
+    title: 'New Terra Construction',
+    description: 'Decks, fencing, hardscape, landscaping, and full-service remodels. Free estimates, licensed and insured.',
+    image: '/media/patio.jpg',
+    jsonLd: BUSINESS_JSON_LD,
+  });
 
   useEffect(() => {
     // Both endpoints are public + cached at the CDN tier — failure is

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { usePageMeta } from '../../lib/pageMeta';
 
 interface Card {
   slug: string;
@@ -29,6 +30,11 @@ export default function PortfolioListPage() {
   const [data, setData] = useState<Resp | null>(null);
   const [error, setError] = useState<string | null>(null);
   const category = params.get('category');
+
+  usePageMeta({
+    title: category ? `${category} projects` : 'Recent work',
+    description: 'A look at recent New Terra Construction projects — decks, fences, patios, remodels, and landscapes built for happy customers.',
+  });
 
   useEffect(() => {
     const url = category

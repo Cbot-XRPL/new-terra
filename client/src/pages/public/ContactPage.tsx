@@ -1,8 +1,13 @@
 import { type FormEvent, useCallback, useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import Turnstile from '../../components/Turnstile';
+import { usePageMeta } from '../../lib/pageMeta';
 
 export default function ContactPage() {
+  usePageMeta({
+    title: 'Contact us',
+    description: 'Get in touch with New Terra Construction — call (678) 207-9719 or send a quick message.',
+  });
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');

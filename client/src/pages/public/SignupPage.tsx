@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { usePageMeta } from '../../lib/pageMeta';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -56,6 +57,11 @@ export default function SignupPage() {
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  usePageMeta({
+    title: 'Start your project',
+    description: 'Free estimate, no obligation. Tell us about your project and we\'ll be in touch within a business day.',
+  });
 
   // First-touch attribution: only set on the very first visit. PublicLayout
   // would be a cleaner place but we don't want to touch it from every page;
