@@ -106,7 +106,25 @@ export default function HomePage() {
   return (
     <>
       <section className="hero">
-        <h1>Providing the ultimate building experience</h1>
+        <div className="hero-inner">
+          <span className="hero-area">📍 Serving the metro Atlanta area</span>
+          <h1>Providing the ultimate building experience</h1>
+          <p className="hero-sub">
+            Decks, fences, hardscape, landscape, and full-service remodels —
+            built clean, on schedule, and inside a portal you actually use.
+          </p>
+          <div className="hero-ctas">
+            <Link to="/start" className="button button-primary">Get a free estimate</Link>
+            <a className="button button-ghost-light" href="tel:6782079719">📞 (678) 207-9719</a>
+          </div>
+          {stats && stats.completedProjects > 0 && (
+            <p className="hero-trust">
+              {stats.completedProjects}+ projects completed
+              {stats.averageScore != null && ` · ${stats.averageScore.toFixed(1)}/10 avg`}
+              {stats.yearsInBusiness != null && ` · ${stats.yearsInBusiness}+ years in business`}
+            </p>
+          )}
+        </div>
       </section>
 
       {stats && (stats.completedProjects > 0 || stats.surveyResponses > 0) && (

@@ -160,6 +160,58 @@ main { flex: 1; }
   font-weight: 800;
   text-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
   max-width: 900px;
+  margin: 0 auto;
+}
+/* Hero inner column wraps the headline, subhead, CTA pair, and the
+   small trust line beneath. Keeps content centered + max-width capped. */
+.hero-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  max-width: 900px;
+}
+.hero-area {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  backdrop-filter: blur(6px);
+}
+.hero-sub {
+  color: #f4f4f4;
+  font-size: clamp(1rem, 1.6vw, 1.25rem);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+  max-width: 700px;
+  margin: 0;
+  line-height: 1.5;
+}
+.hero-ctas {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 0.5rem;
+}
+.hero-trust {
+  color: #e0e0e0;
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+/* Light-on-dark variant of the ghost button so the secondary CTA stays
+   readable over the hero overlay. */
+.button-ghost-light {
+  background: transparent;
+  color: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+}
+.button-ghost-light:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: #fff;
 }
 
 .tag {
