@@ -28,6 +28,12 @@ interface Lead {
   status: LeadStatus;
   source: LeadSource;
   notes: string | null;
+  serviceCategory: string | null;
+  landingPath: string | null;
+  referrer: string | null;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
   createdAt: string;
   updatedAt: string;
   convertedAt: string | null;
@@ -272,6 +278,20 @@ export default function LeadDetailPage() {
           </select>
         </div>
       </section>
+
+      {(lead.serviceCategory || lead.landingPath || lead.referrer || lead.utmSource) && (
+        <section className="card">
+          <h2>Where they came from</h2>
+          <dl className="meta-grid">
+            {lead.serviceCategory && (<><dt>Asked about</dt><dd>{lead.serviceCategory}</dd></>)}
+            {lead.landingPath && (<><dt>Landing page</dt><dd><code>{lead.landingPath}</code></dd></>)}
+            {lead.referrer && (<><dt>Referrer</dt><dd><code>{lead.referrer}</code></dd></>)}
+            {lead.utmSource && (<><dt>UTM source</dt><dd>{lead.utmSource}</dd></>)}
+            {lead.utmMedium && (<><dt>UTM medium</dt><dd>{lead.utmMedium}</dd></>)}
+            {lead.utmCampaign && (<><dt>UTM campaign</dt><dd>{lead.utmCampaign}</dd></>)}
+          </dl>
+        </section>
+      )}
 
       <section className="card">
         <h2>Convert to customer</h2>

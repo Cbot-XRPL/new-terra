@@ -25,6 +25,7 @@ interface LeadRow {
   estimatedValueCents: number | null;
   status: LeadStatus;
   source: LeadSource;
+  serviceCategory: string | null;
   createdAt: string;
   updatedAt: string;
   owner: { id: string; name: string } | null;
@@ -383,6 +384,11 @@ export default function LeadsPage() {
                   <tr key={l.id}>
                     <td>
                       <Link to={`/portal/leads/${l.id}`}><strong>{l.name}</strong></Link>
+                      {l.serviceCategory && (
+                        <div style={{ fontSize: '0.75rem', marginTop: '0.15rem' }}>
+                          <span className="portfolio-tag">{l.serviceCategory}</span>
+                        </div>
+                      )}
                       {l.address && <div className="muted" style={{ fontSize: '0.85rem' }}>{l.address}</div>}
                     </td>
                     <td>

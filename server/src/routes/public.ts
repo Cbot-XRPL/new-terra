@@ -99,6 +99,14 @@ const signupSchema = z.object({
   // Cosmetic — lets the customer say where they heard about us. Mapped
   // loosely onto LeadSource; freeform values fall back to OTHER.
   source: z.string().max(60).optional(),
+  // Marketing-site attribution. All optional. Captured client-side from
+  // ?service=, ?utm_*, document.referrer, and the landing pathname.
+  serviceCategory: z.string().max(80).optional().nullable(),
+  landingPath: z.string().max(500).optional().nullable(),
+  referrer: z.string().max(500).optional().nullable(),
+  utmSource: z.string().max(120).optional().nullable(),
+  utmMedium: z.string().max(120).optional().nullable(),
+  utmCampaign: z.string().max(120).optional().nullable(),
   website: z.string().max(500).optional(),
   turnstileToken: z.string().optional(),
 });
@@ -144,6 +152,12 @@ router.post('/signup', contactLimiter, async (req, res, next) => {
         estimatedValueCents: data.estimatedBudgetCents ?? null,
         status: LeadStatus.NEW,
         source: mapLeadSource(data.source),
+        serviceCategory: data.serviceCategory ?? null,
+        landingPath: data.landingPath ?? null,
+        referrer: data.referrer ?? null,
+        utmSource: data.utmSource ?? null,
+        utmMedium: data.utmMedium ?? null,
+        utmCampaign: data.utmCampaign ?? null,
         createdById: seedUser.id,
       },
     });
@@ -154,7 +168,7 @@ router.post('/signup', contactLimiter, async (req, res, next) => {
       name: data.name,
       email: data.email,
       phone: data.phone ?? undefined,
-      message: `New self-serve signup:\n\nScope:\n${data.scope}${data.address ? `\n\nAddress: ${data.address}` : ''}${data.estimatedBudgetCents ? `\n\nEstimated budget: $${(data.estimatedBudgetCents / 100).toFixed(2)}` : ''}\n\nLanded as a NEW lead in the portal.`,
+      message: `New self-serve signup:\n\n${data.serviceCategory ? `Service: ${data.serviceCategory}\n` : ''}Scope:\n${data.scope}${data.address ? `\n\nAddress: ${data.address}` : ''}${data.estimatedBudgetCents ? `\n\nEstimated budget: $${(data.estimatedBudgetCents / 100).toFixed(2)}` : ''}${data.landingPath ? `\n\nLanded on: ${data.landingPath}` : ''}\n\nLanded as a NEW lead in the portal.`,
     }).catch((err) => console.warn('[public:signup] inquiry email failed', err));
 
     res.json({ ok: true });

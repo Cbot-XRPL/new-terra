@@ -1176,6 +1176,17 @@ model Lead {
   convertedToCustomer   User?     @relation("LeadConvertedCustomer", fields: [convertedToCustomerId], references: [id])
 
   notes         String?
+
+  // Marketing-site attribution. Captured at lead-creation time from the
+  // landing page + URL params. Helps sales prioritize and lets us see
+  // which campaigns / services drive real work.
+  serviceCategory String?
+  landingPath     String?
+  referrer        String?
+  utmSource       String?
+  utmMedium       String?
+  utmCampaign     String?
+
   activities    LeadActivity[]
   estimates     Estimate[]
 
@@ -1184,6 +1195,7 @@ model Lead {
 
   @@index([status])
   @@index([ownerId])
+  @@index([serviceCategory])
 }
 
 model LeadActivity {

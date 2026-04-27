@@ -1,5 +1,5 @@
-import { type FormEvent, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { type FormEvent, useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -13,12 +13,41 @@ const SOURCE_OPTIONS = [
   { value: 'OTHER', label: 'Something else' },
 ];
 
+// Where we stash first-touch attribution. We only persist the FIRST visit's
+// landing page + referrer + UTMs so a customer who browses the site for
+// a few sessions still gets credited to the original campaign. Cleared
+// after a successful signup.
+const ATTRIBUTION_KEY = 'nt:firstTouch';
+
+interface FirstTouch {
+  landingPath: string;
+  referrer: string | null;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  capturedAt: string;
+}
+
+function readFirstTouch(): FirstTouch | null {
+  try {
+    const raw = window.localStorage.getItem(ATTRIBUTION_KEY);
+    return raw ? JSON.parse(raw) as FirstTouch : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function SignupPage() {
+  const [searchParams] = useSearchParams();
+  // Optional ?service=Decks pre-selects the service field on the form.
+  const initialService = searchParams.get('service') ?? '';
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [scope, setScope] = useState('');
+  const [serviceCategory, setServiceCategory] = useState(initialService);
   const [budget, setBudget] = useState('');
   const [source, setSource] = useState('WEBSITE_FORM');
   // Honeypot — bots will fill this; real users won't see it.
@@ -28,11 +57,34 @@ export default function SignupPage() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // First-touch attribution: only set on the very first visit. PublicLayout
+  // would be a cleaner place but we don't want to touch it from every page;
+  // setting it here is fine because most leads land on /start eventually.
+  // (Other pages would still capture it the moment a user navigates here.)
+  // We intentionally read URL params from window so this fires for any
+  // landing path, not just /start.
+  useEffect(() => {
+    if (readFirstTouch()) return;
+    try {
+      const url = new URL(window.location.href);
+      const ft: FirstTouch = {
+        landingPath: url.pathname + url.search,
+        referrer: document.referrer || null,
+        utmSource: url.searchParams.get('utm_source'),
+        utmMedium: url.searchParams.get('utm_medium'),
+        utmCampaign: url.searchParams.get('utm_campaign'),
+        capturedAt: new Date().toISOString(),
+      };
+      window.localStorage.setItem(ATTRIBUTION_KEY, JSON.stringify(ft));
+    } catch { /* localStorage off — silently degrade */ }
+  }, []);
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     try {
+      const ft = readFirstTouch();
       const body: Record<string, unknown> = {
         name,
         email,
@@ -40,6 +92,12 @@ export default function SignupPage() {
         address: address || null,
         scope,
         source,
+        serviceCategory: serviceCategory || null,
+        landingPath: ft?.landingPath ?? null,
+        referrer: ft?.referrer ?? null,
+        utmSource: ft?.utmSource ?? null,
+        utmMedium: ft?.utmMedium ?? null,
+        utmCampaign: ft?.utmCampaign ?? null,
         website,
       };
       const cents = budget ? Math.round(Number(budget) * 100) : null;
@@ -56,6 +114,9 @@ export default function SignupPage() {
         setError(data?.error ?? 'Submit failed');
         return;
       }
+      // Attribution is single-use — clear so a second submission from the
+      // same browser doesn't recycle stale UTM params from the first visit.
+      try { window.localStorage.removeItem(ATTRIBUTION_KEY); } catch { /* noop */ }
       setDone(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Submit failed');
@@ -110,17 +171,24 @@ export default function SignupPage() {
           <label htmlFor="su-addr">Project address</label>
           <input id="su-addr" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="optional — helps us scope" />
 
-          <label htmlFor="su-scope">What are you thinking?</label>
-          <textarea
-            id="su-scope"
-            rows={5}
-            value={scope}
-            onChange={(e) => setScope(e.target.value)}
-            required
-            placeholder="A new deck, kitchen remodel, basement finish — give us the gist."
-          />
-
           <div className="form-row">
+            <div>
+              <label htmlFor="su-service">What kind of work?</label>
+              <input
+                id="su-service"
+                list="su-service-options"
+                value={serviceCategory}
+                onChange={(e) => setServiceCategory(e.target.value)}
+                placeholder="optional — pick one or describe"
+              />
+              <datalist id="su-service-options">
+                <option value="Remodeling" />
+                <option value="Decks" />
+                <option value="Fencing" />
+                <option value="Hardscape" />
+                <option value="Landscape" />
+              </datalist>
+            </div>
             <div>
               <label htmlFor="su-budget">Rough budget (USD, optional)</label>
               <input
@@ -133,6 +201,19 @@ export default function SignupPage() {
                 placeholder="—"
               />
             </div>
+          </div>
+
+          <label htmlFor="su-scope">What are you thinking?</label>
+          <textarea
+            id="su-scope"
+            rows={5}
+            value={scope}
+            onChange={(e) => setScope(e.target.value)}
+            required
+            placeholder="A new deck, kitchen remodel, basement finish — give us the gist."
+          />
+
+          <div className="form-row">
             <div>
               <label htmlFor="su-source">How did you hear about us?</label>
               <select id="su-source" value={source} onChange={(e) => setSource(e.target.value)}>
