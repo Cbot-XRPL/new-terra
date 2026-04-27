@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 const services = [
@@ -28,23 +29,103 @@ const services = [
   },
 ];
 
-const reviews = [
+// Fallback testimonials (shown only on a fresh install before any
+// approved customer surveys exist). Once the satisfaction-survey pipeline
+// produces approved quotes, those replace these.
+const fallbackReviews = [
   {
-    name: 'Elizabeth Cobleigh',
-    body: 'New Terra Construction has completed several jobs for us with beautiful results. Pool surround deck with trex, screen porch, basement remodel, and next up an addition to our home. Cody and Nick are fantastic with communication, always show up on time, and finish on schedule. 100% recommend.',
+    quote: 'New Terra Construction has completed several jobs for us with beautiful results. Pool surround deck with trex, screen porch, basement remodel, and next up an addition to our home. Cody and Nick are fantastic with communication, always show up on time, and finish on schedule. 100% recommend.',
+    attribution: 'Elizabeth Cobleigh',
+    score: null as number | null,
+    portfolioSlug: null as string | null,
+    projectName: null as string | null,
   },
   {
-    name: 'Natalie Carrillo',
-    body: 'Great experience with Cody and his team! They installed a privacy fence with multiple gates in a couple of days despite poor weather. The fence turned out perfect — so nice to have a safe space for my dogs. Highly recommend.',
+    quote: 'Great experience with Cody and his team! They installed a privacy fence with multiple gates in a couple of days despite poor weather. The fence turned out perfect — so nice to have a safe space for my dogs. Highly recommend.',
+    attribution: 'Natalie Carrillo',
+    score: null,
+    portfolioSlug: null,
+    projectName: null,
   },
 ];
 
+interface Testimonial {
+  score: number | null;
+  quote: string;
+  attribution: string | null;
+  projectName: string | null;
+  portfolioSlug: string | null;
+}
+
+interface Stats {
+  completedProjects: number;
+  activeCustomers: number;
+  averageScore: number | null;
+  surveyResponses: number;
+  yearsInBusiness: number | null;
+}
+
+const API_BASE = import.meta.env.VITE_API_URL ?? '';
+
 export default function HomePage() {
+  const [testimonials, setTestimonials] = useState<Testimonial[] | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
+
+  useEffect(() => {
+    // Both endpoints are public + cached at the CDN tier — failure is
+    // non-fatal, we just fall back to the static copy.
+    fetch(`${API_BASE}/api/public/testimonials?limit=3`)
+      .then((r) => r.ok ? r.json() : { testimonials: [] })
+      .then((b: { testimonials: Testimonial[] }) => setTestimonials(b.testimonials))
+      .catch(() => setTestimonials([]));
+    fetch(`${API_BASE}/api/public/stats`)
+      .then((r) => r.ok ? r.json() : null)
+      .then(setStats)
+      .catch(() => setStats(null));
+  }, []);
+
+  // Use real testimonials when admin has approved at least one; otherwise
+  // keep the hand-curated fallback so the page never looks empty.
+  const reviews = testimonials && testimonials.length > 0
+    ? testimonials
+    : fallbackReviews;
+
   return (
     <>
       <section className="hero">
         <h1>Providing the ultimate building experience</h1>
       </section>
+
+      {stats && (stats.completedProjects > 0 || stats.surveyResponses > 0) && (
+        <section className="band band-light trust-band">
+          <div className="trust-stats">
+            {stats.completedProjects > 0 && (
+              <div>
+                <div className="trust-value">{stats.completedProjects}+</div>
+                <div className="trust-label">Projects completed</div>
+              </div>
+            )}
+            {stats.yearsInBusiness != null && (
+              <div>
+                <div className="trust-value">{stats.yearsInBusiness}+</div>
+                <div className="trust-label">Years in business</div>
+              </div>
+            )}
+            {stats.averageScore != null && (
+              <div>
+                <div className="trust-value">{stats.averageScore.toFixed(1)}/10</div>
+                <div className="trust-label">Avg customer rating ({stats.surveyResponses})</div>
+              </div>
+            )}
+            {stats.activeCustomers > 0 && (
+              <div>
+                <div className="trust-value">{stats.activeCustomers}+</div>
+                <div className="trust-label">Happy homeowners</div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       <section className="band band-dark">
         <div className="two-col">
@@ -96,15 +177,27 @@ export default function HomePage() {
             </article>
           ))}
         </div>
+        <p style={{ textAlign: 'center', marginTop: '1.5rem' }}>
+          <Link to="/portfolio" className="button button-ghost">See recent work →</Link>
+        </p>
       </section>
 
       <section id="about" className="band band-accent">
         <h2>What customers say</h2>
         <div className="review-grid">
-          {reviews.map((r) => (
-            <blockquote key={r.name} className="review">
-              <p>"{r.body}"</p>
-              <cite>— {r.name}</cite>
+          {reviews.map((r, i) => (
+            <blockquote key={r.attribution ?? i} className="review">
+              <p>"{r.quote}"</p>
+              <cite>
+                — {r.attribution ?? 'Customer'}
+                {r.score != null && ` · ${r.score}/10`}
+                {r.portfolioSlug && r.projectName && (
+                  <>
+                    {' · '}
+                    <Link to={`/portfolio/${r.portfolioSlug}`}>{r.projectName}</Link>
+                  </>
+                )}
+              </cite>
             </blockquote>
           ))}
         </div>

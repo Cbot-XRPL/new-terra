@@ -116,6 +116,32 @@ main { flex: 1; }
 .band h2 { font-size: 2rem; margin: 1rem 0; }
 .band-dark { background: var(--bg); }
 .band-accent { background: linear-gradient(180deg, #3e5875 0%, #31465e 100%); }
+.band-light { background: var(--surface); padding: 2.5rem 2rem; }
+
+/* Trust signals strip — auto-computed counts (projects done, NPS avg,
+   years in business). Only renders when at least one signal is non-zero
+   so a fresh install doesn't show a row of zeros. */
+.trust-band { text-align: center; }
+.trust-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1.5rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.trust-value {
+  font-size: 2.25rem;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+.trust-label {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-top: 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 
 .hero {
   min-height: 70vh;
