@@ -6,6 +6,7 @@ interface Photo {
   id: string;
   url: string;
   thumbnailUrl: string | null;
+  mediumUrl: string | null;
   caption: string | null;
   phase: string | null;
   at: string;
@@ -57,13 +58,13 @@ export default function PortfolioDetailPage() {
     title: data?.title ?? 'Project',
     description: data?.publicSummary
       ?? (data ? `A ${data.serviceCategory ?? 'recent'} project completed by New Terra Construction.` : undefined),
-    image: heroForMeta?.url ?? null,
+    image: heroForMeta?.mediumUrl ?? heroForMeta?.url ?? null,
     jsonLd: data ? {
       '@context': 'https://schema.org',
       '@type': 'Article',
       headline: data.title,
       description: data.publicSummary ?? undefined,
-      image: heroForMeta?.url ? [heroForMeta.url] : undefined,
+      image: heroForMeta?.mediumUrl ?? heroForMeta?.url ? [heroForMeta!.mediumUrl ?? heroForMeta!.url] : undefined,
       datePublished: data.completedAt ?? undefined,
       author: { '@type': 'Organization', name: 'New Terra Construction' },
     } : null,
@@ -112,7 +113,7 @@ export default function PortfolioDetailPage() {
       {hero && (
         <div className="portfolio-hero">
           <img
-            src={hero.url}
+            src={hero.mediumUrl ?? hero.url}
             alt={hero.caption ?? data.title}
             onClick={() => setLightbox(hero)}
             style={{ cursor: 'zoom-in' }}
@@ -131,11 +132,11 @@ export default function PortfolioDetailPage() {
           <h2>Before &amp; after</h2>
           <div className="portfolio-ba">
             <figure>
-              <img src={beforeAfter.before.url} alt="Before" loading="lazy" onClick={() => setLightbox(beforeAfter.before)} />
+              <img src={beforeAfter.before.mediumUrl ?? beforeAfter.before.url} alt="Before" loading="lazy" onClick={() => setLightbox(beforeAfter.before)} />
               <figcaption>Before</figcaption>
             </figure>
             <figure>
-              <img src={beforeAfter.after.url} alt="After" loading="lazy" onClick={() => setLightbox(beforeAfter.after)} />
+              <img src={beforeAfter.after.mediumUrl ?? beforeAfter.after.url} alt="After" loading="lazy" onClick={() => setLightbox(beforeAfter.after)} />
               <figcaption>After</figcaption>
             </figure>
           </div>

@@ -64,7 +64,7 @@ router.get('/portfolio', async (req, res, next) => {
             { createdAt: 'desc' },
           ],
           select: {
-            id: true, url: true, thumbnailUrl: true, phase: true,
+            id: true, url: true, thumbnailUrl: true, mediumUrl: true, phase: true,
           },
         },
       },
@@ -88,7 +88,7 @@ router.get('/portfolio', async (req, res, next) => {
         city: loc.city,
         state: loc.state,
         completedAt: p.endDate ? p.endDate.toISOString() : null,
-        heroImageUrl: hero?.url ?? null,
+        heroImageUrl: hero?.mediumUrl ?? hero?.url ?? null,
         heroThumbnailUrl: hero?.thumbnailUrl ?? hero?.url ?? null,
         photoCount: p.images.length,
       };
@@ -112,8 +112,8 @@ router.get('/portfolio/:slug', async (req, res, next) => {
         images: {
           orderBy: [{ takenAt: 'asc' }, { createdAt: 'asc' }],
           select: {
-            id: true, url: true, thumbnailUrl: true, caption: true, phase: true,
-            takenAt: true, createdAt: true,
+            id: true, url: true, thumbnailUrl: true, mediumUrl: true, caption: true,
+            phase: true, takenAt: true, createdAt: true,
           },
         },
         // Pull the customer's approved survey (if any) for the testimonial
@@ -150,6 +150,7 @@ router.get('/portfolio/:slug', async (req, res, next) => {
         id: i.id,
         url: i.url,
         thumbnailUrl: i.thumbnailUrl,
+        mediumUrl: i.mediumUrl,
         caption: i.caption,
         phase: i.phase,
         // Resolved at — same fallback used in portal timeline.

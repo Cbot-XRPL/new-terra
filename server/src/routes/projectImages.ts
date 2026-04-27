@@ -224,6 +224,7 @@ router.post(
         originalName: string;
         url: string;
         thumbnailUrl: string | null;
+        mediumUrl: string | null;
       }> = [];
 
       for (const f of files) {
@@ -233,11 +234,13 @@ router.post(
         const url = storage.publicUrl(project.id, filename);
 
         let thumbnailUrl: string | null = null;
+        let mediumUrl: string | null = null;
         try {
           const source = (f as Express.Multer.File).path
             ? await fs.readFile((f as Express.Multer.File).path)
             : (f.buffer as Buffer | undefined);
           if (source) {
+            // 480px thumb for grid views and the customer portal.
             const thumb = await sharp(source)
               .rotate()
               .resize({ width: 480, height: 480, fit: 'inside', withoutEnlargement: true })
@@ -245,12 +248,27 @@ router.post(
               .toBuffer();
             const thumbName = `thumb-${path.parse(filename).name}.webp`;
             thumbnailUrl = await storage.putDerived(project.id, thumbName, thumb);
+
+            // 1200px medium variant for the public portfolio hero / detail
+            // page so we don't ship the raw camera shot to every visitor.
+            // Skip if the source is already smaller than 1200px wide —
+            // re-encoding would just re-compress without saving bytes.
+            const meta = await sharp(source).metadata();
+            if ((meta.width ?? 0) > 1200) {
+              const med = await sharp(source)
+                .rotate()
+                .resize({ width: 1200, withoutEnlargement: true })
+                .webp({ quality: 82 })
+                .toBuffer();
+              const medName = `med-${path.parse(filename).name}.webp`;
+              mediumUrl = await storage.putDerived(project.id, medName, med);
+            }
           }
         } catch (thumbErr) {
           console.warn('[upload] thumbnail generation failed', thumbErr);
         }
 
-        records.push({ filename, originalName: f.originalname, url, thumbnailUrl });
+        records.push({ filename, originalName: f.originalname, url, thumbnailUrl, mediumUrl });
       }
 
       const created = await prisma.$transaction(
@@ -262,6 +280,7 @@ router.post(
               filename: r.originalName,
               url: r.url,
               thumbnailUrl: r.thumbnailUrl,
+              mediumUrl: r.mediumUrl,
               caption,
               phase,
               takenAt: takenAt && !Number.isNaN(takenAt.valueOf()) ? takenAt : null,
@@ -291,6 +310,7 @@ router.delete(
       await prisma.projectImage.delete({ where: { id: imageId } });
       await storage.remove(image.url);
       if (image.thumbnailUrl) await storage.remove(image.thumbnailUrl);
+      if (image.mediumUrl) await storage.remove(image.mediumUrl);
       res.status(204).end();
     } catch (err) {
       next(err);
