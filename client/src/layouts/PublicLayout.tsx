@@ -23,7 +23,7 @@ export default function PublicLayout() {
             <NavLink to="/portfolio">Recent work</NavLink>
           </li>
           <li>
-            <a href="/#about">About</a>
+            <NavLink to="/about">About</NavLink>
           </li>
           <li>
             <Link to="/contact" className="button">
@@ -90,7 +90,10 @@ export default function PublicLayout() {
                 <Link to="/portfolio">Recent work</Link>
               </li>
               <li>
-                <a href="/#about">About</a>
+                <Link to="/process">How it works</Link>
+              </li>
+              <li>
+                <Link to="/about">About</Link>
               </li>
               <li>
                 <Link to="/contact">Contact</Link>
