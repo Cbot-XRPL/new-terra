@@ -258,6 +258,26 @@ model Project {
   // time someone punches in. Manually clear via the project detail page
   // to re-arm the alert (e.g. admin raised the labor budget).
   laborAlertSentAt     DateTime?
+  // ----- Public portfolio fields -----
+  // When true, this project appears on the public marketing site under
+  // /portfolio (after it's COMPLETE). Defaults false so admin has to opt
+  // each project in — no surprise leaks of in-progress work.
+  showOnPortfolio      Boolean   @default(false)
+  // URL-safe slug for the public detail page (/portfolio/<slug>). Auto-
+  // derived from the project name on first opt-in but admin can override.
+  portfolioSlug        String?   @unique
+  // Free-text service category that drives the portfolio filter chips
+  // ('Decks', 'Hardscape', 'Fencing', 'Landscaping', 'Remodeling', etc.).
+  // Free-text rather than enum so admin can add new categories without a
+  // schema change; we surface the unique set as filter chips at read time.
+  serviceCategory      String?
+  // Optional FK to the ProjectImage admin picked as the portfolio cover
+  // shot. When null we fall back to the first 'after' or earliest image.
+  heroImageId          String?
+  // Marketing description shown on the public portfolio entry. Distinct
+  // from the internal `description` since admin may want different wording
+  // for customers vs prospects.
+  publicSummary        String?
   // Soft-archive timestamp. Archived projects fall out of default lists but
   // keep all their data; admins can unarchive at any time.
   archivedAt  DateTime?
@@ -898,11 +918,23 @@ model SatisfactionSurvey {
   // stays legible for admin.
   improvements String?
   submittedAt DateTime?
+  // ----- Public testimonial flow -----
+  // When admin clicks "approve for public site" on a high-NPS survey we
+  // stamp publicApprovedAt + the optional admin-edited publicQuote (which
+  // can be a trimmed/cleaned version of `comments` for marketing copy).
+  // The home page + portfolio detail pages pull only approved rows.
+  publicApprovedAt DateTime?
+  publicQuote      String?
+  // Optional 'how should we attribute this' override. Customer's full
+  // name leaks privacy; admin can rewrite as 'Taylor H.' or 'Anytown,
+  // NY homeowner'.
+  publicAttribution String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   @@index([sentAt])
   @@index([submittedAt])
+  @@index([publicApprovedAt])
 }
 
 // Time-limited public share link for a project's photo gallery. Customer

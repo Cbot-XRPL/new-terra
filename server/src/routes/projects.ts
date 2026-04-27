@@ -14,6 +14,40 @@ router.use(requireAuth);
 
 // ----- Helpers -----
 
+// Lowercase / ascii-only / dash-separated slug, used for portfolio URLs.
+// Empty input → null so the column stays nullable when the project name
+// is just punctuation. We append a 4-char id suffix when uniqueness
+// matters (caller decides).
+function slugify(input: string): string | null {
+  const s = input
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return s.length > 0 ? s.slice(0, 80) : null;
+}
+
+// Find a slug that doesn't collide with an existing portfolio entry.
+// Tries the bare slug first, then suffixes "-2", "-3", … until free.
+async function uniquePortfolioSlug(base: string, ignoreId?: string): Promise<string> {
+  let candidate = base;
+  let n = 1;
+  // 50 tries is way more than realistic — projects with the same exact
+  // name happen but not 50 times.
+  for (let i = 0; i < 50; i += 1) {
+    const existing = await prisma.project.findUnique({
+      where: { portfolioSlug: candidate },
+      select: { id: true },
+    });
+    if (!existing || existing.id === ignoreId) return candidate;
+    n += 1;
+    candidate = `${base}-${n}`;
+  }
+  // Last-ditch: append a short timestamp.
+  return `${base}-${Date.now().toString(36)}`;
+}
+
 function isStaff(role: Role) {
   return role === Role.ADMIN || role === Role.EMPLOYEE || role === Role.SUBCONTRACTOR;
 }
@@ -71,6 +105,12 @@ const createProjectSchema = z.object({
   budgetCents: z.number().int().nonnegative().nullable().optional(),
   laborBudgetCents: z.number().int().nonnegative().nullable().optional(),
   showBudgetToCustomer: z.boolean().optional(),
+  // Public-portfolio fields (admin-only writes; no customer leak path).
+  showOnPortfolio: z.boolean().optional(),
+  portfolioSlug: z.string().min(1).max(120).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase letters, digits, or dashes').nullable().optional(),
+  serviceCategory: z.string().min(1).max(60).nullable().optional(),
+  heroImageId: z.string().min(1).nullable().optional(),
+  publicSummary: z.string().max(2000).nullable().optional(),
 });
 
 const updateProjectSchema = createProjectSchema.partial().omit({ customerId: true });
@@ -152,6 +192,11 @@ router.post('/', requireRole(Role.ADMIN), async (req, res, next) => {
         budgetCents: data.budgetCents ?? null,
         laborBudgetCents: data.laborBudgetCents ?? null,
         showBudgetToCustomer: data.showBudgetToCustomer ?? false,
+        // Portfolio fields default off; admin opts in later via PATCH.
+        showOnPortfolio: data.showOnPortfolio ?? false,
+        portfolioSlug: data.portfolioSlug ?? null,
+        serviceCategory: data.serviceCategory ?? null,
+        publicSummary: data.publicSummary ?? null,
       },
       include: projectInclude,
     });
@@ -184,6 +229,24 @@ router.patch('/:id', async (req, res, next) => {
     // project) and only admin can change the customer.
     if (data.projectManagerId !== undefined && me.role !== Role.ADMIN) {
       return res.status(403).json({ error: 'Only admins can reassign the PM' });
+    }
+
+    // Auto-derive a portfolio slug when admin first opts a project in
+    // without supplying one. We do it here (not in the schema default) so
+    // the slug is stable from first save and admin can override later.
+    let resolvedSlug: string | null | undefined = data.portfolioSlug;
+    if (data.showOnPortfolio === true && resolvedSlug === undefined) {
+      const existing = await prisma.project.findUnique({
+        where: { id: req.params.id },
+        select: { portfolioSlug: true, name: true },
+      });
+      if (existing && !existing.portfolioSlug) {
+        const base = slugify(existing.name) ?? 'project';
+        resolvedSlug = await uniquePortfolioSlug(base, req.params.id);
+      }
+    } else if (data.portfolioSlug && data.portfolioSlug.length > 0) {
+      // Validate uniqueness when admin supplies a custom slug.
+      resolvedSlug = await uniquePortfolioSlug(data.portfolioSlug, req.params.id);
     }
     if (data.projectManagerId) {
       const pm = await prisma.user.findUnique({ where: { id: data.projectManagerId } });
@@ -219,6 +282,13 @@ router.patch('/:id', async (req, res, next) => {
           : data.laborBudgetCents,
         laborAlertSentAt: data.laborBudgetCents !== undefined ? null : undefined,
         showBudgetToCustomer: data.showBudgetToCustomer,
+        showOnPortfolio: data.showOnPortfolio,
+        // resolvedSlug carries either: undefined (no change), null (admin
+        // cleared it), or a unique string (auto-derived or admin-supplied).
+        portfolioSlug: resolvedSlug,
+        serviceCategory: data.serviceCategory === null ? null : data.serviceCategory,
+        heroImageId: data.heroImageId === null ? null : data.heroImageId,
+        publicSummary: data.publicSummary === null ? null : data.publicSummary,
       },
       include: projectInclude,
     });

@@ -110,4 +110,30 @@ router.post('/admin/satisfaction-surveys/_run', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Approve / un-approve a survey response for public display + override
+// the quote text and attribution. Approved rows feed the home-page
+// testimonials carousel and (when the survey's project is on the
+// portfolio) the project detail page.
+const approveSchema = z.object({
+  approved: z.boolean(),
+  quote: z.string().max(2000).nullable().optional(),
+  attribution: z.string().max(120).nullable().optional(),
+});
+router.patch('/admin/satisfaction-surveys/:id/public', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!me || !hasAccountingAccess(me)) return res.status(403).json({ error: 'Forbidden' });
+    const data = approveSchema.parse(req.body);
+    const updated = await prisma.satisfactionSurvey.update({
+      where: { id: req.params.id },
+      data: {
+        publicApprovedAt: data.approved ? new Date() : null,
+        publicQuote: data.quote === null ? null : data.quote,
+        publicAttribution: data.attribution === null ? null : data.attribution,
+      },
+    });
+    res.json({ survey: updated });
+  } catch (err) { next(err); }
+});
+
 export default router;

@@ -10,6 +10,9 @@ interface Survey {
   score: number | null;
   comments: string | null;
   improvements: string | null;
+  publicApprovedAt: string | null;
+  publicQuote: string | null;
+  publicAttribution: string | null;
   project: { id: string; name: string };
   customer: { id: string; name: string; email: string };
 }
@@ -66,6 +69,47 @@ export default function SatisfactionDashboardPage() {
       setError(err instanceof ApiError ? err.message : 'Run failed');
     } finally {
       setRunning(false);
+    }
+  }
+
+  // Toggle public approval + capture admin-edited quote/attribution
+  // (multi-line so admin can clean up the customer's wording).
+  async function publicizeSurvey(s: Survey) {
+    if (s.publicApprovedAt) {
+      // Already approved — admin can edit or unapprove.
+      const action = window.prompt(
+        'This survey is approved for the public site. Type "remove" to un-approve, or hit OK to edit the quote.',
+        s.publicQuote ?? s.comments ?? '',
+      );
+      if (action === null) return;
+      if (action.trim().toLowerCase() === 'remove') {
+        await api(`/api/admin/satisfaction-surveys/${s.id}/public`, {
+          method: 'PATCH',
+          body: JSON.stringify({ approved: false }),
+        }).then(load).catch((err) => setError(err instanceof ApiError ? err.message : 'Update failed'));
+        return;
+      }
+      const attribution = window.prompt('Attribution (e.g. "Taylor H." or "Anytown homeowner")', s.publicAttribution ?? s.customer.name.split(/\s+/)[0]);
+      if (attribution === null) return;
+      await api(`/api/admin/satisfaction-surveys/${s.id}/public`, {
+        method: 'PATCH',
+        body: JSON.stringify({ approved: true, quote: action, attribution }),
+      }).then(load).catch((err) => setError(err instanceof ApiError ? err.message : 'Update failed'));
+      return;
+    }
+    // First approval — prompt for the cleaned quote + attribution.
+    const quote = window.prompt('Quote to display (you can edit/clean the customer\'s wording):', s.comments ?? '');
+    if (quote === null || !quote.trim()) return;
+    const attribution = window.prompt('Attribution (e.g. "Taylor H." or "Anytown homeowner")', s.customer.name.split(/\s+/)[0]);
+    if (attribution === null) return;
+    try {
+      await api(`/api/admin/satisfaction-surveys/${s.id}/public`, {
+        method: 'PATCH',
+        body: JSON.stringify({ approved: true, quote: quote.trim(), attribution: attribution.trim() || null }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Approve failed');
     }
   }
 
@@ -148,6 +192,7 @@ export default function SatisfactionDashboardPage() {
                 <th>NPS</th>
                 <th>Comments</th>
                 <th>Improvements</th>
+                <th>Public</th>
               </tr>
             </thead>
             <tbody>
@@ -173,6 +218,20 @@ export default function SatisfactionDashboardPage() {
                     </td>
                     <td className="muted" style={{ maxWidth: 240 }}>{s.comments ?? '—'}</td>
                     <td className="muted" style={{ maxWidth: 240 }}>{s.improvements ?? '—'}</td>
+                    <td>
+                      {s.submittedAt && (
+                        <button
+                          type="button"
+                          className={`button-small ${s.publicApprovedAt ? '' : 'button-ghost'}`}
+                          onClick={() => publicizeSurvey(s)}
+                          title={s.publicApprovedAt
+                            ? 'Approved for public site — click to edit / unapprove'
+                            : 'Approve for public testimonials carousel'}
+                        >
+                          {s.publicApprovedAt ? '★ public' : 'Approve'}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 );
               })}

@@ -41,6 +41,12 @@ interface ProjectDetail {
   reviewRequestSentAt?: string | null;
   laborBudgetCents?: number | null;
   laborAlertSentAt?: string | null;
+  // Public portfolio fields (admin/PM only see/edit these).
+  showOnPortfolio?: boolean;
+  portfolioSlug?: string | null;
+  serviceCategory?: string | null;
+  heroImageId?: string | null;
+  publicSummary?: string | null;
   customer: { id: string; name: string; email: string };
   projectManager: { id: string; name: string; email: string } | null;
 }
@@ -192,6 +198,21 @@ export default function ProjectDetailPage() {
     }
   }
 
+  // Patch one of the public-portfolio fields. The server handles slug
+  // auto-derivation when admin first opts in without supplying one.
+  async function patchPortfolio(patch: Record<string, unknown>) {
+    if (!project) return;
+    try {
+      await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Update failed');
+    }
+  }
+
   async function toggleBudgetVisibility(next: boolean) {
     if (!project) return;
     try {
@@ -321,6 +342,70 @@ export default function ProjectDetailPage() {
               {project.laborBudgetCents != null ? 'Edit labor budget' : 'Set labor budget'}
             </button>
           </div>
+        </section>
+      )}
+
+      {isPmOrAdmin && (
+        <section className="card">
+          <div className="row-between">
+            <h2 style={{ margin: 0 }}>Public portfolio</h2>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
+              <input
+                type="checkbox"
+                checked={!!project.showOnPortfolio}
+                onChange={(e) => patchPortfolio({ showOnPortfolio: e.target.checked })}
+                style={{ width: 'auto' }}
+              />
+              Show on public site
+            </label>
+          </div>
+          <p className="muted" style={{ marginTop: '0.5rem' }}>
+            When on, this project appears at <code>/portfolio/{project.portfolioSlug ?? '…'}</code> on
+            the public site once the photos are tagged. Off by default — opt in deliberately.
+          </p>
+
+          {project.showOnPortfolio && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.5rem' }}>
+              <div>
+                <label>Service category</label>
+                <input
+                  list="service-cat-options"
+                  value={project.serviceCategory ?? ''}
+                  onChange={(e) => patchPortfolio({ serviceCategory: e.target.value || null })}
+                  placeholder="Decks, Hardscape, Fencing, Landscaping, Remodeling, …"
+                />
+                <datalist id="service-cat-options">
+                  <option value="Decks" />
+                  <option value="Hardscape" />
+                  <option value="Fencing" />
+                  <option value="Landscaping" />
+                  <option value="Remodeling" />
+                  <option value="Roofing" />
+                  <option value="Additions" />
+                  <option value="Kitchens" />
+                  <option value="Bathrooms" />
+                </datalist>
+              </div>
+              <div>
+                <label>URL slug (lowercase, dashes)</label>
+                <input
+                  value={project.portfolioSlug ?? ''}
+                  onChange={(e) => patchPortfolio({ portfolioSlug: e.target.value || null })}
+                  pattern="[a-z0-9-]+"
+                  placeholder="taylor-backyard-deck"
+                />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label>Public summary (shown on the portfolio entry)</label>
+                <textarea
+                  rows={3}
+                  value={project.publicSummary ?? ''}
+                  onChange={(e) => patchPortfolio({ publicSummary: e.target.value || null })}
+                  placeholder="Short marketing description for prospects. e.g. 'Composite deck, 16x20, with screen panels and built-in storage.'"
+                />
+              </div>
+            </div>
+          )}
         </section>
       )}
 
