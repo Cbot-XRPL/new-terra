@@ -20,6 +20,9 @@ export default function PublicLayout() {
             <a href="/#services">Services</a>
           </li>
           <li>
+            <NavLink to="/portfolio">Recent work</NavLink>
+          </li>
+          <li>
             <a href="/#about">About</a>
           </li>
           <li>
@@ -73,6 +76,9 @@ export default function PublicLayout() {
               </li>
               <li>
                 <a href="/#services">Services</a>
+              </li>
+              <li>
+                <Link to="/portfolio">Recent work</Link>
               </li>
               <li>
                 <a href="/#about">About</a>

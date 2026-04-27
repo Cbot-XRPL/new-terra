@@ -23,6 +23,8 @@ const ContactPage = lazy(() => import('./pages/public/ContactPage'));
 const PublicGalleryPage = lazy(() => import('./pages/public/PublicGalleryPage'));
 const SurveyPage = lazy(() => import('./pages/public/SurveyPage'));
 const SignupPage = lazy(() => import('./pages/public/SignupPage'));
+const PortfolioListPage = lazy(() => import('./pages/public/PortfolioListPage'));
+const PortfolioDetailPage = lazy(() => import('./pages/public/PortfolioDetailPage'));
 const ProjectsListPage = lazy(() => import('./pages/portal/ProjectsListPage'));
 const ProjectDetailPage = lazy(() => import('./pages/portal/ProjectDetailPage'));
 const InvoicesPage = lazy(() => import('./pages/portal/InvoicesPage'));
@@ -82,6 +84,8 @@ export default function App() {
       <Route element={<PublicLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/contact" element={<ContactPage />} />
+        <Route path="/portfolio" element={<PortfolioListPage />} />
+        <Route path="/portfolio/:slug" element={<PortfolioDetailPage />} />
         <Route path="/g/:token" element={<PublicGalleryPage />} />
         <Route path="/survey/:token" element={<SurveyPage />} />
         <Route path="/start" element={<SignupPage />} />

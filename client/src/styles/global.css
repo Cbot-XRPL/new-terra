@@ -918,6 +918,203 @@ input:focus, textarea:focus, select:focus {
 }
 .table th { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 
+/* Public portfolio (marketing site) — listing chips, project cards, and the
+   detail page hero / before-after grid / lightbox. Tag styles are reused on
+   the home page testimonial carousel and service cards once those land. */
+.portfolio-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+.portfolio-chips .is-active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.portfolio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+.portfolio-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.portfolio-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+  border-color: var(--accent);
+}
+.portfolio-card-img {
+  aspect-ratio: 4 / 3;
+  background: var(--surface-strong);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.portfolio-card-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.portfolio-card-placeholder {
+  font-size: 3rem;
+  color: var(--text-muted);
+}
+.portfolio-card-body {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex: 1;
+}
+.portfolio-card-body h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.portfolio-meta {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: auto;
+  padding-top: 0.5rem;
+}
+.portfolio-tag {
+  display: inline-block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--surface-strong);
+  color: var(--accent);
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+}
+.portfolio-tag-small {
+  position: absolute;
+  bottom: 0.4rem;
+  left: 0.4rem;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+.portfolio-hero {
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-strong);
+  max-height: 560px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.portfolio-hero img {
+  width: 100%;
+  max-height: 560px;
+  object-fit: cover;
+  display: block;
+}
+.portfolio-ba {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.portfolio-ba figure {
+  margin: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface-strong);
+}
+.portfolio-ba img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: block;
+  cursor: zoom-in;
+}
+.portfolio-ba figcaption {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding: 0.5rem 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.portfolio-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+.portfolio-gallery-item {
+  position: relative;
+  border: 0;
+  padding: 0;
+  background: var(--surface-strong);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: zoom-in;
+  aspect-ratio: 1;
+}
+.portfolio-gallery-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.portfolio-testimonial blockquote {
+  margin: 0;
+  font-size: 1.15rem;
+  line-height: 1.6;
+  font-style: italic;
+}
+.portfolio-testimonial cite {
+  display: block;
+  margin-top: 0.75rem;
+  font-style: normal;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+.portfolio-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.92);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  cursor: zoom-out;
+}
+.portfolio-lightbox img {
+  max-width: 100%;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 4px;
+}
+.portfolio-lightbox-caption {
+  position: absolute;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
 /* Responsive */
 @media (max-width: 900px) {
   .two-col { grid-template-columns: 1fr; }
@@ -961,4 +1158,8 @@ input:focus, textarea:focus, select:focus {
   /* Action buttons (Approve / Sign / Delete) on phone-width tables stack
      vertically so they don't overflow the right edge. */
   .table button + button { margin-left: 0; margin-top: 0.25rem; display: inline-block; }
+  /* Before/after side-by-side becomes top/bottom so neither image gets
+     squashed below visible-resolution on a phone. */
+  .portfolio-ba { grid-template-columns: 1fr; }
+  .portfolio-lightbox { padding: 0.5rem; }
 }
