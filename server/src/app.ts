@@ -19,6 +19,7 @@ import membershipsRouter from './routes/memberships.js';
 import logEntriesRouter from './routes/logEntries.js';
 import boardRouter from './routes/board.js';
 import publicRouter from './routes/public.js';
+import publicPortfolioRouter from './routes/publicPortfolio.js';
 import contractTemplatesRouter from './routes/contractTemplates.js';
 import contractsRouter from './routes/contracts.js';
 import bulkImportRouter from './routes/bulkImport.js';
@@ -88,6 +89,7 @@ export function createApp(): Express {
   app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
 
   app.use('/api/public', publicRouter);
+  app.use('/api/public', publicPortfolioRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/portal', portalRouter);
