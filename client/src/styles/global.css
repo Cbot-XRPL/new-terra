@@ -958,6 +958,24 @@ input:focus, textarea:focus, select:focus {
 .meta-grid dd { margin: 0; word-break: break-word; }
 .meta-grid dd code { font-size: 0.85rem; background: var(--surface-strong); padding: 0.1rem 0.4rem; border-radius: 4px; }
 
+/* Sticky bottom CTA — phone-only. Hidden by default on desktop; the
+   600px breakpoint flips it on. flex layout so the two buttons share
+   the row and grow to fill. Safe-area inset accounts for iOS notch. */
+.sticky-cta {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  padding: 0.6rem 0.75rem calc(0.6rem + env(safe-area-inset-bottom)) 0.75rem;
+  gap: 0.5rem;
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.12);
+}
+.sticky-cta .button { flex: 1; text-align: center; padding: 0.65rem 0.5rem; }
+
 /* Service detail pages (/services/:slug) — split hero with copy left
    and image right, then bullet list, recent projects, and FAQs. */
 .service-hero {
@@ -1266,6 +1284,10 @@ input:focus, textarea:focus, select:focus {
   /* Action buttons (Approve / Sign / Delete) on phone-width tables stack
      vertically so they don't overflow the right edge. */
   .table button + button { margin-left: 0; margin-top: 0.25rem; display: inline-block; }
+  /* Sticky CTA only on phone widths. Add bottom padding to the public
+     shell so the last footer line isn't hidden under it. */
+  .sticky-cta { display: flex; }
+  .public-shell { padding-bottom: 5rem; }
   /* Before/after side-by-side becomes top/bottom so neither image gets
      squashed below visible-resolution on a phone. */
   .portfolio-ba { grid-template-columns: 1fr; }

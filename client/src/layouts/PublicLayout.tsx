@@ -59,6 +59,15 @@ export default function PublicLayout() {
       <main>
         <Outlet />
       </main>
+      {/* Phone-only sticky CTA — keeps "free estimate" + a tap-to-call link
+          one thumb away on small screens. Hidden on desktop and for users
+          already inside the portal. */}
+      {!user && (
+        <div className="sticky-cta">
+          <a className="button" href="tel:6782079719">📞 Call</a>
+          <Link to="/start" className="button button-primary">Get a free estimate</Link>
+        </div>
+      )}
       <footer className="site-footer">
         <div className="footer-cols">
           <div>
