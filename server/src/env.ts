@@ -1,4 +1,25 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'node:path';
+import fs from 'node:fs';
+
+// Monorepo: .env lives at the repo root, not server/. Walk up from cwd
+// looking for it so the same code works whether we're invoked from the
+// repo root (npm run dev) or from server/ (npm --workspace server run …).
+function findEnvFile(): string | null {
+  let dir = process.cwd();
+  for (let i = 0; i < 6; i++) {
+    const candidate = path.join(dir, '.env');
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+const envFile = findEnvFile();
+if (envFile) dotenv.config({ path: envFile });
+else dotenv.config();
 
 function required(name: string): string {
   const v = process.env[name];

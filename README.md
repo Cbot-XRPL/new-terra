@@ -17,40 +17,32 @@ Marketing site + employee/customer portal.
 
 ## Quick start
 
-### 1. Install
+Local dev ships its own Postgres — no system install, no Docker. The
+embedded binary runs in `server/.pgdata/` while you're working and shuts down
+cleanly with Ctrl+C. The VM uses a real Postgres install (see [DEPLOY.md](DEPLOY.md)).
 
 ```bash
-npm install
-```
-
-### 2. Configure environment
-
-Copy `.env.example` → `.env` at the repo root, fill in `DATABASE_URL` and `JWT_SECRET`.
-Then in `client/`, create `client/.env` with:
-
-```
-VITE_API_URL=http://localhost:4000
-```
-
-### 3. Set up the database
-
-You need a running PostgreSQL instance.
-
-```bash
-npm run db:migrate   # creates the schema
-npm run db:seed      # creates the bootstrap admin (uses SEED_ADMIN_* env vars)
-```
-
-### 4. Run
-
-```bash
-npm run dev
+npm install        # also pulls down the embedded postgres binary (~50 MB)
+npm run db:setup   # one-time: inits DB, writes .env files, migrates, seeds demo data
+npm run dev        # boots embedded PG + API + client, all with hot reload
 ```
 
 - Client: <http://localhost:5173>
 - API:    <http://localhost:4000>
+- DB:     `localhost:5432` (embedded; `npm run db:studio` for a GUI)
 
-Sign in at `/login` with the seeded admin, then invite users from `/portal/admin`.
+Sign in at `/login` with `admin@newterraconstruction.com` / `changeMe!2026`
+(from `db:setup`), then invite users from `/portal/admin`.
+
+To start fresh: `rm -rf server/.pgdata && npm run db:setup`.
+
+### Pointing at a different database
+
+`db:setup` writes `DATABASE_URL` to the repo-root `.env`. Edit it to point
+at any Postgres (Neon, Supabase, your VM, a native install) — Prisma reads
+the URL at runtime and everything else just works. If you point at an
+external DB, skip `npm run db:start` and just run `dev:server` / `dev:client`
+manually, or set `LOCAL_PG_PORT` to a free port to keep both around.
 
 ## Project structure
 
@@ -104,19 +96,14 @@ render.yaml                Render blueprint
 
 ## Deploying
 
-A `render.yaml` blueprint at the repo root provisions the app on
-[Render](https://render.com): one Docker web service + a managed Postgres
-database + a 5 GB persistent disk for uploads.
+Production runs natively on a Linux VM (Node + Postgres + nginx + systemd) —
+no Docker. Full walkthrough in [DEPLOY.md](DEPLOY.md): installer commands,
+the systemd unit, nginx reverse proxy snippet, migration + seed steps, and
+a `pg_dump` cron for backups.
 
-```bash
-# After connecting the repo on Render and the first deploy completes:
-APP_URL=https://<your-render-host>     # Set this in the Render dashboard
-SEED_ADMIN_EMAIL=...                   # then run db:seed once via Shell
-```
-
-The Dockerfile in `server/` is multi-stage and produces a single image that
-serves both the API and the React build (the SPA is served by Express in
-`NODE_ENV=production`).
+The same code path that runs locally (Express serves both `/api/*` and the
+React SPA when `NODE_ENV=production`) is what runs on the VM — no separate
+deploy artifact.
 
 ### Image storage
 

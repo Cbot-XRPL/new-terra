@@ -4,6 +4,7 @@ build/
 .env
 .env.local
 .env.*.local
+client/.env
 *.log
 .DS_Store
 .vscode/*
@@ -11,6 +12,7 @@ build/
 client/dist/
 server/dist/
 server/uploads/
+server/.pgdata/
 server/prisma/migrations/dev.db*
 coverage/
 *.tsbuildinfo
