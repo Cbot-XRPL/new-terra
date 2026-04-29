@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAuth, type Role } from '../../auth/AuthContext';
+import QuickScheduleModal from './QuickScheduleModal';
 
 interface CalendarSchedule {
   id: string;
@@ -46,11 +47,15 @@ export default function CalendarPage() {
   const [schedules, setSchedules] = useState<CalendarSchedule[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [mineOnly, setMineOnly] = useState(false);
+  const [pickedDate, setPickedDate] = useState<Date | null>(null);
+
+  const canSchedule =
+    user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && (user.isProjectManager || user.isSales));
 
   const grid = useMemo(() => daysGrid(cursor), [cursor]);
   const monthLabel = cursor.toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
-  useEffect(() => {
+  function reload() {
     const from = new Date(grid[0]);
     const to = new Date(grid[grid.length - 1]);
     to.setHours(23, 59, 59, 999);
@@ -62,7 +67,9 @@ export default function CalendarPage() {
     api<{ schedules: CalendarSchedule[] }>(`/api/schedules?${params}`)
       .then((d) => setSchedules(d.schedules))
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load calendar'));
-  }, [grid, mineOnly]);
+  }
+
+  useEffect(reload, [grid, mineOnly]);
 
   const byDay = useMemo(() => {
     const map = new Map<string, CalendarSchedule[]>();
@@ -121,7 +128,15 @@ export default function CalendarPage() {
                 key={day.toISOString()}
                 className={`calendar-cell ${inMonth ? '' : 'muted-cell'} ${
                   sameDay(day, today) ? 'today' : ''
-                }`}
+                } ${canSchedule ? 'clickable' : ''}`}
+                onClick={(e) => {
+                  // Ignore clicks on the inner event Links — those route
+                  // to the project as before.
+                  if ((e.target as HTMLElement).closest('a')) return;
+                  if (canSchedule) setPickedDate(new Date(day));
+                }}
+                role={canSchedule ? 'button' : undefined}
+                title={canSchedule ? 'Click to add an event on this day' : undefined}
               >
                 <div className="calendar-day-num">{day.getDate()}</div>
                 {events.slice(0, 3).map((s) => (
@@ -145,6 +160,14 @@ export default function CalendarPage() {
           })}
         </div>
       </section>
+
+      {pickedDate && (
+        <QuickScheduleModal
+          defaultDate={pickedDate}
+          onClose={() => setPickedDate(null)}
+          onCreated={reload}
+        />
+      )}
 
       <section className="card">
         <h2>This month</h2>

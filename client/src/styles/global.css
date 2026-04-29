@@ -663,6 +663,77 @@ input:focus, textarea:focus, select:focus {
   .channels-sidebar { position: static; }
 }
 
+/* Modal overlay — used by QuickScheduleModal (calendar click-to-add).
+   Centered card on a translucent backdrop; stops scroll on the body
+   while open isn't required because we rely on click/ESC dismissal. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 100;
+}
+.modal-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 50px var(--shadow);
+}
+
+/* Calendar cell hover affordance for click-to-add. The cursor change
+   cues that cells are interactive; the lighter hover background gives
+   visual feedback. */
+.calendar-cell.clickable { cursor: pointer; }
+.calendar-cell.clickable:hover { background: var(--surface); }
+.calendar-cell.clickable.today:hover { background: rgba(138, 180, 248, 0.18); }
+
+/* Recent project photos carousel on the staff overview — horizontal
+   strip with scroll-snap so swipe / wheel feel right. Each tile is a
+   link to the underlying project. */
+.photo-strip {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 0.5rem; /* room for scrollbar without clipping captions */
+}
+.photo-strip-item {
+  flex: 0 0 auto;
+  width: 200px;
+  text-decoration: none;
+  color: inherit;
+  scroll-snap-align: start;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  display: flex;
+  flex-direction: column;
+}
+.photo-strip-item:hover { border-color: var(--accent); }
+.photo-strip-item img {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  display: block;
+}
+.photo-strip-caption {
+  padding: 0.4rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.85rem;
+}
+
 /* Discord-style message stream — flat rows, no per-post card. Hover
    reveals admin/author actions; pin badge stays on a pinned post. */
 .chat-stream {

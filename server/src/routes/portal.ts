@@ -121,4 +121,36 @@ router.get(
   },
 );
 
+// Recent project photos across every active project — drives the photo
+// carousel on the staff overview. Returns ~30 most recent images so the
+// strip has plenty to scroll through without being heavy.
+router.get(
+  '/staff/recent-images',
+  requireRole(Role.EMPLOYEE, Role.SUBCONTRACTOR, Role.ADMIN),
+  async (_req, res, next) => {
+    try {
+      const images = await prisma.projectImage.findMany({
+        where: { project: { archivedAt: null } },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        select: {
+          id: true,
+          url: true,
+          thumbnailUrl: true,
+          mediumUrl: true,
+          caption: true,
+          phase: true,
+          takenAt: true,
+          createdAt: true,
+          project: { select: { id: true, name: true } },
+          uploadedBy: { select: { id: true, name: true } },
+        },
+      });
+      res.json({ images });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 export default router;

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAuth, type Role } from '../../auth/AuthContext';
+import ProjectImageCarousel from './ProjectImageCarousel';
+import QuickScheduleModal from './QuickScheduleModal';
 
 interface Schedule {
   id: string;
@@ -69,8 +71,12 @@ export default function StaffDashboard() {
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
   const [calSchedules, setCalSchedules] = useState<CalendarSchedule[]>([]);
   const [calError, setCalError] = useState<string | null>(null);
+  const [pickedDate, setPickedDate] = useState<Date | null>(null);
   const grid = useMemo(() => daysGrid(cursor), [cursor]);
   const monthLabel = cursor.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+  const canSchedule =
+    user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && (user.isProjectManager || user.isSales));
 
   useEffect(() => {
     api<Overview>('/api/portal/staff/overview')
@@ -78,7 +84,7 @@ export default function StaffDashboard() {
       .catch((err) => setError(err.message));
   }, []);
 
-  useEffect(() => {
+  function reloadCalendar() {
     const from = new Date(grid[0]);
     const to = new Date(grid[grid.length - 1]);
     to.setHours(23, 59, 59, 999);
@@ -88,7 +94,9 @@ export default function StaffDashboard() {
       .catch((err) =>
         setCalError(err instanceof ApiError ? err.message : 'Failed to load calendar'),
       );
-  }, [grid]);
+  }
+
+  useEffect(reloadCalendar, [grid]);
 
   const byDay = useMemo(() => {
     const map = new Map<string, CalendarSchedule[]>();
@@ -148,7 +156,13 @@ export default function StaffDashboard() {
                 key={day.toISOString()}
                 className={`calendar-cell ${inMonth ? '' : 'muted-cell'} ${
                   sameDay(day, today) ? 'today' : ''
-                }`}
+                } ${canSchedule ? 'clickable' : ''}`}
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest('a')) return;
+                  if (canSchedule) setPickedDate(new Date(day));
+                }}
+                role={canSchedule ? 'button' : undefined}
+                title={canSchedule ? 'Click to add an event on this day' : undefined}
               >
                 <div className="calendar-day-num">{day.getDate()}</div>
                 {events.slice(0, 3).map((s) => (
@@ -219,6 +233,16 @@ export default function StaffDashboard() {
           <p className="muted">No messages yet.</p>
         )}
       </section>
+
+      <ProjectImageCarousel />
+
+      {pickedDate && (
+        <QuickScheduleModal
+          defaultDate={pickedDate}
+          onClose={() => setPickedDate(null)}
+          onCreated={reloadCalendar}
+        />
+      )}
     </div>
   );
 }
