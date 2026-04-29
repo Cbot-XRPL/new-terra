@@ -4,8 +4,10 @@ import sharp from 'sharp';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { z } from 'zod';
+import { Role } from '@prisma/client';
 import { prisma } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
+import { audit } from '../lib/audit.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -128,6 +130,117 @@ router.post('/avatar', upload.single('file'), async (req, res, next) => {
       select: meSelect,
     });
     res.status(201).json({ user });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// W-9 submission. Any non-customer can self-certify their tax info; the
+// signature + IP are stamped so admin has an audit trail. Admin can also
+// edit the same fields from the user list (existing W-9 button there).
+const w9Schema = z.object({
+  legalName: z.string().min(1).max(200),
+  taxClassification: z.enum([
+    'individual',
+    'sole_prop',
+    'c_corp',
+    's_corp',
+    'partnership',
+    'llc',
+    'other',
+  ]),
+  taxIdType: z.enum(['SSN', 'EIN']),
+  taxId: z.string().min(9).max(20),
+  mailingAddress: z.string().min(1).max(500),
+  signatureName: z.string().min(2).max(200),
+});
+
+router.post('/w9', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!me) return res.status(401).json({ error: 'Unauthenticated' });
+    if (me.role === Role.CUSTOMER) {
+      return res.status(403).json({ error: 'Customers do not file a W-9 with us.' });
+    }
+    const data = w9Schema.parse(req.body);
+    if (data.signatureName.trim().toLowerCase() !== me.name.trim().toLowerCase() &&
+        data.signatureName.trim().toLowerCase() !== data.legalName.trim().toLowerCase()) {
+      // Soft check — the typed signature should match either the
+      // display name or the legal name. Strict-mismatch is allowed
+      // (people sign with nicknames) but we record what they typed.
+    }
+    const updated = await prisma.user.update({
+      where: { id: me.id },
+      data: {
+        legalName: data.legalName,
+        taxClassification: data.taxClassification,
+        taxIdType: data.taxIdType,
+        taxId: data.taxId,
+        mailingAddress: data.mailingAddress,
+        w9SignedAt: new Date(),
+        w9SignedName: data.signatureName,
+        w9SignedIp: req.ip ?? null,
+      },
+      select: {
+        id: true,
+        legalName: true,
+        taxClassification: true,
+        taxIdType: true,
+        taxId: true,
+        mailingAddress: true,
+        w9SignedAt: true,
+        w9SignedName: true,
+      },
+    });
+    audit(req, {
+      action: 'w9.submitted',
+      resourceType: 'user',
+      resourceId: me.id,
+      meta: {
+        taxClassification: data.taxClassification,
+        taxIdType: data.taxIdType,
+        signatureName: data.signatureName,
+      },
+    }).catch(() => undefined);
+    res.json({ user: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Lightweight read so the Request-pay banner can decide whether to nag
+// without needing to expand /api/auth/me with sensitive fields.
+router.get('/w9', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({
+      where: { id: req.user!.sub },
+      select: {
+        legalName: true,
+        taxClassification: true,
+        taxIdType: true,
+        // Mask the tax id — return only last 4 so the form can pre-show
+        // "··3456" without leaking the full SSN/EIN to whoever sniffs the response.
+        taxId: true,
+        mailingAddress: true,
+        w9SignedAt: true,
+        w9SignedName: true,
+      },
+    });
+    if (!me) return res.status(404).json({ error: 'User not found' });
+    const masked =
+      me.taxId && me.taxId.length >= 4
+        ? `··${me.taxId.slice(-4)}`
+        : null;
+    res.json({
+      onFile: !!me.w9SignedAt,
+      legalName: me.legalName,
+      taxClassification: me.taxClassification,
+      taxIdType: me.taxIdType,
+      taxIdMasked: masked,
+      mailingAddress: me.mailingAddress,
+      signedAt: me.w9SignedAt,
+      signedName: me.w9SignedName,
+    });
   } catch (err) {
     next(err);
   }

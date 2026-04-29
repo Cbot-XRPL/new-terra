@@ -40,7 +40,9 @@
       "Bash(taskkill //F //PID 292184)",
       "Bash(grep -n \"to=\\\\\"/portal/finance\\\\\\\\|to=\\\\\"/portal/banking\" /c/Users/codyr/Desktop/code/new-terra-4/client/src/layouts/PortalLayout.tsx)",
       "Bash(taskkill //F //PID 18668)",
-      "Bash(taskkill //F //PID 342580)"
+      "Bash(taskkill //F //PID 342580)",
+      "Bash(taskkill //F //PID 392180)",
+      "Bash(taskkill //F //PID 408684)"
     ]
   }
 }

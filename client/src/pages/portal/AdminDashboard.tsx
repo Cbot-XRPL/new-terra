@@ -16,6 +16,7 @@ interface AdminUser {
   isAccounting: boolean;
   billingMode: 'HOURLY' | 'DAILY';
   dailyRateCents: number;
+  hourlyRateCents: number;
   // Optional 1099 fields for subs.
   taxId: string | null;
   mailingAddress: string | null;
@@ -141,7 +142,7 @@ export default function AdminDashboard() {
       return;
     }
     const billingMode = mode === 'daily' ? 'DAILY' : 'HOURLY';
-    let dailyRateCents = user.dailyRateCents;
+    const patch: Record<string, unknown> = { billingMode };
     if (billingMode === 'DAILY') {
       const rateRaw = prompt(
         `Day rate for ${user.name} in dollars (e.g. 250 = $250/day).`,
@@ -153,12 +154,24 @@ export default function AdminDashboard() {
         setError('Day rate must be a non-negative number');
         return;
       }
-      dailyRateCents = Math.round(rate * 100);
+      patch.dailyRateCents = Math.round(rate * 100);
+    } else {
+      const rateRaw = prompt(
+        `Hourly rate for ${user.name} in dollars (e.g. 75 = $75/hour).`,
+        (user.hourlyRateCents / 100).toString(),
+      );
+      if (rateRaw === null) return;
+      const rate = Number(rateRaw);
+      if (!Number.isFinite(rate) || rate < 0) {
+        setError('Hourly rate must be a non-negative number');
+        return;
+      }
+      patch.hourlyRateCents = Math.round(rate * 100);
     }
     try {
       await api(`/api/admin/users/${user.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ billingMode, dailyRateCents }),
+        body: JSON.stringify(patch),
       });
       await load();
     } catch (err) {
@@ -298,7 +311,7 @@ export default function AdminDashboard() {
                   )}
                 </td>
                 <td>
-                  {u.role === 'EMPLOYEE' || u.role === 'SUBCONTRACTOR' ? (
+                  {u.role !== 'CUSTOMER' ? (
                     <button
                       className="button-small button-ghost"
                       onClick={() => editPay(u)}
@@ -306,7 +319,7 @@ export default function AdminDashboard() {
                     >
                       {u.billingMode === 'DAILY'
                         ? `Daily · $${(u.dailyRateCents / 100).toFixed(0)}/d`
-                        : 'Hourly'}
+                        : `Hourly · $${(u.hourlyRateCents / 100).toFixed(0)}/h`}
                     </button>
                   ) : (
                     <span className="muted">—</span>

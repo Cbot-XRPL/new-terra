@@ -122,9 +122,11 @@ model User {
   // DAILY = logs days (1, 0.5, 0.25 etc.) without punching a clock —
   // matches in-house guys who bill by the day.
   billingMode   BillingMode @default(HOURLY)
-  // Day rate (in cents) for DAILY users; ignored for HOURLY users (they
-  // use hourlyRateCents on each entry instead).
+  // Day rate (in cents) for DAILY users.
   dailyRateCents Int @default(0)
+  // Hourly rate (in cents) for HOURLY users — snapshotted onto each
+  // TimeEntry at punch-in time. Used when billingMode === HOURLY.
+  hourlyRateCents Int @default(0)
   isActive      Boolean  @default(true)
   // Bumped on password reset, role change, and admin "sign out everywhere".
   // The auth middleware compares this against the JWT claim and rejects
@@ -136,11 +138,24 @@ model User {
   // are produced by the avatar upload pipeline (sharp resize).
   avatarUrl     String?
   avatarThumbnailUrl String?
-  // Tax filing fields — only relevant for subcontractors (used by the 1099
-  // export). All optional so existing users can leave them blank; the
-  // export skips subs missing data so admin sees what's incomplete.
+  // Tax filing fields — used by the 1099 export and surfaced on the
+  // Request pay page. All optional so existing users can leave them
+  // blank; the export skips workers missing data.
   taxId         String?
   mailingAddress String?  // multi-line OK
+  // W-9 submission. legalName is the name on the worker's tax filing
+  // (often differs from display name when they operate under an LLC).
+  // taxClassification mirrors the W-9 box: 'individual' | 'sole_prop' |
+  // 'c_corp' | 's_corp' | 'partnership' | 'llc' | 'other'.
+  // taxIdType tells us whether taxId is an SSN or EIN.
+  legalName            String?
+  taxClassification    String?
+  taxIdType            String?  // 'SSN' | 'EIN'
+  // Audit trail when the worker types their name to certify the W-9.
+  // signedAt being non-null is the system's "we have a W-9 on file" flag.
+  w9SignedAt           DateTime?
+  w9SignedName         String?
+  w9SignedIp           String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

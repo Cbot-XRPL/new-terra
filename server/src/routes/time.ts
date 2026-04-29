@@ -39,6 +39,7 @@ router.post('/punch-in', async (req, res, next) => {
     if (role === Role.CUSTOMER) return res.status(403).json({ error: 'Forbidden' });
 
     const data = startSchema.parse(req.body ?? {});
+
     // Auto-close any prior open entry — clocking in twice without out is a
     // common UI mistake; we'd rather close the previous than reject silently.
     const existingOpen = await prisma.timeEntry.findFirst({
@@ -55,6 +56,14 @@ router.post('/punch-in', async (req, res, next) => {
       });
     }
 
+    // Snapshot the rate from the user's profile so historical entries are
+    // immune to later rate changes. Caller can override (e.g. one-off
+    // higher-paying gig) by passing hourlyRateCents in the body.
+    const me = await prisma.user.findUnique({
+      where: { id: req.user!.sub },
+      select: { hourlyRateCents: true },
+    });
+
     const entry = await prisma.timeEntry.create({
       data: {
         userId: req.user!.sub,
@@ -62,7 +71,7 @@ router.post('/punch-in', async (req, res, next) => {
         startedAt: new Date(),
         notes: data.notes,
         billable: data.billable ?? true,
-        hourlyRateCents: data.hourlyRateCents ?? 0,
+        hourlyRateCents: data.hourlyRateCents ?? me?.hourlyRateCents ?? 0,
       },
       include: { project: { select: { id: true, name: true } } },
     });
@@ -413,6 +422,138 @@ router.get('/project/:projectId/summary', async (req, res, next) => {
         billable: g.billable,
         minutes: g._sum.minutes ?? 0,
       })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Personal pay summary — drives the stats card + weekly bundle list on
+// the Request pay page. Returns the caller's own totals only (or anyone
+// they're impersonating, but we don't expose that knob here).
+router.get('/my-summary', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!me || me.role === Role.CUSTOMER) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const now = new Date();
+    const yearStart = new Date(now.getFullYear(), 0, 1);
+    yearStart.setHours(0, 0, 0, 0);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    function isoWeekStart(d: Date): Date {
+      const day = d.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      const m = new Date(d);
+      m.setDate(d.getDate() + diff);
+      m.setHours(0, 0, 0, 0);
+      return m;
+    }
+
+    const entries = await prisma.timeEntry.findMany({
+      where: {
+        userId: me.id,
+        startedAt: { gte: yearStart },
+        endedAt: { not: null },
+      },
+      orderBy: { startedAt: 'asc' },
+      select: {
+        id: true,
+        startedAt: true,
+        minutes: true,
+        dayUnits: true,
+        hourlyRateCents: true,
+        dailyRateCents: true,
+        approvedAt: true,
+        rejectedAt: true,
+      },
+    });
+
+    function entryCents(e: { minutes: number; dayUnits: number | null; hourlyRateCents: number; dailyRateCents: number }): number {
+      if (e.dayUnits != null && e.dayUnits > 0) {
+        return Math.round(e.dayUnits * e.dailyRateCents);
+      }
+      return Math.round((e.minutes * e.hourlyRateCents) / 60);
+    }
+
+    let ytdApprovedCents = 0;
+    let ytdPendingCents = 0;
+    let ytdRejectedCents = 0;
+    let mtdCents = 0;
+
+    interface Week {
+      weekStart: string;
+      weekEnd: string;
+      totalCents: number;
+      approvedCents: number;
+      pendingCents: number;
+      entryCount: number;
+    }
+    const weeks = new Map<string, Week>();
+
+    for (const e of entries) {
+      const cents = entryCents(e);
+      const isRejected = e.rejectedAt != null;
+      const isApproved = e.approvedAt != null;
+
+      if (isRejected) {
+        ytdRejectedCents += cents;
+      } else if (isApproved) {
+        ytdApprovedCents += cents;
+      } else {
+        ytdPendingCents += cents;
+      }
+
+      // MTD includes pending + approved (what they expect to be paid),
+      // excludes rejected entries.
+      if (!isRejected && new Date(e.startedAt) >= monthStart) {
+        mtdCents += cents;
+      }
+
+      // Per-week bundle (rejected entries excluded from total).
+      const ws = isoWeekStart(new Date(e.startedAt));
+      const weekKey = ws.toISOString().slice(0, 10);
+      const we = new Date(ws);
+      we.setDate(ws.getDate() + 6);
+      we.setHours(23, 59, 59, 999);
+      let w = weeks.get(weekKey);
+      if (!w) {
+        w = {
+          weekStart: ws.toISOString(),
+          weekEnd: we.toISOString(),
+          totalCents: 0,
+          approvedCents: 0,
+          pendingCents: 0,
+          entryCount: 0,
+        };
+        weeks.set(weekKey, w);
+      }
+      w.entryCount += 1;
+      if (!isRejected) {
+        w.totalCents += cents;
+        if (isApproved) w.approvedCents += cents;
+        else w.pendingCents += cents;
+      }
+    }
+
+    const weeksOut = [...weeks.values()].sort((a, b) =>
+      b.weekStart.localeCompare(a.weekStart),
+    );
+
+    res.json({
+      year: now.getFullYear(),
+      ytdApprovedCents,
+      ytdPendingCents,
+      ytdRejectedCents,
+      ytdTotalCents: ytdApprovedCents + ytdPendingCents,
+      mtdCents,
+      weeks: weeksOut,
+      billingMode: me.billingMode,
+      hourlyRateCents: me.dailyRateCents > 0 ? null : null, // not stored on user yet for hourly
+      dailyRateCents: me.dailyRateCents,
     });
   } catch (err) {
     next(err);

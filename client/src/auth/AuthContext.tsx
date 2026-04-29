@@ -22,6 +22,7 @@ export interface AuthUser {
   isAccounting?: boolean;
   billingMode?: 'HOURLY' | 'DAILY';
   dailyRateCents?: number;
+  hourlyRateCents?: number;
   avatarUrl?: string | null;
   avatarThumbnailUrl?: string | null;
 }

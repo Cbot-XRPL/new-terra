@@ -118,6 +118,7 @@ router.get('/users', async (req, res, next) => {
         isAccounting: true,
         billingMode: true,
         dailyRateCents: true,
+        hourlyRateCents: true,
         taxId: true,
         mailingAddress: true,
         createdAt: true,
@@ -137,6 +138,7 @@ const updateUserSchema = z.object({
   isAccounting: z.boolean().optional(),
   billingMode: z.enum(['HOURLY', 'DAILY']).optional(),
   dailyRateCents: z.number().int().nonnegative().optional(),
+  hourlyRateCents: z.number().int().nonnegative().optional(),
   taxId: z.string().max(40).nullable().optional(),
   mailingAddress: z.string().max(400).nullable().optional(),
 });
@@ -167,6 +169,7 @@ router.patch('/users/:id', async (req, res, next) => {
         isAccounting: true,
         billingMode: true,
         dailyRateCents: true,
+        hourlyRateCents: true,
         taxId: true,
         mailingAddress: true,
       },

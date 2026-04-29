@@ -120,6 +120,7 @@ router.get('/me', requireAuth, async (req, res, next) => {
         isAccounting: true,
         billingMode: true,
         dailyRateCents: true,
+        hourlyRateCents: true,
         avatarUrl: true,
         avatarThumbnailUrl: true,
       },

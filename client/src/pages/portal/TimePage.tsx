@@ -1,7 +1,8 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
-import { formatDate, formatDateTime } from '../../lib/format';
+import { formatCents, formatDate, formatDateTime } from '../../lib/format';
+import W9Banner from './W9Banner';
 
 interface ProjectRef { id: string; name: string }
 
@@ -56,6 +57,26 @@ export default function TimePage() {
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
 
+  // Pay summary (own data only) — fed by /api/time/my-summary
+  interface SummaryWeek {
+    weekStart: string;
+    weekEnd: string;
+    totalCents: number;
+    approvedCents: number;
+    pendingCents: number;
+    entryCount: number;
+  }
+  interface PaySummary {
+    year: number;
+    ytdApprovedCents: number;
+    ytdPendingCents: number;
+    ytdRejectedCents: number;
+    ytdTotalCents: number;
+    mtdCents: number;
+    weeks: SummaryWeek[];
+  }
+  const [summary, setSummary] = useState<PaySummary | null>(null);
+
   // Both forms are always available; the user's billingMode just picks the
   // default tab. An hourly worker can still log an occasional day-rate
   // entry (and vice versa) without admin flipping their mode.
@@ -76,14 +97,16 @@ export default function TimePage() {
 
   async function load() {
     try {
-      const [a, p, l] = await Promise.all([
+      const [a, p, l, s] = await Promise.all([
         api<{ entry: TimeEntry | null }>('/api/time/active'),
         api<{ projects: ProjectRef[] }>('/api/projects'),
         api<ListResponse>('/api/time?pageSize=20'),
+        api<PaySummary>('/api/time/my-summary'),
       ]);
       setActive(a.entry);
       setProjects(p.projects);
       setList(l);
+      setSummary(s);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load');
     }
@@ -215,6 +238,123 @@ export default function TimePage() {
       </header>
 
       {error && <div className="form-error">{error}</div>}
+
+      {/* W-9 nag banner (or "on file" chip). Hidden for customers since
+          they don't file W-9s. */}
+      {user && user.role !== 'CUSTOMER' && <W9Banner defaultLegalName={user.name} />}
+
+      {summary && (
+        <section className="card">
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'auto 1fr',
+              gap: '1.5rem',
+              alignItems: 'center',
+            }}
+          >
+            <PayRing summary={summary} />
+            <div>
+              <h2 style={{ margin: 0 }}>{summary.year} pay summary</h2>
+              <p className="muted" style={{ fontSize: '0.85rem', margin: '0.25rem 0 0.75rem' }}>
+                Your own earnings — approved + pending pay accrued this year. Rejected entries excluded.
+                {isAccounting && ' Bundles approve/reject from the Sub bills page.'}
+              </p>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                  gap: '0.75rem',
+                }}
+              >
+                <Stat label="This month" value={formatCents(summary.mtdCents)} />
+                <Stat
+                  label="Approved YTD"
+                  value={formatCents(summary.ytdApprovedCents)}
+                  tone="success"
+                />
+                <Stat
+                  label="Pending review"
+                  value={formatCents(summary.ytdPendingCents)}
+                  tone="warning"
+                />
+                <Stat
+                  label="Year total"
+                  value={formatCents(summary.ytdTotalCents)}
+                />
+              </div>
+              {summary.ytdRejectedCents > 0 && (
+                <p
+                  className="muted"
+                  style={{ fontSize: '0.75rem', margin: '0.5rem 0 0' }}
+                >
+                  {formatCents(summary.ytdRejectedCents)} rejected this year (not included).
+                </p>
+              )}
+              {summary.ytdTotalCents === 0 && (
+                <p
+                  className="muted"
+                  style={{ fontSize: '0.85rem', margin: '0.5rem 0 0' }}
+                >
+                  No earnings recorded yet.{' '}
+                  {user?.dailyRateCents === 0 && user?.billingMode === 'DAILY'
+                    ? 'Set your day rate from the Admin page → Pay column to start tracking.'
+                    : 'Punch in or log a day below to start tracking.'}
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {summary && summary.weeks.length > 0 && (
+        <section className="card">
+          <h2 style={{ marginTop: 0 }}>Weekly totals</h2>
+          <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+            Each row is one work week. Pending = waiting for admin approval.
+          </p>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Week</th>
+                <th style={{ textAlign: 'right' }}>Entries</th>
+                <th style={{ textAlign: 'right' }}>Approved</th>
+                <th style={{ textAlign: 'right' }}>Pending</th>
+                <th style={{ textAlign: 'right' }}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary.weeks.slice(0, 12).map((w) => (
+                <tr key={w.weekStart}>
+                  <td>
+                    <strong>
+                      {new Date(w.weekStart).toLocaleDateString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                      {' – '}
+                      {new Date(w.weekEnd).toLocaleDateString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </strong>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>{w.entryCount}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    {w.approvedCents > 0 ? formatCents(w.approvedCents) : '—'}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {w.pendingCents > 0 ? formatCents(w.pendingCents) : '—'}
+                  </td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                    {formatCents(w.totalCents)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       <section className="card">
         {/* Tabs: pick how you want to record time. Daily is the default for
@@ -428,5 +568,112 @@ export default function TimePage() {
         )}
       </section>
     </div>
+  );
+}
+
+// ----- Stats components ------------------------------------------------------
+
+interface StatProps {
+  label: string;
+  value: string;
+  tone?: 'success' | 'warning';
+}
+function Stat({ label, value, tone }: StatProps) {
+  const color =
+    tone === 'success'
+      ? 'var(--success)'
+      : tone === 'warning'
+        ? 'var(--accent)'
+        : 'var(--text)';
+  return (
+    <div>
+      <div className="muted" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        {label}
+      </div>
+      <div style={{ fontSize: '1.4rem', fontWeight: 600, color, marginTop: '0.15rem' }}>{value}</div>
+    </div>
+  );
+}
+
+interface RingProps {
+  summary: {
+    ytdApprovedCents: number;
+    ytdPendingCents: number;
+    ytdTotalCents: number;
+  };
+}
+/**
+ * Donut showing approved vs pending portions of the year-to-date pay.
+ * The ring is purely visual — center text repeats the YTD total. Built
+ * with raw SVG so we don't pull a chart library.
+ */
+function PayRing({ summary }: RingProps) {
+  const size = 160;
+  const radius = 60;
+  const strokeWidth = 16;
+  const circumference = 2 * Math.PI * radius;
+  const total = summary.ytdTotalCents;
+  const approvedFrac = total > 0 ? summary.ytdApprovedCents / total : 0;
+  const pendingFrac = total > 0 ? summary.ytdPendingCents / total : 0;
+  const approvedDash = circumference * approvedFrac;
+  const pendingDash = circumference * pendingFrac;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {/* Track */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="var(--surface)"
+        strokeWidth={strokeWidth}
+      />
+      {/* Approved arc — starts at 12 o'clock */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="var(--success)"
+        strokeWidth={strokeWidth}
+        strokeDasharray={`${approvedDash} ${circumference - approvedDash}`}
+        strokeDashoffset={0}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        strokeLinecap="butt"
+      />
+      {/* Pending arc — picks up where approved leaves off */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="var(--accent)"
+        strokeWidth={strokeWidth}
+        strokeDasharray={`${pendingDash} ${circumference - pendingDash}`}
+        strokeDashoffset={-approvedDash}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        strokeLinecap="butt"
+      />
+      {/* Center label */}
+      <text
+        x={size / 2}
+        y={size / 2 - 4}
+        textAnchor="middle"
+        fontSize="14"
+        fill="var(--text-muted)"
+      >
+        Year total
+      </text>
+      <text
+        x={size / 2}
+        y={size / 2 + 18}
+        textAnchor="middle"
+        fontSize="20"
+        fontWeight="700"
+        fill="var(--text)"
+      >
+        {`$${(total / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+      </text>
+    </svg>
   );
 }
