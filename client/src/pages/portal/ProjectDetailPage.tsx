@@ -12,6 +12,7 @@ import LogEntriesSection from './LogEntriesSection';
 import ProjectComments from './ProjectComments';
 import JobCostingSection from './JobCostingSection';
 import ChangeOrdersSection from './ChangeOrdersSection';
+import DrawSchedule from './DrawSchedule';
 
 type ProjectStatus = 'PLANNING' | 'AWAITING_CONTRACT' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETE' | 'CANCELLED';
 
@@ -493,6 +494,12 @@ export default function ProjectDetailPage() {
       <PunchListSection projectId={project.id} />
 
       <SelectionsSection projectId={project.id} />
+
+      <DrawSchedule
+        scope={{ kind: 'project', projectId: project.id }}
+        canManage={!!isPmOrAdmin}
+        canInvoice={!!isPmOrAdmin}
+      />
 
       {/* Contracts attached to this project — visible to anyone who can read
           the project, since the server scopes the underlying contracts list. */}

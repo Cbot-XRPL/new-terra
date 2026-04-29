@@ -26,7 +26,10 @@
       "Bash(grep -E \"background:\\\\s*#[0-9a-fA-F]{3,8}|background:\\\\s*rgb|color:\\\\s*#[0-9a-fA-F]{3,8}\" /c/Users/codyr/Desktop/code/new-terra-4/client/src/styles/global.css)",
       "Bash(grep -n -B1 -A20 \"router\\\\.get.*'/'\\\\|router\\\\.get.*'\\\\\\\\/'\\\\\\\\\\)\" server/src/routes/projects.ts)",
       "Bash(taskkill //F //PID 402948)",
-      "Bash(grep -rn \"router\\\\.get.*\\\\\\\\/me\\\\\\\\|/me'\\\\\\\\|me\\\\\\\\.role.*me\\\\\\\\.isSales\" server/src/routes)"
+      "Bash(grep -rn \"router\\\\.get.*\\\\\\\\/me\\\\\\\\|/me'\\\\\\\\|me\\\\\\\\.role.*me\\\\\\\\.isSales\" server/src/routes)",
+      "WebFetch(domain:docs.google.com)",
+      "Bash(taskkill //F //PID 505424)",
+      "Bash(taskkill //F //PID 550780)"
     ]
   }
 }

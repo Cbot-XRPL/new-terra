@@ -193,11 +193,14 @@ async function main() {
 
   // ----- Estimates / contract template -----
   console.log('[demo-seed] Seeding estimates + contracts…');
+  const { STANDARD_CONTRACT_BODY, STANDARD_CONTRACT_VARIABLES } = await import('./contractTemplate.js');
   const tpl = await prisma.contractTemplate.create({
     data: {
-      name: 'Standard build agreement',
-      body: 'AGREEMENT BETWEEN NEW TERRA CONSTRUCTION AND {{customer_name}}\n\nProject: {{project_name}}\n\nThe Contractor agrees to perform the work described in the attached estimate at the prices stated. Payment terms: 25% deposit; balance per draw schedule.',
-      variables: [],
+      name: 'Standard residential construction agreement',
+      description:
+        'Generic residential construction contract — edit the body to match your actual wording.',
+      body: STANDARD_CONTRACT_BODY,
+      variables: STANDARD_CONTRACT_VARIABLES,
       isDefaultForEstimateAccept: true,
       createdById: admin.id,
     },

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { formatDateTime } from '../../lib/format';
+import DrawSchedule from './DrawSchedule';
 
 type ContractStatus = 'DRAFT' | 'SENT' | 'VIEWED' | 'SIGNED' | 'DECLINED' | 'VOID';
 
@@ -73,6 +74,10 @@ export default function ContractDetailPage() {
   // Sales/admin in-place edit of variable values while the contract is still
   // a draft.
   const [editValues, setEditValues] = useState<Record<string, string> | null>(null);
+  // When set, the rep is hand-editing the contract body itself. On save,
+  // server stores it verbatim and flips bodyOverridden so future variable
+  // edits don't blow it away.
+  const [editBody, setEditBody] = useState<string | null>(null);
 
   async function load() {
     if (!id) return;
@@ -141,6 +146,24 @@ export default function ContractDetailPage() {
         body: JSON.stringify({ variableValues: editValues }),
       });
       await load();
+      setEditValues(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Save failed');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function saveBody() {
+    if (editBody === null) return;
+    setSubmitting(true);
+    try {
+      await api(`/api/contracts/${contract!.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ bodyOverride: editBody }),
+      });
+      await load();
+      setEditBody(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Save failed');
     } finally {
@@ -259,15 +282,26 @@ export default function ContractDetailPage() {
       <section className="card">
         <div className="row-between">
           <h2>Contract</h2>
-          {isStaffAccess && contract.status === 'DRAFT' && contract.template && !editValues && (
-            <button
-              className="button-ghost button-small"
-              onClick={() =>
-                setEditValues({ ...(contract.variableValues as Record<string, string>) })
-              }
-            >
-              Edit values
-            </button>
+          {isStaffAccess && contract.status === 'DRAFT' && !editValues && editBody === null && (
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {contract.template && (
+                <button
+                  className="button-ghost button-small"
+                  onClick={() =>
+                    setEditValues({ ...(contract.variableValues as Record<string, string>) })
+                  }
+                >
+                  Edit values
+                </button>
+              )}
+              <button
+                className="button-ghost button-small"
+                onClick={() => setEditBody(contract.bodySnapshot)}
+                title="Hand-edit the contract text directly. Subsequent value/draw edits will not overwrite your changes."
+              >
+                Edit text
+              </button>
+            </div>
           )}
         </div>
 
@@ -301,10 +335,34 @@ export default function ContractDetailPage() {
               <button className="button-ghost" onClick={() => setEditValues(null)}>Cancel</button>
             </div>
           </>
+        ) : editBody !== null ? (
+          <>
+            <textarea
+              className="contract-body"
+              value={editBody}
+              onChange={(e) => setEditBody(e.target.value)}
+              style={{ width: '100%', minHeight: '500px', fontFamily: 'inherit' }}
+            />
+            <p className="muted" style={{ fontSize: '0.85rem' }}>
+              Saving locks the body — future variable + draw edits will not overwrite this text.
+            </p>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button onClick={saveBody} disabled={submitting}>
+                {submitting ? 'Saving…' : 'Save text'}
+              </button>
+              <button className="button-ghost" onClick={() => setEditBody(null)}>Cancel</button>
+            </div>
+          </>
         ) : (
           <pre className="contract-body">{contract.bodySnapshot}</pre>
         )}
       </section>
+
+      <DrawSchedule
+        scope={{ kind: 'contract', contractId: contract.id }}
+        canManage={!!isStaffAccess && contract.status === 'DRAFT'}
+        canInvoice={false}
+      />
 
       {isStaffAccess && (
         <section className="card">

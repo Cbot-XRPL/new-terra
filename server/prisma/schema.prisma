@@ -319,6 +319,7 @@ model Project {
   galleryShares      GalleryShare[]
   satisfactionSurvey SatisfactionSurvey?
   inventoryAdjustments InventoryAdjustment[]
+  draws              Draw[]
 
   @@index([projectManagerId])
 }
@@ -373,6 +374,9 @@ model Invoice {
   // Back-link populated when an invoice was auto-issued from an accepted
   // change order. Null for ordinary invoices.
   changeOrder ChangeOrder?
+  // Back-link populated when an invoice was spawned from a draw schedule
+  // entry. Null for ordinary invoices.
+  draw        Draw?
 }
 
 // One row per payment received against an invoice. Most invoices get one
@@ -1126,6 +1130,11 @@ model Contract {
   templateNameSnapshot String
   bodySnapshot         String
   variableValues       Json @default("{}")
+  // True when the sales rep hand-edited the contract body directly instead
+  // of letting it auto-render from template + variables + draws. Once set,
+  // regenerateContractBody / variable edits stop overwriting the snapshot
+  // — the rep is the source of truth for the wording on this contract.
+  bodyOverridden       Boolean @default(false)
 
   customerId   String
   customer     User           @relation("ContractsForCustomer", fields: [customerId], references: [id])
@@ -1162,6 +1171,7 @@ model Contract {
   // both the contract and the project at conversion time).
   estimatesConverted Estimate[] @relation("ContractFromEstimate")
   changeOrders       ChangeOrder[]
+  draws              Draw[]
 
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
@@ -1169,6 +1179,57 @@ model Contract {
   @@index([customerId])
   @@index([createdById])
   @@index([status])
+}
+
+// Progress-billing milestone. Sales sets the schedule on the contract; once
+// the contract ties to a project, draws show on the project hub. PM hits
+// "Generate invoice" per draw as the milestone is reached, which spawns a
+// DRAFT invoice on that project for the draw amount. When the spawned
+// invoice flips to PAID, the draw mirrors to PAID via Invoice paid hook.
+model Draw {
+  id           String     @id @default(cuid())
+
+  contractId   String
+  contract     Contract   @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  // Materialized when the contract is attached to a project — lets the
+  // project hub list draws without a join through the contract row.
+  projectId    String?
+  project      Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  // Sequence on the schedule (0,1,2…) — used for stable display order even
+  // after a name edit. UI inserts at the next ordinal.
+  order        Int
+  // Short milestone label, e.g. "Foundation pour", "Final walkthrough".
+  name         String
+  // Optional scope detail surfaced to the customer in the contract body
+  // and on the generated invoice's milestoneLabel field.
+  description  String?
+  amountCents  Int
+  // When the sales rep entered the draw as a percentage of contract total,
+  // we keep the original % so it can be re-rendered if amounts change.
+  // Null when entered as a flat $ amount.
+  percentBasis Float?
+
+  status       DrawStatus @default(PENDING)
+  // One-to-one with the Invoice spawned for this draw (if any). Set when
+  // PM hits "Generate invoice"; cleared if the invoice is later voided.
+  invoiceId    String?    @unique
+  invoice      Invoice?   @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([contractId, order])
+  @@index([projectId])
+  @@index([status])
+}
+
+enum DrawStatus {
+  PENDING   // future draw, milestone not yet hit
+  READY     // milestone reached, ready to invoice (manual flag)
+  INVOICED  // invoice spawned (linked via invoiceId)
+  PAID      // invoice paid (mirrored from Invoice payment hook)
+  VOID      // cancelled
 }
 
 model Lead {

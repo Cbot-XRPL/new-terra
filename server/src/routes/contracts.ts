@@ -9,6 +9,7 @@ import { remindStaleContracts } from '../lib/reminders.js';
 import { createEnvelopeForContract, isDocuSignConfigured } from '../lib/docusign.js';
 import { ContractDelivery } from '@prisma/client';
 import { audit } from '../lib/audit.js';
+import { renderContractBody, formatDrawSchedule } from '../lib/drawSchedule.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -29,6 +30,13 @@ interface VariableDef {
   multiline?: boolean;
 }
 
+const drawInputSchema = z.object({
+  name: z.string().min(1).max(160),
+  description: z.string().max(2000).optional(),
+  amountCents: z.number().int().nonnegative(),
+  percentBasis: z.number().min(0).max(100).optional(),
+});
+
 const createSchema = z.object({
   templateId: z.string().min(1),
   customerId: z.string().min(1),
@@ -36,11 +44,20 @@ const createSchema = z.object({
   // when the project belongs to the same customer.
   projectId: z.string().optional().nullable(),
   variableValues: z.record(z.string()).default({}),
+  // Sales rep can build the schedule inline at create time so it lands in
+  // the bodySnapshot before the contract is sent.
+  draws: z.array(drawInputSchema).max(40).optional(),
+  // Sales rep hand-edited the body in the preview before saving — store it
+  // verbatim and skip the auto-render.
+  bodyOverride: z.string().max(50_000).optional(),
 });
 
 const updateSchema = z.object({
   variableValues: z.record(z.string()).optional(),
   status: z.enum([ContractStatus.VOID]).optional(),
+  // Hand-edited body content. When set, persists as bodySnapshot and flips
+  // the bodyOverridden flag so future variable edits don't overwrite it.
+  bodyOverride: z.string().max(50_000).optional(),
 });
 
 const signSchema = z.object({ signatureName: z.string().min(2).max(120) });
@@ -199,21 +216,50 @@ router.post('/', async (req, res, next) => {
       }
     }
 
-    const contract = await prisma.contract.create({
-      data: {
-        templateId: template.id,
-        templateNameSnapshot: template.name,
-        bodySnapshot: renderBody(template.body, data.variableValues),
-        variableValues: data.variableValues,
-        customerId: customer.id,
-        createdById: me.id,
-        projectId: data.projectId ?? null,
-      },
-      include: {
-        customer: { select: { id: true, name: true, email: true } },
-        createdBy: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } },
-      },
+    // Single transaction: contract row + any draws the sales rep entered
+    // inline + body snapshot rendered with the schedule baked in.
+    const initialDraws = data.draws ?? [];
+    const initialBody = data.bodyOverride
+      ? data.bodyOverride
+      : renderContractBody(
+          template.body,
+          data.variableValues,
+          initialDraws.map((d, i) => ({ order: i, ...d })),
+        );
+    const contract = await prisma.$transaction(async (tx) => {
+      const created = await tx.contract.create({
+        data: {
+          templateId: template.id,
+          templateNameSnapshot: template.name,
+          bodySnapshot: initialBody,
+          variableValues: data.variableValues,
+          customerId: customer.id,
+          createdById: me.id,
+          projectId: data.projectId ?? null,
+          bodyOverridden: !!data.bodyOverride,
+        },
+      });
+      if (initialDraws.length > 0) {
+        await tx.draw.createMany({
+          data: initialDraws.map((d, i) => ({
+            contractId: created.id,
+            projectId: data.projectId ?? null,
+            order: i,
+            name: d.name,
+            description: d.description ?? null,
+            amountCents: d.amountCents,
+            percentBasis: d.percentBasis ?? null,
+          })),
+        });
+      }
+      return tx.contract.findUnique({
+        where: { id: created.id },
+        include: {
+          customer: { select: { id: true, name: true, email: true } },
+          createdBy: { select: { id: true, name: true } },
+          project: { select: { id: true, name: true } },
+        },
+      });
     });
     res.status(201).json({ contract });
   } catch (err) {
@@ -258,15 +304,33 @@ router.patch('/:id', async (req, res, next) => {
 
     const data = updateSchema.parse(req.body);
     const values = (data.variableValues ?? (contract.variableValues as Record<string, string>)) as Record<string, string>;
-    const body = contract.template
-      ? renderBody(contract.template.body, values)
-      : contract.bodySnapshot;
+    const draws = await prisma.draw.findMany({
+      where: { contractId: contract.id },
+      orderBy: { order: 'asc' },
+      select: { order: true, name: true, amountCents: true, description: true },
+    });
+
+    // Body resolution rules:
+    //   - Caller passed bodyOverride → take it verbatim, set bodyOverridden=true
+    //   - Otherwise, if the body was previously overridden, leave it alone
+    //     (variable edits are still saved to variableValues but don't blow
+    //     away the rep's hand-edited wording).
+    //   - Otherwise re-render from template + values + draws.
+    let nextBody = contract.bodySnapshot;
+    let nextOverridden: boolean | undefined = undefined;
+    if (data.bodyOverride !== undefined) {
+      nextBody = data.bodyOverride;
+      nextOverridden = true;
+    } else if (!contract.bodyOverridden && contract.template) {
+      nextBody = renderContractBody(contract.template.body, values, draws);
+    }
 
     const updated = await prisma.contract.update({
       where: { id: contract.id },
       data: {
         variableValues: values,
-        bodySnapshot: body,
+        bodySnapshot: nextBody,
+        ...(nextOverridden !== undefined ? { bodyOverridden: nextOverridden } : {}),
       },
     });
     res.json({ contract: updated });

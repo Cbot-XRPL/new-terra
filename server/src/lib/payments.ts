@@ -1,4 +1,4 @@
-import { InvoiceStatus, PaymentMethod, type PrismaClient } from '@prisma/client';
+import { DrawStatus, InvoiceStatus, PaymentMethod, type PrismaClient } from '@prisma/client';
 import { prisma } from '../db.js';
 
 export const ALL_PAYMENT_METHODS: PaymentMethod[] = [
@@ -86,6 +86,23 @@ export async function recomputeInvoiceStatus(
       where: { id: invoice.id },
       data: { status: nextStatus, paidAt: nextPaidAt as Date | null | undefined },
     });
+  }
+
+  // Mirror status onto a linked Draw (progress-billing schedule entry):
+  //   invoice fully paid → draw PAID
+  //   payment deleted    → draw INVOICED (was PAID, now isn't)
+  // VOID + draw cleanup is handled in the void-invoice route, not here.
+  const draw = await client.draw.findFirst({ where: { invoiceId: invoice.id } });
+  if (draw) {
+    let nextDrawStatus: DrawStatus | null = null;
+    if (nextStatus === InvoiceStatus.PAID && draw.status !== DrawStatus.PAID) {
+      nextDrawStatus = DrawStatus.PAID;
+    } else if (draw.status === DrawStatus.PAID && nextStatus !== InvoiceStatus.PAID) {
+      nextDrawStatus = DrawStatus.INVOICED;
+    }
+    if (nextDrawStatus) {
+      await client.draw.update({ where: { id: draw.id }, data: { status: nextDrawStatus } });
+    }
   }
 
   return { status: nextStatus, paidCents: totals.paidCents, balanceCents: totals.balanceCents };
