@@ -30,7 +30,17 @@
       "WebFetch(domain:docs.google.com)",
       "Bash(taskkill //F //PID 505424)",
       "Bash(taskkill //F //PID 550780)",
-      "Bash(taskkill //F //PID 31304)"
+      "Bash(taskkill //F //PID 31304)",
+      "Bash(taskkill //F //PID 110628)",
+      "Bash(taskkill //F //PID 211744)",
+      "Bash(taskkill //F //PID 558840)",
+      "Bash(npx tsx *)",
+      "Bash(taskkill //F //PID 225556)",
+      "Bash(taskkill //F //PID 271364)",
+      "Bash(taskkill //F //PID 292184)",
+      "Bash(grep -n \"to=\\\\\"/portal/finance\\\\\\\\|to=\\\\\"/portal/banking\" /c/Users/codyr/Desktop/code/new-terra-4/client/src/layouts/PortalLayout.tsx)",
+      "Bash(taskkill //F //PID 18668)",
+      "Bash(taskkill //F //PID 342580)"
     ]
   }
 }

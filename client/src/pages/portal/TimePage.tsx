@@ -49,7 +49,6 @@ function todayLocalIso(): string {
 export default function TimePage() {
   const { user } = useAuth();
   const isAccounting = user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isAccounting);
-  const isDaily = user?.billingMode === 'DAILY';
 
   const [active, setActive] = useState<TimeEntry | null>(null);
   const [projects, setProjects] = useState<ProjectRef[]>([]);
@@ -57,12 +56,19 @@ export default function TimePage() {
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
 
-  // Punch-in form (hourly users)
+  // Both forms are always available; the user's billingMode just picks the
+  // default tab. An hourly worker can still log an occasional day-rate
+  // entry (and vice versa) without admin flipping their mode.
+  const [mode, setMode] = useState<'hourly' | 'daily'>(
+    user?.billingMode === 'DAILY' ? 'daily' : 'hourly',
+  );
+
+  // Punch-in form (hourly mode)
   const [projectId, setProjectId] = useState('');
   const [notes, setNotes] = useState('');
   const [billable, setBillable] = useState(true);
 
-  // Log-a-day form (daily users)
+  // Log-a-day form (daily mode)
   const [logDate, setLogDate] = useState<string>(todayLocalIso());
   const [logUnits, setLogUnits] = useState<string>('1'); // string so the
   // dropdown's "custom" option can carry its own input
@@ -174,9 +180,7 @@ export default function TimePage() {
         <div>
           <h1>Time</h1>
           <p className="muted">
-            {isDaily
-              ? 'Log full or partial days you worked.'
-              : 'Punch in / out per project.'}{' '}
+            Punch in/out for hourly work or log days for day-rate work.{' '}
             {isAccounting ? 'You see the whole team.' : 'You see only your own entries.'}
           </p>
         </div>
@@ -213,11 +217,35 @@ export default function TimePage() {
       {error && <div className="form-error">{error}</div>}
 
       <section className="card">
-        {isDaily ? (
+        {/* Tabs: pick how you want to record time. Daily is the default for
+            users whose admin set their billingMode to DAILY; everyone else
+            starts on Hourly. Both are always available regardless. */}
+        <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1rem' }}>
+          <button
+            type="button"
+            className={mode === 'hourly' ? 'button button-small' : 'button-ghost button-small'}
+            onClick={() => setMode('hourly')}
+          >
+            Hourly punch
+          </button>
+          <button
+            type="button"
+            className={mode === 'daily' ? 'button button-small' : 'button-ghost button-small'}
+            onClick={() => setMode('daily')}
+          >
+            Log a day
+          </button>
+        </div>
+
+        {mode === 'daily' ? (
           <>
-            <h2>Log a day</h2>
+            <h2 style={{ marginTop: 0 }}>Log a day</h2>
             <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}>
-              Day rate: <strong>${((user?.dailyRateCents ?? 0) / 100).toFixed(2)}/day</strong>.
+              {(user?.dailyRateCents ?? 0) > 0 ? (
+                <>Day rate: <strong>${((user?.dailyRateCents ?? 0) / 100).toFixed(2)}/day</strong>. </>
+              ) : (
+                <>Day rate isn't set on your profile yet — admin can set it from the Admin → Pay column. </>
+              )}
               Pick the date you worked and how much of a day it was.
             </p>
             <form onSubmit={logDay}>
@@ -284,7 +312,7 @@ export default function TimePage() {
           </>
         ) : active ? (
           <>
-            <h2>On the clock</h2>
+            <h2 style={{ marginTop: 0 }}>On the clock</h2>
             <p>
               Started {formatDateTime(active.startedAt)}
               {active.project && <> on <strong>{active.project.name}</strong></>}
@@ -296,7 +324,7 @@ export default function TimePage() {
           </>
         ) : (
           <>
-            <h2>Punch in</h2>
+            <h2 style={{ marginTop: 0 }}>Punch in</h2>
             <form onSubmit={punchIn}>
               <div className="form-row">
                 <div>

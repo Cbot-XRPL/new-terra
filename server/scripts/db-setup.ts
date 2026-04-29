@@ -85,6 +85,9 @@ const pg = new EmbeddedPostgres({
   password: dbPass,
   port,
   persistent: true,
+  // UTF-8 + C locale; default Windows locale (WIN1252) can't store
+  // emojis or any 4-byte UTF-8 character.
+  initdbFlags: ['--encoding=UTF8', '--locale=C'],
 });
 
 async function main() {

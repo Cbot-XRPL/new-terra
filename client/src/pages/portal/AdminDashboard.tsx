@@ -195,6 +195,9 @@ export default function AdminDashboard() {
           <p className="muted">Manage who has access to the portal.</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <Link to="/portal/admin/integrations" className="button button-ghost">
+            Integrations checklist…
+          </Link>
           <Link to="/portal/admin/settings" className="button button-ghost">
             Company settings…
           </Link>

@@ -261,6 +261,50 @@ router.delete('/:id', async (req, res, next) => {
   }
 });
 
+// ----- Pay-request approval (admin/accounting) -----
+
+const rejectSchema = z.object({ reason: z.string().max(500).optional() });
+
+router.post('/:id/reject', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!me || !hasAccountingAccess(me)) return res.status(403).json({ error: 'Forbidden' });
+    const existing = await prisma.timeEntry.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: 'Time entry not found' });
+    if (existing.approvedAt) {
+      return res.status(409).json({ error: 'Cannot reject an already-approved entry — unapprove the bundle first.' });
+    }
+    const data = rejectSchema.parse(req.body ?? {});
+    const entry = await prisma.timeEntry.update({
+      where: { id: existing.id },
+      data: {
+        rejectedAt: new Date(),
+        rejectedById: me.id,
+        rejectedReason: data.reason ?? null,
+      },
+    });
+    res.json({ entry });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/unreject', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!me || !hasAccountingAccess(me)) return res.status(403).json({ error: 'Forbidden' });
+    const existing = await prisma.timeEntry.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: 'Time entry not found' });
+    const entry = await prisma.timeEntry.update({
+      where: { id: existing.id },
+      data: { rejectedAt: null, rejectedById: null, rejectedReason: null },
+    });
+    res.json({ entry });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ----- Project labor rollup -----
 
 // Payroll-style CSV export — accounting + admin only. Sums minutes per

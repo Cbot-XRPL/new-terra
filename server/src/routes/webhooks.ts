@@ -6,6 +6,7 @@ import { mapEnvelopeStatus, verifyConnectSignature } from '../lib/docusign.js';
 import { sendContractDecidedEmail } from '../lib/mailer.js';
 import { audit } from '../lib/audit.js';
 import { recomputeInvoiceStatus } from '../lib/payments.js';
+import { syncPlaidConnection } from '../lib/plaid.js';
 
 const router = Router();
 
@@ -259,6 +260,48 @@ router.post('/stripe', async (req, res, next) => {
     }).catch(() => undefined);
 
     res.json({ ok: true, invoiceId: invoice.id, paymentId: payment.id, status: totals.status });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Plaid webhook receiver — fires for SYNC_UPDATES_AVAILABLE (new
+// transactions ready) plus item-level events (login required, error).
+// We just trigger a sync; the helper handles cursor advancement +
+// dedupe. Sandbox webhooks aren't signed; production ones are JWT-
+// signed but we don't verify yet (keys live behind env config).
+router.post('/plaid', async (req, res, next) => {
+  try {
+    const text = req.body instanceof Buffer ? req.body.toString('utf8') : '';
+    let evt: { webhook_type?: string; webhook_code?: string; item_id?: string } = {};
+    try {
+      evt = JSON.parse(text);
+    } catch {
+      return res.status(400).json({ error: 'Invalid JSON' });
+    }
+    if (!evt.item_id) {
+      return res.status(200).json({ ignored: true, reason: 'no item_id' });
+    }
+    const conn = await prisma.plaidConnection.findUnique({ where: { itemId: evt.item_id } });
+    if (!conn) return res.status(200).json({ ignored: true, reason: 'unknown item' });
+
+    if (evt.webhook_type === 'TRANSACTIONS') {
+      // SYNC_UPDATES_AVAILABLE / DEFAULT_UPDATE etc. all warrant a re-sync.
+      syncPlaidConnection(conn.id).catch(async (err) => {
+        await prisma.plaidConnection.update({
+          where: { id: conn.id },
+          data: { lastError: err?.message ?? 'webhook sync failed' },
+        });
+      });
+      return res.json({ ok: true });
+    }
+    if (evt.webhook_type === 'ITEM' && evt.webhook_code === 'ERROR') {
+      await prisma.plaidConnection.update({
+        where: { id: conn.id },
+        data: { lastError: 'Item error — re-link required.' },
+      });
+    }
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

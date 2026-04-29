@@ -184,6 +184,7 @@ model User {
   uploadedDocuments ProjectDocument[] @relation("UploadedDocuments")
   logEntries    LogEntry[]
   boardPosts    MessageBoardPost[]
+  channelsCreated Channel[]     @relation("ChannelsCreated")
   invitesIssued Invitation[]    @relation("InvitesIssued")
 
   // Contracts
@@ -207,6 +208,7 @@ model User {
   // QuickBooks connections this user authorised (audit only — connection
   // can survive the user's deletion via SetNull).
   qbConnectionsConnected QbConnection[] @relation("QbConnectionsConnected")
+  plaidConnectionsConnected PlaidConnection[] @relation("PlaidConnectionsConnected")
 
   // Auth + audit
   passwordResets    PasswordResetToken[] @relation("PasswordResets")
@@ -219,6 +221,8 @@ model User {
 
   // Time tracking
   timeEntries       TimeEntry[]        @relation("TimeEntries")
+  timeEntriesApproved TimeEntry[]      @relation("TimeEntryApprover")
+  timeEntriesRejected TimeEntry[]      @relation("TimeEntryRejecter")
 }
 
 model Invitation {
@@ -668,6 +672,9 @@ model BankAccount {
   isLiability         Boolean  @default(false)
   active              Boolean  @default(true)
   notes               String?
+  // Plaid account_id when this account is linked through a PlaidConnection.
+  // Null for manually-created accounts; unique so syncs are idempotent.
+  plaidAccountId      String?  @unique
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -1066,13 +1073,38 @@ model MessageBoardPost {
   id        String   @id @default(cuid())
   authorId  String
   author    User     @relation(fields: [authorId], references: [id])
-  title     String
+  // Channel the post lives in. Required — the migration backfills any
+  // pre-existing posts to a default 'general' channel.
+  channelId String
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
   body      String
   pinned    Boolean  @default(false)
   // Same JSON shape as ProjectComment.attachments:
   // [{ url, thumbnailUrl, filename }, ...]. Nullable when no images.
   attachments Json?
   createdAt DateTime @default(now())
+
+  @@index([channelId, createdAt])
+}
+
+// Discord-style channels for the company message board. Admin-only CRUD;
+// any post belongs to exactly one channel. Soft-delete via archivedAt
+// rather than hard delete so historical posts stay accessible.
+model Channel {
+  id          String   @id @default(cuid())
+  name        String   @unique // e.g. 'general', 'field-updates', 'safety'
+  description String?
+  // Used for sort order in the sidebar; lower = higher in the list.
+  position    Int      @default(0)
+  archivedAt  DateTime?
+  createdById String?
+  createdBy   User?    @relation("ChannelsCreated", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  posts       MessageBoardPost[]
+
+  @@index([archivedAt, position])
 }
 
 model Message {
@@ -1455,6 +1487,30 @@ model QbConnection {
   updatedAt           DateTime @updatedAt
 }
 
+// One row per linked bank/card via Plaid. Each connection ("item" in
+// Plaid terms) covers one institution and any number of accounts under
+// that login (checking, savings, credit, etc.). access_token is long-
+// lived; cursor advances with each /transactions/sync call.
+model PlaidConnection {
+  id              String   @id @default(cuid())
+  itemId          String   @unique // Plaid's item_id for the linked institution
+  accessToken     String   // long-lived, encrypted at rest in production
+  institutionId   String?  // Plaid institution_id (e.g. ins_56 for Chase)
+  institutionName String?  // human label, e.g. 'Chase'
+  // [{ accountId, mask, name, subtype, type }, ...] — snapshot for display
+  accounts        Json?
+  // Plaid's incremental cursor for /transactions/sync. Null on a fresh
+  // connection; advanced after each successful sync.
+  syncCursor      String?
+  lastSyncAt      DateTime?
+  lastSyncCount   Int?
+  lastError       String?
+  connectedById   String?
+  connectedBy     User?    @relation("PlaidConnectionsConnected", fields: [connectedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 // Single-use password reset token. Mirrors Invitation: only the SHA-256
 // hash is stored, the raw value lives in the email link. Expires in 1h
 // (much shorter than invites; resets are higher-risk).
@@ -1751,6 +1807,18 @@ model TimeEntry {
   // entries, dailyRateCents for daily entries.
   hourlyRateCents Int @default(0)
   dailyRateCents  Int @default(0)
+
+  // Pay-request approval: admin/accounting reviews weekly bundles and
+  // can approve all entries in a bundle (stamps approvedAt+By) or reject
+  // individual days (stamps rejectedAt+By+reason). Rejected entries are
+  // excluded from bundle totals. Pending = neither stamped.
+  approvedAt      DateTime?
+  approvedById    String?
+  approvedBy      User?     @relation("TimeEntryApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  rejectedAt      DateTime?
+  rejectedById    String?
+  rejectedBy      User?     @relation("TimeEntryRejecter", fields: [rejectedById], references: [id], onDelete: SetNull)
+  rejectedReason  String?
   // Whether the time is billable to the project (vs internal/admin time).
   billable    Boolean @default(true)
   notes       String?

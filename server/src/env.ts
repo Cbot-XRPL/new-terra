@@ -49,6 +49,17 @@ export const env = {
     pass: process.env.SMTP_PASS ?? '',
     from: process.env.SMTP_FROM ?? 'no-reply@newterraconstruction.com',
   },
+  plaid: {
+    // dashboard.plaid.com → Team Settings → Keys. PLAID_ENV is one of
+    // 'sandbox' (free dev), 'development' (limited live), or 'production'.
+    clientId: process.env.PLAID_CLIENT_ID ?? '',
+    secret: process.env.PLAID_SECRET ?? '',
+    env: (process.env.PLAID_ENV ?? 'sandbox') as 'sandbox' | 'development' | 'production',
+    // Optional verification key for webhook signature checking. Without
+    // it the webhook still works but signatures aren't verified — fine
+    // for dev / sandbox.
+    webhookSecret: process.env.PLAID_WEBHOOK_SECRET ?? '',
+  },
   seedAdmin: {
     email: process.env.SEED_ADMIN_EMAIL ?? 'admin@newterraconstruction.com',
     password: process.env.SEED_ADMIN_PASSWORD ?? 'changeMe!2026',

@@ -14,7 +14,6 @@ interface Schedule {
 
 interface BoardPost {
   id: string;
-  title: string;
   body: string;
   pinned: boolean;
   createdAt: string;
@@ -202,21 +201,22 @@ export default function StaffDashboard() {
       </div>
 
       <section className="card">
-        <h2>Company message board</h2>
+        <h2>Recent messages</h2>
         {data?.board.length ? (
           <ul className="list">
             {data.board.map((p) => (
               <li key={p.id}>
-                <strong>{p.pinned ? '📌 ' : ''}{p.title}</strong>
                 <div className="muted">
-                  {p.author.name} · {new Date(p.createdAt).toLocaleString()}
+                  {p.pinned && '📌 '}
+                  <strong style={{ color: 'var(--text)' }}>{p.author.name}</strong>
+                  {' · '}{new Date(p.createdAt).toLocaleString()}
                 </div>
-                <p>{p.body}</p>
+                <p style={{ whiteSpace: 'pre-wrap' }}>{p.body}</p>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="muted">No posts yet.</p>
+          <p className="muted">No messages yet.</p>
         )}
       </section>
     </div>

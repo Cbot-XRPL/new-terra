@@ -68,8 +68,17 @@ async function main() {
   const accountant = await prisma.user.create({
     data: { email: 'books@demo.local', name: 'Casey Books', role: Role.EMPLOYEE, isAccounting: true, passwordHash: pwHash },
   });
+  // Sam is in-house and bills by the day — typical residential carpenter
+  // setup. Demonstrates the Time page's day-rate UI in the seed.
   const carpenter = await prisma.user.create({
-    data: { email: 'carp@demo.local', name: 'Sam Carpenter', role: Role.EMPLOYEE, passwordHash: pwHash },
+    data: {
+      email: 'carp@demo.local',
+      name: 'Sam Carpenter',
+      role: Role.EMPLOYEE,
+      passwordHash: pwHash,
+      billingMode: 'DAILY',
+      dailyRateCents: 40_000, // $400/day
+    },
   });
   const sub = await prisma.user.create({
     data: { email: 'sub@demo.local', name: 'Riley Subs (Plumbing)', role: Role.SUBCONTRACTOR, passwordHash: pwHash, taxId: '12-3456789', mailingAddress: '500 Trade Ln\nAnytown, NY 10001' },
@@ -179,14 +188,22 @@ async function main() {
     },
   });
 
-  // Time entries for proj1 (carpenter at $75/hr).
+  // Time entries for proj1. Sam is on day-rate so we log days, not hours.
+  // Mix a couple of half-days in to show the Log-a-day UI handles partials.
   for (let i = 0; i < 8; i += 1) {
+    const at = new Date(Date.now() - (20 - i) * 86_400_000);
+    at.setHours(12, 0, 0, 0);
+    const dayUnits = i === 2 || i === 5 ? 0.5 : 1; // two half-days, six full
     await prisma.timeEntry.create({
       data: {
-        userId: carpenter.id, projectId: proj1.id,
-        startedAt: new Date(Date.now() - (20 - i) * 86_400_000),
-        endedAt: new Date(Date.now() - (20 - i) * 86_400_000 + 7.5 * 3_600_000),
-        minutes: 450, hourlyRateCents: 7500, billable: true,
+        userId: carpenter.id,
+        projectId: proj1.id,
+        startedAt: at,
+        endedAt: at, // closed-on-creation, no clock semantics for daily
+        minutes: 0,
+        dayUnits,
+        dailyRateCents: 40_000,
+        billable: true,
       },
     });
   }

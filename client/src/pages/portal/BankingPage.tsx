@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { formatCents, formatDate } from '../../lib/format';
+import PlaidConnect from './PlaidConnect';
 
 type AccountKind = 'CHECKING' | 'SAVINGS' | 'CASH' | 'CREDIT_CARD' | 'LINE_OF_CREDIT' | 'LOAN' | 'OTHER';
 
@@ -275,6 +276,8 @@ export default function BankingPage() {
 
       {error && <div className="form-error">{error}</div>}
       {info && <div className="form-success">{info}</div>}
+
+      <PlaidConnect />
 
       <section className="card">
         <div className="row-between">

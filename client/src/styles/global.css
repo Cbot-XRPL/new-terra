@@ -605,6 +605,104 @@ input:focus, textarea:focus, select:focus {
   flex-wrap: wrap;
   margin-top: 0.5rem;
 }
+
+/* Discord-style channels layout for the company message board. Sidebar
+   list of channels on the left, selected channel's posts + composer on
+   the right. Collapses to a stack on mobile. */
+.channels-shell {
+  display: grid !important;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.channels-sidebar {
+  position: sticky;
+  top: 1rem;
+}
+.channel-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0;
+  margin: 0;
+}
+.channel-link {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.channel-link:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.channel-link.active {
+  background: var(--surface-strong);
+  color: var(--text);
+  font-weight: 600;
+}
+.channel-link > svg { flex-shrink: 0; opacity: 0.7; }
+.channel-link.active > svg { opacity: 1; }
+.channel-admin-row {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem 0.6rem 0.25rem 1.6rem;
+}
+.channels-main { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+@media (max-width: 800px) {
+  .channels-shell { grid-template-columns: 1fr; }
+  .channels-sidebar { position: static; }
+}
+
+/* Discord-style message stream — flat rows, no per-post card. Hover
+   reveals admin/author actions; pin badge stays on a pinned post. */
+.chat-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.chat-msg {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  position: relative;
+}
+.chat-msg:hover { background: var(--surface); }
+.chat-msg-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  margin-bottom: 0.15rem;
+}
+.chat-msg-author { font-weight: 600; color: var(--text); }
+.chat-msg-role { font-size: 0.75rem; text-transform: capitalize; }
+.chat-msg-time { font-size: 0.75rem; }
+.chat-msg-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.chat-msg:hover .chat-msg-actions { opacity: 1; }
+.chat-msg-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+@media (max-width: 700px) {
+  /* Always show actions on touch — there's no hover. */
+  .chat-msg-actions { opacity: 1; }
+}
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
 
@@ -786,7 +884,7 @@ input:focus, textarea:focus, select:focus {
 .link-button:hover { text-decoration: underline; }
 
 /* Calendar */
-.calendar-card { padding: 0; overflow: hidden; }
+.calendar-card { padding: 0; overflow: hidden; min-width: 0; }
 /* Two-column row for the staff dashboard: calendar on the left, "Next up"
    stack panel on the right. Collapses to a single column under 1100px. */
 .calendar-with-aside {
@@ -805,9 +903,13 @@ input:focus, textarea:focus, select:focus {
 }
 .calendar-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  /* minmax(0, 1fr) — grid columns default to min-content min-width which
+     can refuse to shrink below the longest event title and overflow the
+     card on mobile. The 0 minimum lets columns shrink + ellipsis kick in. */
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   background: rgba(95, 99, 104, 0.32);
   gap: 1px;
+  min-width: 0;
 }
 .calendar-dow {
   background: var(--bg-elevated);
@@ -829,11 +931,23 @@ input:focus, textarea:focus, select:focus {
 }
 .calendar-cell.muted-cell { background: var(--bg); opacity: 0.5; }
 .calendar-cell.today { background: rgba(138, 180, 248, 0.12); }
-/* Dedicated /portal/calendar page: square cells that scale with the
-   column width, filling the available viewport. Doesn't apply to the
-   compact widget on the staff overview. */
+/* Dedicated /portal/calendar page: grid fills the remaining viewport
+   height so the whole month fits on screen without scrolling. The DoW
+   header keeps its natural height; the 6 week-rows split the rest
+   evenly. Doesn't apply to the compact widget on the staff overview. */
+.calendar-card-full {
+  display: flex;
+  flex-direction: column;
+  /* Subtract the page header + dashboard padding so we don't push past
+     the bottom of the viewport. ~180px is the rough sum on the Calendar
+     page; tweak if the layout chrome changes. */
+  height: calc(100vh - 180px);
+}
+.calendar-card-full .calendar-grid {
+  flex: 1;
+  grid-template-rows: auto repeat(6, 1fr);
+}
 .calendar-card-full .calendar-cell {
-  aspect-ratio: 1 / 1;
   min-height: 0;
   overflow: hidden;
 }
@@ -843,6 +957,8 @@ input:focus, textarea:focus, select:focus {
   margin-bottom: 0.25rem;
 }
 .calendar-event {
+  display: block;
+  max-width: 100%;
   background: var(--accent);
   color: #202124;
   border-radius: 4px;
@@ -936,10 +1052,23 @@ input:focus, textarea:focus, select:focus {
 .portal-sidebar {
   background: var(--bg-elevated);
   border-right: 1px solid rgba(95, 99, 104, 0.35);
-  padding: 1.5rem 1rem;
+  padding: 1rem 1rem 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
+  /* Pin to viewport height + sticky so the brand stays at the top and the
+     user-chip + sign-out always show at the bottom regardless of how
+     long the main content is. The nav in the middle scrolls when there
+     are more menu items than fit. */
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+}
+.portal-sidebar nav {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 .portal-brand {
   display: flex;
@@ -1545,9 +1674,25 @@ input:focus, textarea:focus, select:focus {
 @media (max-width: 900px) {
   .two-col { grid-template-columns: 1fr; }
   .portal-shell { grid-template-columns: 1fr; }
-  .portal-sidebar { flex-direction: row; flex-wrap: wrap; align-items: center; }
-  .portal-sidebar nav { flex-direction: row; flex-wrap: wrap; }
-  .portal-user { margin-top: 0; flex-direction: row; align-items: center; gap: 1rem; }
+  /* Top-bar layout on tablet+phone: brand on the left, user avatar on the
+     right, nav wraps to its own row below. justify-content + flex order
+     keep them on opposite ends without depending on DOM order. */
+  .portal-sidebar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+  }
+  .portal-brand { order: 0; flex: 0 1 auto; }
+  .portal-user { order: 1; margin-top: 0; flex-direction: row; align-items: center; gap: 0.5rem; }
+  .portal-sidebar nav { order: 2; flex-basis: 100%; width: 100%; flex-direction: row; flex-wrap: wrap; }
+  /* Drop the user name/role + sign-out to keep the top bar tight; the
+     avatar links to the profile page where sign-out also lives. */
+  .portal-user .user-chip-meta,
+  .portal-user > .button.button-ghost { display: none; }
+  .user-chip-row > .user-chip > .avatar { width: 40px !important; height: 40px !important; }
   /* Multi-column form-rows collapse to a single stack so labels don't get
      cropped under fat fingers. */
   .form-row { flex-direction: column; gap: 0.5rem; }
@@ -1562,6 +1707,36 @@ input:focus, textarea:focus, select:focus {
   /* Collapse big-button groups to wrap. */
   .row-between { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
   .row-between > * { width: 100%; }
+
+  /* --- Mobile pass: layout polish ------------------------------------ */
+  /* Tighten the dashboard's vertical rhythm so cards don't waste space. */
+  .dashboard { gap: 1rem; }
+
+  /* Toolbar children take full width when they wrap, instead of jamming
+     in at half-width. Spacer (which pushes action buttons right on
+     desktop) collapses since stacked buttons don't need the push. */
+  .toolbar { gap: 0.5rem; }
+  .toolbar > input,
+  .toolbar > select,
+  .toolbar > label { flex: 1 1 100%; min-width: 0; max-width: none; }
+  .toolbar input[type="search"] { max-width: none; }
+  .toolbar > .toolbar-spacer { display: none; }
+  .toolbar > .button,
+  .toolbar > button,
+  .toolbar > a.button { width: 100%; }
+
+  /* Header action button clusters wrap full-width when stacked under
+     the title. */
+  .header-actions { width: 100%; flex-wrap: wrap; }
+  .header-actions > * { flex: 1 1 auto; }
+
+  /* Composer toolbars (message board / messages / project comments)
+     wrap; the submit button keeps its own row at the right. */
+  .composer-toolbar { flex-wrap: wrap; }
+
+  /* Contract / invoice / pre-rendered text wraps long lines instead of
+     introducing horizontal scroll inside the card. */
+  .contract-body { white-space: pre-wrap; word-wrap: break-word; word-break: break-word; }
 }
 @media (max-width: 600px) {
   .navbar { padding: 0 1rem; height: 4rem; }
@@ -1573,6 +1748,17 @@ input:focus, textarea:focus, select:focus {
      so nav doesn't push content offscreen. */
   .card { padding: 1rem; }
   .portal-main { padding: 1rem; }
+  /* Cap the dashboard heading + section titles so phones don't get
+     hero-sized text on a list page. */
+  .dashboard { gap: 0.75rem; }
+  .dashboard header h1 { font-size: 1.25rem; }
+  .card h2 { font-size: 1.05rem; }
+  .card h3 { font-size: 0.95rem; }
+  /* Header-actions: full-width column stack so each tap target is large. */
+  .header-actions { flex-direction: column; align-items: stretch; }
+  .header-actions > * { width: 100%; }
+  /* Tighter input padding so the on-screen keyboard has more room. */
+  input, textarea, select { padding: 8px 10px; }
   .portal-sidebar {
     position: sticky;
     top: 0;

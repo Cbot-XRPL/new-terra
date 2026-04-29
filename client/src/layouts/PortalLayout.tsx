@@ -10,7 +10,6 @@ import {
   Calendar,
   Megaphone,
   MessageSquare,
-  Clock,
   HandCoins,
   TrendingUp,
   Landmark,
@@ -20,6 +19,7 @@ import {
   Calculator,
   Shield,
   Settings,
+  Wrench,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
@@ -124,27 +124,27 @@ export default function PortalLayout() {
             user?.role === 'SUBCONTRACTOR' ||
             user?.role === 'ADMIN') && (
             <NavLink to="/portal/time">
-              <Clock size={ICON_SIZE} /> <span>Time</span>
+              <HandCoins size={ICON_SIZE} /> <span>Request pay</span>
             </NavLink>
           )}
           {(user?.role === 'ADMIN'
             || (user?.role === 'EMPLOYEE' && user.isAccounting)
             || user?.role === 'SUBCONTRACTOR') && (
             <NavLink to="/portal/subcontractor-bills">
-              <HandCoins size={ICON_SIZE} />{' '}
+              <Wrench size={ICON_SIZE} />{' '}
               <span>{user?.role === 'SUBCONTRACTOR' ? 'My bills' : 'Sub bills'}</span>
-            </NavLink>
-          )}
-          {(user?.role === 'ADMIN' ||
-            (user?.role === 'EMPLOYEE' && (user.isAccounting || user.isProjectManager))) && (
-            <NavLink to="/portal/finance">
-              <TrendingUp size={ICON_SIZE} /> <span>Finance</span>
             </NavLink>
           )}
           {(user?.role === 'ADMIN' ||
             (user?.role === 'EMPLOYEE' && user.isAccounting)) && (
             <NavLink to="/portal/banking">
               <Landmark size={ICON_SIZE} /> <span>Banking</span>
+            </NavLink>
+          )}
+          {(user?.role === 'ADMIN' ||
+            (user?.role === 'EMPLOYEE' && (user.isAccounting || user.isProjectManager))) && (
+            <NavLink to="/portal/finance">
+              <TrendingUp size={ICON_SIZE} /> <span>Finance</span>
             </NavLink>
           )}
           {user?.role === 'ADMIN' && (
@@ -181,7 +181,7 @@ export default function PortalLayout() {
               <Avatar
                 name={user?.name ?? ''}
                 url={user?.avatarUrl ?? user?.avatarThumbnailUrl}
-                size={64}
+                size={56}
               />
               <span className="user-chip-meta">
                 <span className="user-chip-name">{user?.name}</span>

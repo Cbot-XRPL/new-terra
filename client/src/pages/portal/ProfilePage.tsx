@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAuth, type AuthUser } from '../../auth/AuthContext';
 import Avatar from '../../components/Avatar';
@@ -19,7 +20,8 @@ function authHeaders(): Record<string, string> {
 }
 
 export default function ProfilePage() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, logout } = useAuth();
+  const navigate = useNavigate();
 
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
@@ -272,6 +274,18 @@ export default function ProfilePage() {
             </>
           )}
         </dl>
+        <div style={{ marginTop: '1rem' }}>
+          <button
+            type="button"
+            className="button button-ghost"
+            onClick={() => {
+              logout();
+              navigate('/');
+            }}
+          >
+            Sign out
+          </button>
+        </div>
       </section>
     </div>
   );

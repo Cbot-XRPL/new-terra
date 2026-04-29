@@ -97,6 +97,19 @@ export default function MessagesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
+  // Load the conversation pane whenever the user switches threads (or
+  // starts a new one from the picker). Clears the previous conversation
+  // first so the UI doesn't briefly show the wrong thread's messages.
+  useEffect(() => {
+    if (!active) {
+      setConversation(null);
+      return;
+    }
+    setConversation(null);
+    loadConversation(active);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+
   async function send(e: FormEvent) {
     e.preventDefault();
     if (!active || (!body.trim() && files.length === 0)) return;

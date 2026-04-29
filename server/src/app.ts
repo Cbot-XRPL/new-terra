@@ -46,6 +46,8 @@ import inventoryRouter from './routes/inventory.js';
 import searchRouter from './routes/search.js';
 import seoRouter from './routes/seo.js';
 import drawsRouter from './routes/draws.js';
+import channelsRouter from './routes/channels.js';
+import plaidRouter from './routes/plaid.js';
 
 // Builds an express app without binding to a port. The listen() call lives
 // in index.ts so the test suite can import this factory and hand the app to
@@ -102,6 +104,7 @@ export function createApp(): Express {
   app.use('/api/projects', logEntriesRouter);
   app.use('/api/memberships', membershipsRouter);
   app.use('/api/board', boardRouter);
+  app.use('/api/channels', channelsRouter);
   app.use('/api/schedules', schedulesRouter);
   app.use('/api/invoices', invoicesRouter);
   app.use('/api/messages', messagesRouter);
@@ -131,6 +134,7 @@ export function createApp(): Express {
   app.use('/api/inventory', inventoryRouter);
   app.use('/api/search', searchRouter);
   app.use('/api/draws', drawsRouter);
+  app.use('/api/integrations/plaid', plaidRouter);
   // SEO root paths — /sitemap.xml and /robots.txt. Mounted at root (not
   // under /api) so crawlers hit the canonical URLs.
   app.use('/', seoRouter);

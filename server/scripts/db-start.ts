@@ -20,6 +20,10 @@ const pg = new EmbeddedPostgres({
   password: 'postgres',
   port,
   persistent: true,
+  // Force UTF-8 + C locale so the cluster can store the full Unicode
+  // range — including emojis. The Windows default (WIN1252) silently
+  // rejects 4-byte UTF-8 sequences like 🎉.
+  initdbFlags: ['--encoding=UTF8', '--locale=C'],
 });
 
 async function main() {

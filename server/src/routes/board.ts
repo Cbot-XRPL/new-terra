@@ -13,16 +13,25 @@ const router = Router();
 router.use(requireAuth, requireRole(Role.ADMIN, Role.EMPLOYEE, Role.SUBCONTRACTOR));
 
 const createSchema = z.object({
-  title: z.string().min(1),
+  channelId: z.string().min(1),
   body: z.string().min(1),
   pinned: z.coerce.boolean().optional(),
 });
 
-const updateSchema = createSchema.partial();
+const updateSchema = z.object({
+  body: z.string().min(1).optional(),
+  pinned: z.coerce.boolean().optional(),
+});
 
-router.get('/', async (_req, res, next) => {
+const listQuery = z.object({
+  channelId: z.string().min(1).optional(),
+});
+
+router.get('/', async (req, res, next) => {
   try {
+    const { channelId } = listQuery.parse(req.query);
     const posts = await prisma.messageBoardPost.findMany({
+      where: channelId ? { channelId } : {},
       orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
       include: { author: { select: { id: true, name: true, role: true } } },
     });
@@ -35,11 +44,15 @@ router.get('/', async (_req, res, next) => {
 router.post('/', attachmentUpload.array('attachments', 5), async (req, res, next) => {
   try {
     const data = createSchema.parse(req.body);
+    const channel = await prisma.channel.findUnique({ where: { id: data.channelId } });
+    if (!channel || channel.archivedAt) {
+      return res.status(400).json({ error: 'Channel not found or archived' });
+    }
     // Only admins may pin posts; ignore the field for everyone else.
     const pinned = req.user!.role === Role.ADMIN ? data.pinned ?? false : false;
     const post = await prisma.messageBoardPost.create({
       data: {
-        title: data.title,
+        channelId: data.channelId,
         body: data.body,
         pinned,
         authorId: req.user!.sub,
@@ -76,7 +89,7 @@ router.patch('/:id', async (req, res, next) => {
     const pinned = req.user!.role === Role.ADMIN ? data.pinned : undefined;
     const updated = await prisma.messageBoardPost.update({
       where: { id: post.id },
-      data: { title: data.title, body: data.body, pinned },
+      data: { body: data.body, pinned },
       include: { author: { select: { id: true, name: true, role: true } } },
     });
     res.json({ post: updated });

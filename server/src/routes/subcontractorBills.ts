@@ -51,6 +51,242 @@ async function loadActor(userId: string) {
   return prisma.user.findUnique({ where: { id: userId } });
 }
 
+// Pay requests bundled from time entries, grouped by user × ISO week.
+// Admin/accounting see one row per worker per week with the running
+// total. Used as a payroll review surface alongside the explicit
+// SubcontractorBill rows. Hourly entries are sized by minutes ×
+// hourlyRateCents; daily entries by dayUnits × dailyRateCents (both
+// snapshotted on the entry, so historical changes don't shift money).
+
+function isoWeekStart(d: Date): Date {
+  const day = d.getDay();
+  // Anchor each week to Monday; Sunday (0) shifts back six days.
+  const diff = day === 0 ? -6 : 1 - day;
+  const m = new Date(d);
+  m.setDate(d.getDate() + diff);
+  m.setHours(0, 0, 0, 0);
+  return m;
+}
+
+function entryAmountCents(e: {
+  minutes: number;
+  dayUnits: number | null;
+  hourlyRateCents: number;
+  dailyRateCents: number;
+}): number {
+  if (e.dayUnits != null && e.dayUnits > 0) {
+    return Math.round(e.dayUnits * e.dailyRateCents);
+  }
+  return Math.round((e.minutes * e.hourlyRateCents) / 60);
+}
+
+router.get('/pay-requests', async (req, res, next) => {
+  try {
+    const me = await loadActor(req.user!.sub);
+    if (!me || !hasAccountingAccess(me)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    // Default to the last 8 weeks; caller can widen via ?weeks=N.
+    const weeks = Math.min(52, Math.max(1, Number(req.query.weeks ?? 8)));
+    const since = isoWeekStart(new Date());
+    since.setDate(since.getDate() - 7 * (weeks - 1));
+
+    const entries = await prisma.timeEntry.findMany({
+      where: {
+        startedAt: { gte: since },
+        endedAt: { not: null }, // skip "on the clock" entries
+      },
+      orderBy: { startedAt: 'asc' },
+      include: {
+        user: { select: { id: true, name: true, role: true, billingMode: true } },
+        project: { select: { id: true, name: true } },
+        approvedBy: { select: { id: true, name: true } },
+        rejectedBy: { select: { id: true, name: true } },
+      },
+    });
+
+    interface BundleEntry {
+      id: string;
+      startedAt: string;
+      endedAt: string | null;
+      minutes: number;
+      dayUnits: number | null;
+      notes: string | null;
+      amountCents: number;
+      project: { id: string; name: string } | null;
+      status: 'pending' | 'approved' | 'rejected';
+      rejectedReason: string | null;
+      rejectedAt: string | null;
+      approvedAt: string | null;
+    }
+
+    interface Bundle {
+      key: string;
+      userId: string;
+      userName: string;
+      role: 'EMPLOYEE' | 'SUBCONTRACTOR' | 'ADMIN' | 'CUSTOMER';
+      billingMode: 'HOURLY' | 'DAILY';
+      weekStart: string;
+      weekEnd: string;
+      totalMinutes: number;
+      totalDayUnits: number;
+      // Active total = sum of non-rejected entries' amounts. Rejected
+      // entries don't get paid, so they're excluded from the bundle total.
+      totalCents: number;
+      entryCount: number;
+      projects: Array<{ id: string; name: string; cents: number }>;
+      entries: BundleEntry[];
+      // 'pending' = at least one non-rejected entry awaits approval
+      // 'approved' = every non-rejected entry has approvedAt set
+      status: 'pending' | 'approved';
+    }
+
+    const bundles = new Map<string, Bundle>();
+    for (const e of entries) {
+      const ws = isoWeekStart(new Date(e.startedAt));
+      const we = new Date(ws);
+      we.setDate(ws.getDate() + 6);
+      we.setHours(23, 59, 59, 999);
+      const key = `${e.userId}|${ws.toISOString().slice(0, 10)}`;
+      const amount = entryAmountCents({
+        minutes: e.minutes,
+        dayUnits: e.dayUnits,
+        hourlyRateCents: e.hourlyRateCents,
+        dailyRateCents: e.dailyRateCents,
+      });
+      const isRejected = e.rejectedAt != null;
+      const isApproved = e.approvedAt != null;
+      let b = bundles.get(key);
+      if (!b) {
+        b = {
+          key,
+          userId: e.userId,
+          userName: e.user.name,
+          role: e.user.role,
+          billingMode: e.user.billingMode,
+          weekStart: ws.toISOString(),
+          weekEnd: we.toISOString(),
+          totalMinutes: 0,
+          totalDayUnits: 0,
+          totalCents: 0,
+          entryCount: 0,
+          projects: [],
+          entries: [],
+          status: 'approved', // assume; demoted below if any entry is pending
+        };
+        bundles.set(key, b);
+      }
+      b.entries.push({
+        id: e.id,
+        startedAt: e.startedAt.toISOString(),
+        endedAt: e.endedAt ? e.endedAt.toISOString() : null,
+        minutes: e.minutes,
+        dayUnits: e.dayUnits,
+        notes: e.notes,
+        amountCents: amount,
+        project: e.project ? { id: e.project.id, name: e.project.name } : null,
+        status: isRejected ? 'rejected' : isApproved ? 'approved' : 'pending',
+        rejectedReason: e.rejectedReason,
+        rejectedAt: e.rejectedAt ? e.rejectedAt.toISOString() : null,
+        approvedAt: e.approvedAt ? e.approvedAt.toISOString() : null,
+      });
+      b.entryCount += 1;
+      if (!isRejected) {
+        b.totalMinutes += e.minutes;
+        b.totalDayUnits += e.dayUnits ?? 0;
+        b.totalCents += amount;
+        if (!isApproved) b.status = 'pending';
+        if (e.project) {
+          const existing = b.projects.find((p) => p.id === e.project!.id);
+          if (existing) existing.cents += amount;
+          else b.projects.push({ id: e.project.id, name: e.project.name, cents: amount });
+        }
+      }
+    }
+
+    // If a bundle has only rejected entries, treat it as approved (nothing
+    // to review). If it has no entries at all (impossible, but defensive)
+    // it stays approved by default.
+    for (const b of bundles.values()) {
+      const nonRejected = b.entries.filter((e) => e.status !== 'rejected');
+      if (nonRejected.length === 0) {
+        b.status = 'approved';
+      }
+    }
+
+    // Sort newest week first, then by total descending within a week.
+    const out = [...bundles.values()].sort((a, b) =>
+      a.weekStart === b.weekStart
+        ? b.totalCents - a.totalCents
+        : b.weekStart.localeCompare(a.weekStart),
+    );
+    res.json({ bundles: out });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Approve every non-rejected entry in a weekly bundle in one call. Bundle
+// is identified by userId + weekStart (ISO date); approvedAt + approvedBy
+// are stamped on each affected entry.
+router.post('/pay-requests/approve-bundle', async (req, res, next) => {
+  try {
+    const me = await loadActor(req.user!.sub);
+    if (!me || !hasAccountingAccess(me)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const schema = z.object({
+      userId: z.string().min(1),
+      weekStart: z.string().datetime(),
+    });
+    const { userId, weekStart } = schema.parse(req.body);
+    const ws = new Date(weekStart);
+    const we = new Date(ws);
+    we.setDate(ws.getDate() + 7);
+    const result = await prisma.timeEntry.updateMany({
+      where: {
+        userId,
+        startedAt: { gte: ws, lt: we },
+        rejectedAt: null,
+        approvedAt: null,
+      },
+      data: { approvedAt: new Date(), approvedById: me.id },
+    });
+    res.json({ approved: result.count });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Un-approve a bundle (admin caught a mistake after approving).
+router.post('/pay-requests/unapprove-bundle', async (req, res, next) => {
+  try {
+    const me = await loadActor(req.user!.sub);
+    if (!me || !hasAccountingAccess(me)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const schema = z.object({
+      userId: z.string().min(1),
+      weekStart: z.string().datetime(),
+    });
+    const { userId, weekStart } = schema.parse(req.body);
+    const ws = new Date(weekStart);
+    const we = new Date(ws);
+    we.setDate(ws.getDate() + 7);
+    const result = await prisma.timeEntry.updateMany({
+      where: {
+        userId,
+        startedAt: { gte: ws, lt: we },
+        approvedAt: { not: null },
+      },
+      data: { approvedAt: null, approvedById: null },
+    });
+    res.json({ unapproved: result.count });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Subcontractors see only their own bills. Admin / accounting see everything.
 // Plain employees never see them — this is a finance/COGS surface.
 router.get('/', async (req, res, next) => {
