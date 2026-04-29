@@ -1131,18 +1131,16 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  /* Pin to viewport height + sticky so the brand stays at the top and the
-     user-chip + sign-out always show at the bottom regardless of how
-     long the main content is. The nav in the middle scrolls when there
-     are more menu items than fit. */
+  /* Sticky at the top so the sidebar stays pinned while main content
+     scrolls. Sized to its content (with min-height = viewport) so the
+     full nav is visible without an inner scrollbar — at 0.8 zoom an
+     18-item sidebar fits comfortably on any desktop screen. */
   position: sticky;
   top: 0;
   align-self: start;
-  height: 100vh;
+  min-height: 100vh;
 }
 .portal-sidebar nav {
-  flex: 1;
-  overflow-y: auto;
   min-height: 0;
 }
 .portal-brand {
