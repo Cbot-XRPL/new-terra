@@ -27,18 +27,22 @@ export function formatDrawSchedule(draws: DrawForRender[]): string {
 }
 
 /**
- * Substitute {{key}} placeholders in `body` with values; the special
- * `draw_schedule` key is auto-filled from `draws` if not already provided.
- * Mirrors the renderBody helper in routes/contracts.ts but enriched.
+ * Substitute {{key}} placeholders in `body` with values. Two keys are
+ * auto-derived from `draws` if the caller didn't pass them explicitly:
+ *   - draw_schedule  — full text-table of the schedule
+ *   - contract_total — sum of all draw amounts (formatted as $X,XXX.XX)
  */
 export function renderContractBody(
   body: string,
   values: Record<string, string>,
   draws: DrawForRender[],
 ): string {
+  const total = draws.reduce((s, d) => s + d.amountCents, 0);
+  const totalFormatted = total > 0 ? `$${(total / 100).toFixed(2)}` : '';
   const enriched: Record<string, string> = {
     ...values,
     draw_schedule: values.draw_schedule || formatDrawSchedule(draws),
+    contract_total: values.contract_total || totalFormatted,
   };
   return body.replace(/\{\{\s*([a-zA-Z][a-zA-Z0-9_]*)\s*\}\}/g, (_match, key: string) => {
     const v = enriched[key];

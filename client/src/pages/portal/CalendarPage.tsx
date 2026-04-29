@@ -108,7 +108,7 @@ export default function CalendarPage() {
 
       {error && <div className="form-error">{error}</div>}
 
-      <section className="card calendar-card">
+      <section className="card calendar-card calendar-card-full">
         <div className="calendar-grid">
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
             <div key={d} className="calendar-dow">{d}</div>

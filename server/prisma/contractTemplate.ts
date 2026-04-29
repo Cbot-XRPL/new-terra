@@ -16,7 +16,6 @@ export const STANDARD_CONTRACT_BODY = `RESIDENTIAL CONSTRUCTION AGREEMENT
 This Agreement is entered into on {{contract_date}} between:
 
   CONTRACTOR:  New Terra Construction
-               License #: {{license_number}}
                Address:   {{contractor_address}}
 
   OWNER:       {{customer_name}}
@@ -36,8 +35,8 @@ manner:
 2. CONTRACT PRICE
 
 The total Contract Price for the work described above is
-{{contract_total}} (USD), subject to written change orders signed by both
-parties.
+{{contract_total}} (USD), the sum of the draw schedule below, subject to
+written change orders signed by both parties.
 
 3. DRAW SCHEDULE / PAYMENT TERMS
 
@@ -124,17 +123,17 @@ agree to the terms of this Agreement.
   Date:        ____________________
 `;
 
-// Variables surfaced in the contract editor. {{draw_schedule}} is omitted
-// because it's auto-rendered from the Draw rows attached to the contract.
+// Variables surfaced in the contract editor. Two placeholders are
+// auto-rendered from the Draw rows and so are NOT in this list:
+//   {{draw_schedule}} — full text-table of the schedule
+//   {{contract_total}} — sum of all draw amounts
 export const STANDARD_CONTRACT_VARIABLES = [
   { key: 'contract_date', label: 'Contract date', required: true },
-  { key: 'license_number', label: 'Contractor license number', required: false },
   { key: 'contractor_address', label: 'Contractor address', required: false },
   { key: 'customer_name', label: 'Customer / Owner name', required: true },
   { key: 'customer_address', label: 'Customer / Owner address', required: true },
   { key: 'project_address', label: 'Project property address', required: true },
   { key: 'scope_of_work', label: 'Scope of work', required: true, multiline: true },
-  { key: 'contract_total', label: 'Contract total ($)', required: true },
   { key: 'payment_terms_days', label: 'Payment terms (days)', required: false },
   { key: 'start_date', label: 'Start date', required: false },
   { key: 'substantial_completion_date', label: 'Substantial completion date', required: false },

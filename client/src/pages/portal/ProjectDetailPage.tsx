@@ -13,6 +13,7 @@ import ProjectComments from './ProjectComments';
 import JobCostingSection from './JobCostingSection';
 import ChangeOrdersSection from './ChangeOrdersSection';
 import DrawSchedule from './DrawSchedule';
+import ProjectSourceEstimate from './ProjectSourceEstimate';
 
 type ProjectStatus = 'PLANNING' | 'AWAITING_CONTRACT' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETE' | 'CANCELLED';
 
@@ -534,6 +535,14 @@ export default function ProjectDetailPage() {
       <ChangeOrdersSection
         projectId={project.id}
         customerName={project.customer.name}
+      />
+
+      <ProjectSourceEstimate
+        projectId={project.id}
+        canSee={
+          !!isAdmin
+          || (user?.role === 'EMPLOYEE' && !!(user.isProjectManager || user.isAccounting || user.isSales))
+        }
       />
 
       {(isAdmin

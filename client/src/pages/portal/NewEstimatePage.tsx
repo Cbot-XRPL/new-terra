@@ -48,27 +48,51 @@ interface Template {
 }
 
 // Working line shape (numbers, not Decimal strings) for the in-form table.
+// productId === null means a hand-typed "Custom" line; otherwise it's a
+// catalog product the rep selected in the Item dropdown. Either way the
+// fields below are what gets sent to the server — productId is purely a
+// UI affordance.
 interface WorkingLine {
+  productId: string | null;
   description: string;
   quantity: number;
   unit: string;
   unitPriceCents: number;
-  category: string;
+  category: 'Labor' | 'Materials';
   notes: string;
   position: number;
 }
 
 function blankLine(position: number): WorkingLine {
-  return { description: '', quantity: 1, unit: '', unitPriceCents: 0, category: '', notes: '', position };
+  return {
+    productId: null,
+    description: '',
+    quantity: 1,
+    unit: '',
+    unitPriceCents: 0,
+    category: 'Materials',
+    notes: '',
+    position,
+  };
+}
+
+// Map a catalog product's free-form `kind` to one of our two budget
+// buckets. Anything that isn't explicitly labor falls into Materials —
+// the bucket the bookkeeper uses for everything that isn't payroll.
+function categoryFromProduct(p: { kind: string; category: string | null }): 'Labor' | 'Materials' {
+  if (p.kind === 'labor') return 'Labor';
+  if (p.category === 'Labor') return 'Labor';
+  return 'Materials';
 }
 
 function fromTemplate(t: Template): WorkingLine[] {
   return t.lines.map((l, idx) => ({
+    productId: null,
     description: l.description,
     quantity: Number(l.defaultQuantity),
     unit: l.unit ?? '',
     unitPriceCents: l.unitPriceCents,
-    category: l.category ?? '',
+    category: l.category === 'Labor' ? 'Labor' : 'Materials',
     notes: l.notes ?? '',
     position: idx,
   }));
@@ -91,11 +115,12 @@ export default function NewEstimatePage() {
       const unit = inner.get('unit') ?? '';
       if (!description) return null;
       return {
+        productId: null,
         description,
         quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
         unit,
         unitPriceCents: 0,
-        category: 'Materials',
+        category: 'Materials' as const,
         notes: '',
         position: 0,
       };
@@ -157,15 +182,42 @@ export default function NewEstimatePage() {
     setLines((cur) => [
       ...cur,
       {
+        productId: p.id,
         description: p.name,
         quantity: 1,
         unit: p.unit ?? '',
         unitPriceCents: p.defaultUnitPriceCents,
-        category: p.category ?? 'Materials',
+        category: categoryFromProduct(p),
         notes: '',
         position: cur.length,
       },
     ]);
+  }
+
+  // Inline Item-column dropdown picker: switching from Custom → product
+  // (or product → product) overwrites the row with the catalog item.
+  // Switching back to Custom keeps whatever description is already there.
+  function pickItem(idx: number, productId: string | null) {
+    setLines((cur) =>
+      cur.map((l, i) => {
+        if (i !== idx) return l;
+        if (!productId) {
+          // Going back to Custom — clear the product link but keep what
+          // the rep had typed so they don't lose context.
+          return { ...l, productId: null };
+        }
+        const p = products.find((x) => x.id === productId);
+        if (!p) return l;
+        return {
+          ...l,
+          productId: p.id,
+          description: p.name,
+          unit: p.unit ?? l.unit,
+          unitPriceCents: p.defaultUnitPriceCents,
+          category: categoryFromProduct(p),
+        };
+      }),
+    );
   }
 
   async function previewAssembly(a: AssemblyRef) {
@@ -185,11 +237,12 @@ export default function NewEstimatePage() {
     setLines((cur) => [
       ...cur,
       ...assemblyPreview.lines.map((l, idx) => ({
+        productId: null,
         description: l.description,
         quantity: l.quantity * qty,
         unit: l.unit ?? '',
         unitPriceCents: l.unitPriceCents,
-        category: l.category ?? '',
+        category: (l.category === 'Labor' ? 'Labor' : 'Materials') as 'Labor' | 'Materials',
         notes: '',
         position: cur.length + idx,
       })),
@@ -493,7 +546,7 @@ export default function NewEstimatePage() {
         <table className="table estimate-lines">
           <thead>
             <tr>
-              <th style={{ width: '32%' }}>Description</th>
+              <th style={{ width: '34%' }}>Item</th>
               <th>Qty</th>
               <th>Unit</th>
               <th>Price</th>
@@ -505,15 +558,36 @@ export default function NewEstimatePage() {
           <tbody>
             {lines.map((l, idx) => {
               const total = Math.round(l.quantity * l.unitPriceCents);
+              const isCustom = l.productId === null;
               return (
                 <tr key={idx}>
                   <td>
-                    <input
-                      value={l.description}
-                      onChange={(e) => patchLine(idx, { description: e.target.value })}
-                      placeholder="e.g. 2x6x12 PT lumber"
+                    <select
+                      value={l.productId ?? ''}
+                      onChange={(e) => pickItem(idx, e.target.value || null)}
                       style={{ marginBottom: 0 }}
-                    />
+                    >
+                      <option value="">Custom — type your own</option>
+                      {products.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                          {p.category ? ` (${p.category})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {isCustom ? (
+                      <input
+                        value={l.description}
+                        onChange={(e) => patchLine(idx, { description: e.target.value })}
+                        placeholder="Describe the item / service"
+                        required
+                        style={{ marginTop: 4, marginBottom: 0 }}
+                      />
+                    ) : (
+                      <div className="muted" style={{ fontSize: '0.75rem', marginTop: 4 }}>
+                        From catalog · description locked to product name
+                      </div>
+                    )}
                   </td>
                   <td>
                     <input
@@ -546,12 +620,16 @@ export default function NewEstimatePage() {
                     />
                   </td>
                   <td>
-                    <input
+                    <select
                       value={l.category}
-                      onChange={(e) => patchLine(idx, { category: e.target.value })}
-                      placeholder="Materials"
-                      style={{ marginBottom: 0, width: 120 }}
-                    />
+                      onChange={(e) =>
+                        patchLine(idx, { category: e.target.value as 'Labor' | 'Materials' })
+                      }
+                      style={{ marginBottom: 0, width: 130 }}
+                    >
+                      <option value="Materials">Materials</option>
+                      <option value="Labor">Labor</option>
+                    </select>
                   </td>
                   <td><strong>{formatCents(total)}</strong></td>
                   <td>

@@ -89,7 +89,6 @@ export default function NewContractPage() {
   const [drawName, setDrawName] = useState('');
   const [drawDesc, setDrawDesc] = useState('');
   const [drawAmount, setDrawAmount] = useState('');
-  const [drawPercent, setDrawPercent] = useState('');
 
   // Manual body edit — when the rep clicks "Edit text" the preview turns
   // into a textarea; the saved string overrides the auto-rendered body.
@@ -137,45 +136,34 @@ export default function NewContractPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateId]);
 
+  // Contract total is derived from the sum of draws — no separate input.
+  const contractTotalCents = draws.reduce((s, d) => s + d.amountCents, 0);
+
+  const previewValues = useMemo(
+    () => ({
+      ...values,
+      // Inject the live total so the preview reflects what the rep is
+      // building as they add draws. Server does the same on save.
+      contract_total: contractTotalCents > 0 ? formatCents(contractTotalCents) : '',
+    }),
+    [values, contractTotalCents],
+  );
+
   const previewAuto = useMemo(
-    () => (template ? renderPreview(template.body, values, draws) : ''),
-    [template, values, draws],
+    () => (template ? renderPreview(template.body, previewValues, draws) : ''),
+    [template, previewValues, draws],
   );
   const previewShown = bodyOverride ?? previewAuto;
 
-  // Try to read a contract total from the variableValues so the % helper
-  // on the draw editor can compute amounts. Strips $ and commas.
-  const contractTotalCents = (() => {
-    const raw = (values.contract_total ?? values.total ?? '').replace(/[^0-9.]/g, '');
-    const n = Number(raw);
-    return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : null;
-  })();
-
   function addDraw() {
     setError(null);
-    let amountCents: number | null = null;
-    let percentBasis: number | null = null;
-    if (drawAmount) {
-      const dollars = Number(drawAmount);
-      if (!Number.isFinite(dollars) || dollars <= 0) {
-        setError('Draw amount must be > 0');
-        return;
-      }
-      amountCents = Math.round(dollars * 100);
-    } else if (drawPercent && contractTotalCents) {
-      const pct = Number(drawPercent);
-      if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
-        setError('Percent must be between 0 and 100');
-        return;
-      }
-      amountCents = Math.round((contractTotalCents * pct) / 100);
-      percentBasis = pct;
-    } else {
-      setError('Enter an amount in $ or a percent of contract total');
-      return;
-    }
     if (!drawName.trim()) {
       setError('Draw needs a milestone name');
+      return;
+    }
+    const dollars = Number(drawAmount);
+    if (!drawAmount || !Number.isFinite(dollars) || dollars <= 0) {
+      setError('Draw amount must be > 0');
       return;
     }
     setDraws((d) => [
@@ -184,14 +172,13 @@ export default function NewContractPage() {
         id: uid(),
         name: drawName.trim(),
         description: drawDesc.trim(),
-        amountCents: amountCents!,
-        percentBasis,
+        amountCents: Math.round(dollars * 100),
+        percentBasis: null,
       },
     ]);
     setDrawName('');
     setDrawDesc('');
     setDrawAmount('');
-    setDrawPercent('');
   }
 
   function removeDraw(id: string) {
@@ -331,9 +318,20 @@ export default function NewContractPage() {
 
           {template && (
             <>
-              <h2 style={{ marginTop: '1.5rem' }}>Draw schedule</h2>
-              <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}>
-                The first draw is the deposit due at signing. Add the remaining milestones below.
+              <div className="row-between" style={{ marginTop: '1.5rem', alignItems: 'baseline' }}>
+                <h2 style={{ margin: 0 }}>Draw schedule</h2>
+                <div style={{ fontSize: '0.95rem' }}>
+                  Contract total:{' '}
+                  <strong>{formatCents(contractTotalCents)}</strong>
+                  {draws.length > 0 && (
+                    <span className="muted" style={{ marginLeft: '0.4rem', fontSize: '0.8rem' }}>
+                      ({draws.length} draw{draws.length === 1 ? '' : 's'})
+                    </span>
+                  )}
+                </div>
+              </div>
+              <p className="muted" style={{ fontSize: '0.85rem', margin: '0.25rem 0 0.75rem' }}>
+                The first draw is the deposit due at signing. The contract total is the sum of all draws.
               </p>
               {template.variables.some((v) => v.key === 'payment_terms_days') && (
                 <div className="form-row">
@@ -429,41 +427,16 @@ export default function NewContractPage() {
                     step="0.01"
                     min="0"
                     value={drawAmount}
-                    onChange={(e) => {
-                      setDrawAmount(e.target.value);
-                      if (e.target.value) setDrawPercent('');
-                    }}
-                    placeholder="leave blank to use percent"
+                    onChange={(e) => setDrawAmount(e.target.value)}
+                    placeholder="e.g. 5000"
                   />
                 </div>
-                {contractTotalCents != null && (
-                  <div>
-                    <label>…or % of contract total</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="100"
-                      value={drawPercent}
-                      onChange={(e) => {
-                        setDrawPercent(e.target.value);
-                        if (e.target.value) setDrawAmount('');
-                      }}
-                      placeholder="e.g. 25"
-                    />
-                  </div>
-                )}
                 <div style={{ alignSelf: 'end' }}>
                   <button type="button" className="button-ghost" onClick={addDraw}>
                     Add draw
                   </button>
                 </div>
               </div>
-              {contractTotalCents == null && (
-                <p className="muted" style={{ fontSize: '0.75rem', marginTop: '-0.25rem' }}>
-                  Tip: enter a Contract total above to unlock %-based draw entry.
-                </p>
-              )}
             </>
           )}
 

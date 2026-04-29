@@ -29,7 +29,8 @@
       "Bash(grep -rn \"router\\\\.get.*\\\\\\\\/me\\\\\\\\|/me'\\\\\\\\|me\\\\\\\\.role.*me\\\\\\\\.isSales\" server/src/routes)",
       "WebFetch(domain:docs.google.com)",
       "Bash(taskkill //F //PID 505424)",
-      "Bash(taskkill //F //PID 550780)"
+      "Bash(taskkill //F //PID 550780)",
+      "Bash(taskkill //F //PID 31304)"
     ]
   }
 }

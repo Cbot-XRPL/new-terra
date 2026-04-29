@@ -829,6 +829,14 @@ input:focus, textarea:focus, select:focus {
 }
 .calendar-cell.muted-cell { background: var(--bg); opacity: 0.5; }
 .calendar-cell.today { background: rgba(138, 180, 248, 0.12); }
+/* Dedicated /portal/calendar page: square cells that scale with the
+   column width, filling the available viewport. Doesn't apply to the
+   compact widget on the staff overview. */
+.calendar-card-full .calendar-cell {
+  aspect-ratio: 1 / 1;
+  min-height: 0;
+  overflow: hidden;
+}
 .calendar-day-num {
   font-weight: 600;
   font-size: 1rem;

@@ -57,7 +57,12 @@ const lineInputSchema = z.object({
   quantity: z.number().nonnegative().default(0),
   unit: z.string().max(20).optional().nullable(),
   unitPriceCents: z.number().int().nonnegative().default(0),
-  category: z.string().max(80).optional().nullable(),
+  // Locked to Labor or Materials so estimate→budget grouping stays clean
+  // and the PM only ever sees two real buckets. Catalog products map their
+  // own kind ('labor' → Labor, anything else → Materials) before reaching
+  // here. Future buckets (Subs, Fees) can be re-enabled by extending this
+  // enum + the client dropdown.
+  category: z.enum(['Labor', 'Materials']).default('Materials'),
   notes: z.string().max(1000).optional().nullable(),
   position: z.number().int().nonnegative().optional(),
 });
@@ -96,6 +101,34 @@ const listQuery = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
   status: z.nativeEnum(EstimateStatus).optional(),
   q: z.string().trim().optional(),
+});
+
+// Estimates that converted into a particular project — used by the project
+// hub to show the originating estimate as a reference next to the budget.
+router.get('/by-project/:projectId', async (req, res, next) => {
+  try {
+    const me = await loadMe(req.user!.sub);
+    if (!me) return res.status(401).json({ error: 'Unauthenticated' });
+    const project = await prisma.project.findUnique({ where: { id: req.params.projectId } });
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    // Customers see this only on their own projects; staff broadly.
+    const isCustomer = me.role === Role.CUSTOMER && project.customerId === me.id;
+    const isStaff = me.role === Role.ADMIN || me.role === Role.EMPLOYEE;
+    if (!isCustomer && !isStaff) return res.status(403).json({ error: 'Forbidden' });
+
+    const estimates = await prisma.estimate.findMany({
+      where: { convertedProjectId: project.id },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        customer: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, name: true } },
+        lines: { orderBy: { position: 'asc' } },
+      },
+    });
+    res.json({ estimates });
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.get('/', async (req, res, next) => {
@@ -219,7 +252,7 @@ router.post('/', async (req, res, next) => {
           quantity: Number(l.defaultQuantity),
           unit: l.unit ?? null,
           unitPriceCents: l.unitPriceCents,
-          category: l.category ?? null,
+          category: l.category === 'Labor' ? 'Labor' : 'Materials',
           notes: l.notes ?? null,
           position: idx,
         }));
@@ -256,7 +289,7 @@ router.post('/', async (req, res, next) => {
             unit: l.unit ?? null,
             unitPriceCents: l.unitPriceCents,
             totalCents: l.totalCents,
-            category: l.category ?? null,
+            category: l.category === 'Labor' ? 'Labor' : 'Materials',
             notes: l.notes ?? null,
             position: l.position,
           })),
@@ -296,7 +329,7 @@ router.patch('/:id', async (req, res, next) => {
     let totals: { subtotalCents: number; taxCents: number; totalCents: number } | null = null;
     let lines: Array<{
       description: string; quantity: number; unit: string | null; unitPriceCents: number;
-      totalCents: number; category: string | null; notes: string | null; position: number;
+      totalCents: number; category: string; notes: string | null; position: number;
     }> | null = null;
 
     if (data.lines) {
@@ -305,7 +338,7 @@ router.patch('/:id', async (req, res, next) => {
         quantity: l.quantity,
         unit: l.unit ?? null,
         unitPriceCents: l.unitPriceCents,
-        category: l.category ?? null,
+        category: l.category === 'Labor' ? 'Labor' : 'Materials',
         notes: l.notes ?? null,
         position: l.position ?? idx,
         totalCents: recalcLineTotal(l.quantity, l.unitPriceCents),
@@ -733,7 +766,7 @@ router.post('/:id/add-assembly', async (req, res, next) => {
       unit: l.unit,
       unitPriceCents: l.unitPriceCents,
       totalCents: l.totalCents,
-      category: l.category,
+      category: l.category === 'Labor' ? 'Labor' : 'Materials',
       notes: l.notes,
       position: startPos + idx,
     }));

@@ -1614,7 +1614,10 @@ model EstimateLine {
   // Pre-computed = round(quantity * unitPriceCents). Kept on the row so
   // the customer-facing view doesn't redo math client-side.
   totalCents  Int @default(0)
-  category    String?
+  // Bucket for the estimate→budget flow. Required so every line maps to
+  // a budget category cleanly. Common values: "Labor", "Materials",
+  // "Subcontractors", "Fees", "Custom" (or any free text the rep types).
+  category    String   @default("Custom")
   notes       String?
   position    Int @default(0)
 }

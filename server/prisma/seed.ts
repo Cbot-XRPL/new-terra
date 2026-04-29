@@ -24,6 +24,18 @@ async function main() {
     console.log(`[seed] Created admin ${admin.email} (change the password immediately).`);
   }
 
+  // Plant the baseline expense / budget categories if missing. The
+  // estimate→budget flow groups lines by these names and creates matching
+  // ProjectBudgetLine rows; having Labor + Materials seeded means a fresh
+  // install doesn't auto-create them on first conversion.
+  for (const name of ['Labor', 'Materials', 'Subcontractors', 'Fees']) {
+    const existing = await prisma.expenseCategory.findFirst({ where: { name } });
+    if (!existing) {
+      await prisma.expenseCategory.create({ data: { name } });
+      console.log(`[seed] Created expense category "${name}".`);
+    }
+  }
+
   // Plant the standard residential construction template if no template
   // exists yet. Admin can edit the body in the Templates page later.
   const existingTpl = await prisma.contractTemplate.findFirst();
