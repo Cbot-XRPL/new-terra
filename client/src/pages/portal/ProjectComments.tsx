@@ -2,10 +2,19 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import { useAuth, type Role } from '../../auth/AuthContext';
 import { formatDateTime } from '../../lib/format';
+import EmojiPicker from '../../components/EmojiPicker';
+import {
+  AttachmentInput,
+  AttachmentGallery,
+  asAttachments,
+} from '../../components/MessageAttachments';
+
+const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
 interface Comment {
   id: string;
   body: string;
+  attachments?: unknown;
   createdAt: string;
   author: { id: string; name: string; role: Role };
 }
@@ -14,6 +23,7 @@ export default function ProjectComments({ projectId }: { projectId: string }) {
   const { user } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
   const [body, setBody] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,14 +58,25 @@ export default function ProjectComments({ projectId }: { projectId: string }) {
 
   async function add(e: FormEvent) {
     e.preventDefault();
+    if (!body.trim() && files.length === 0) return;
     setSubmitting(true);
     setError(null);
     try {
-      await api(`/api/projects/${projectId}/comments`, {
+      const form = new FormData();
+      if (body) form.append('body', body);
+      for (const f of files) form.append('attachments', f);
+      const token = localStorage.getItem('nt_token');
+      const res = await fetch(`${API_BASE}/api/projects/${projectId}/comments`, {
         method: 'POST',
-        body: JSON.stringify({ body }),
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new ApiError(res.status, data?.error ?? res.statusText, data);
+      }
       setBody('');
+      setFiles([]);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Send failed');
@@ -94,6 +115,7 @@ export default function ProjectComments({ projectId }: { projectId: string }) {
                 {c.author.name} · {c.author.role.toLowerCase()}
               </div>
               <div style={{ whiteSpace: 'pre-wrap' }}>{c.body}</div>
+              <AttachmentGallery attachments={asAttachments(c.attachments)} />
               <div className="bubble-time">
                 {formatDateTime(c.createdAt)}
                 {(c.author.id === user?.id || user?.role === 'ADMIN') && (
@@ -128,11 +150,15 @@ export default function ProjectComments({ projectId }: { projectId: string }) {
           value={body}
           onChange={(e) => setBody(e.target.value)}
           placeholder="Write a project update or question…"
-          required
         />
-        <button type="submit" disabled={submitting || !body.trim()}>
-          {submitting ? 'Posting…' : 'Post'}
-        </button>
+        <div className="composer-toolbar">
+          <EmojiPicker onPick={(e) => setBody((b) => b + e)} />
+          <AttachmentInput files={files} onChange={setFiles} disabled={submitting} />
+          <div className="toolbar-spacer" />
+          <button type="submit" disabled={submitting || (!body.trim() && files.length === 0)}>
+            {submitting ? 'Posting…' : 'Post'}
+          </button>
+        </div>
       </form>
     </section>
   );

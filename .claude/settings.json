@@ -16,7 +16,15 @@
       "Bash(curl -s -o /dev/null -w \"client status=%{http_code}\\\\n\" http://127.0.0.1:5173/)",
       "Bash(curl -s -o /dev/null -w \"localhost=%{http_code}\\\\n\" http://localhost:5173/)",
       "Bash(curl -s -o /dev/null -w \"v6=%{http_code}\\\\n\" http://[::1]:5173/)",
-      "Bash(curl -s -o /dev/null -w \"127.0.0.1=%{http_code}\\\\n\" http://127.0.0.1:5173/)"
+      "Bash(curl -s -o /dev/null -w \"127.0.0.1=%{http_code}\\\\n\" http://127.0.0.1:5173/)",
+      "Bash(taskkill //F //PID 143028)",
+      "Bash(taskkill //F //PID 142384)",
+      "Bash(awk 'NR==125,NR==135{print NR\": \"$0} NR==226,NR==236{print NR\": \"$0} NR==244,NR==262{print NR\": \"$0} NR==279,NR==308{print NR\": \"$0}' client/src/styles/global.css)",
+      "Read(//c/Users/codyr/Desktop/code/**)",
+      "Bash(npx tsc *)",
+      "Bash(grep -rn \"prefers-color-scheme\\\\|data-theme\\\\|themeMode\\\\|cookieConsent\\\\|nt_theme\\\\|--bg-elevated\\\\|@media.*color-scheme\\\\|\\\\\\\\[data-theme\" client/src/styles/global.css client/src)",
+      "Bash(grep -E \"background:\\\\s*#[0-9a-fA-F]{3,8}|background:\\\\s*rgb|color:\\\\s*#[0-9a-fA-F]{3,8}\" /c/Users/codyr/Desktop/code/new-terra-4/client/src/styles/global.css)",
+      "Bash(grep -n -B1 -A20 \"router\\\\.get.*'/'\\\\|router\\\\.get.*'\\\\\\\\/'\\\\\\\\\\)\" server/src/routes/projects.ts)"
     ]
   }
 }

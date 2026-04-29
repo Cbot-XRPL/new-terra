@@ -2,6 +2,14 @@ import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import { useAuth, type AuthUser } from '../../auth/AuthContext';
 import Avatar from '../../components/Avatar';
+import {
+  type ThemeMode,
+  type CookieConsent,
+  getStoredTheme,
+  setStoredTheme,
+  getCookieConsent,
+  setCookieConsent,
+} from '../../lib/theme';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -23,6 +31,20 @@ export default function ProfilePage() {
 
   const fileInput = useRef<HTMLInputElement>(null);
 
+  // Settings state — read once on mount; setters mirror to localStorage and
+  // (for theme) re-apply the data-theme attribute immediately.
+  const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredTheme);
+  const [cookies, setCookies] = useState<CookieConsent>(getCookieConsent);
+
+  function pickTheme(next: ThemeMode) {
+    setThemeMode(next);
+    setStoredTheme(next);
+  }
+  function pickCookies(next: CookieConsent) {
+    setCookies(next);
+    setCookieConsent(next);
+  }
+
   // Keep the form in sync if the cached user object changes (e.g. after an
   // avatar upload triggers refreshUser).
   useEffect(() => {
@@ -31,6 +53,15 @@ export default function ProfilePage() {
     setEmail(user.email);
     setPhone(user.phone ?? '');
   }, [user]);
+
+  // Allow deep-linking to the settings card via /portal/profile#settings
+  // (the gear icon in the sidebar uses this).
+  useEffect(() => {
+    if (window.location.hash === '#settings') {
+      const el = document.getElementById('settings');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
 
   if (!user) return null;
 
@@ -175,6 +206,54 @@ export default function ProfilePage() {
             </button>
           </div>
         </form>
+      </section>
+
+      <section id="settings" className="card">
+        <h2>Settings</h2>
+
+        <h3 style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>Appearance</h3>
+        <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+          Picks the colour scheme for the whole app. <em>System</em> follows your OS preference.
+        </p>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+          {(['light', 'dark', 'system'] as ThemeMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={themeMode === m ? 'button' : 'button button-ghost'}
+              onClick={() => pickTheme(m)}
+            >
+              {m === 'light' ? 'Light' : m === 'dark' ? 'Dark' : 'System'}
+            </button>
+          ))}
+        </div>
+
+        <h3 style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>Cookies & storage</h3>
+        <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+          We always use a small amount of essential storage so you stay signed in and your offline
+          uploads can replay. Optional cookies (e.g. future analytics) are off by default — you can
+          opt in any time.
+        </p>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className={cookies === 'minimal' ? 'button' : 'button button-ghost'}
+            onClick={() => pickCookies('minimal')}
+          >
+            Essential only
+          </button>
+          <button
+            type="button"
+            className={cookies === 'all' ? 'button' : 'button button-ghost'}
+            onClick={() => pickCookies('all')}
+          >
+            Allow all
+          </button>
+        </div>
+        <p className="muted" style={{ fontSize: '0.8rem', margin: '0.75rem 0 0' }}>
+          Currently: <strong>{cookies === 'all' ? 'All cookies allowed' : 'Essential only (default)'}</strong>.
+          Stored locally — clearing browser data resets this.
+        </p>
       </section>
 
       <section className="card">

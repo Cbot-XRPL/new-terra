@@ -4,7 +4,12 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { AuthProvider } from './auth/AuthContext';
 import { replayQueue } from './lib/offlineQueue';
+import { initTheme } from './lib/theme';
 import './styles/global.css';
+
+// Apply the saved theme before React mounts so light-mode users don't see a
+// flash of the default dark palette.
+initTheme();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

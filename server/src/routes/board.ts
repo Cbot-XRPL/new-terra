@@ -3,6 +3,11 @@ import { z } from 'zod';
 import { Role } from '@prisma/client';
 import { prisma } from '../db.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
+import {
+  attachmentUpload,
+  processAttachments,
+  deleteAttachmentDir,
+} from '../lib/messageAttachments.js';
 
 const router = Router();
 router.use(requireAuth, requireRole(Role.ADMIN, Role.EMPLOYEE, Role.SUBCONTRACTOR));
@@ -10,7 +15,7 @@ router.use(requireAuth, requireRole(Role.ADMIN, Role.EMPLOYEE, Role.SUBCONTRACTO
 const createSchema = z.object({
   title: z.string().min(1),
   body: z.string().min(1),
-  pinned: z.boolean().optional(),
+  pinned: z.coerce.boolean().optional(),
 });
 
 const updateSchema = createSchema.partial();
@@ -27,7 +32,7 @@ router.get('/', async (_req, res, next) => {
   }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', attachmentUpload.array('attachments', 5), async (req, res, next) => {
   try {
     const data = createSchema.parse(req.body);
     // Only admins may pin posts; ignore the field for everyone else.
@@ -41,6 +46,18 @@ router.post('/', async (req, res, next) => {
       },
       include: { author: { select: { id: true, name: true, role: true } } },
     });
+
+    const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+    if (files.length > 0) {
+      const attachments = await processAttachments('board', post.id, files);
+      const updated = await prisma.messageBoardPost.update({
+        where: { id: post.id },
+        data: { attachments: attachments as unknown as object },
+        include: { author: { select: { id: true, name: true, role: true } } },
+      });
+      return res.status(201).json({ post: updated });
+    }
+
     res.status(201).json({ post });
   } catch (err) {
     next(err);
@@ -76,6 +93,7 @@ router.delete('/:id', async (req, res, next) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
     await prisma.messageBoardPost.delete({ where: { id: post.id } });
+    if (post.attachments) await deleteAttachmentDir('board', post.id);
     res.status(204).end();
   } catch (err) {
     next(err);

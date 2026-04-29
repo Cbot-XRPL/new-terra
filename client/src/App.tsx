@@ -52,6 +52,7 @@ const NewEstimatePage = lazy(() => import('./pages/portal/NewEstimatePage'));
 const EstimateDetailPage = lazy(() => import('./pages/portal/EstimateDetailPage'));
 const EstimatorVisualPage = lazy(() => import('./pages/portal/EstimatorVisualPage'));
 const CompanySettingsPage = lazy(() => import('./pages/portal/CompanySettingsPage'));
+const PortfolioAdminPage = lazy(() => import('./pages/portal/PortfolioAdminPage'));
 const ProjectTimelinePage = lazy(() => import('./pages/portal/ProjectTimelinePage'));
 const RecurringInvoicesPage = lazy(() => import('./pages/portal/RecurringInvoicesPage'));
 const SubcontractorBillsPage = lazy(() => import('./pages/portal/SubcontractorBillsPage'));
@@ -139,6 +140,14 @@ export default function App() {
           element={
             <RequireAuth roles={['ADMIN']}>
               <CompanySettingsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="admin/portfolio"
+          element={
+            <RequireAuth roles={['ADMIN']}>
+              <PortfolioAdminPage />
             </RequireAuth>
           }
         />

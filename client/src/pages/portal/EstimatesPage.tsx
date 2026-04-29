@@ -87,40 +87,38 @@ export default function EstimatesPage() {
 
   return (
     <div className="dashboard">
-      <header className="row-between">
-        <div>
-          <h1>Estimates</h1>
-          <p className="muted">
-            {isCustomer
-              ? 'Estimates we have prepared for you.'
-              : user?.role === 'ADMIN'
-                ? 'Every estimate across the team.'
-                : 'Your estimates.'}
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <input
-            type="search"
-            placeholder="Search…"
-            value={qInput}
-            onChange={(e) => setQInput(e.target.value)}
-            style={{ marginBottom: 0, minWidth: 180 }}
-          />
-          <select
-            value={status}
-            onChange={(e) => patchParams({ status: e.target.value }, { resetPage: true })}
-            style={{ marginBottom: 0, minWidth: 140 }}
-          >
-            <option value="ALL">All statuses</option>
-            {STATUSES.map((s) => <option key={s} value={s}>{humanize(s)}</option>)}
-          </select>
-          {!isCustomer && (
-            <Link to="/portal/estimates/new" className="button">
-              + New estimate
-            </Link>
-          )}
-        </div>
+      <header>
+        <h1>Estimates</h1>
+        <p className="muted">
+          {isCustomer
+            ? 'Estimates we have prepared for you.'
+            : user?.role === 'ADMIN'
+              ? 'Every estimate across the team.'
+              : 'Your estimates.'}
+        </p>
       </header>
+
+      <div className="toolbar">
+        <input
+          type="search"
+          placeholder="Search estimates…"
+          value={qInput}
+          onChange={(e) => setQInput(e.target.value)}
+        />
+        <select
+          value={status}
+          onChange={(e) => patchParams({ status: e.target.value }, { resetPage: true })}
+        >
+          <option value="ALL">All statuses</option>
+          {STATUSES.map((s) => <option key={s} value={s}>{humanize(s)}</option>)}
+        </select>
+        <div className="toolbar-spacer" />
+        {!isCustomer && (
+          <Link to="/portal/estimates/new" className="button">
+            + New estimate
+          </Link>
+        )}
+      </div>
 
       {error && <div className="form-error">{error}</div>}
 

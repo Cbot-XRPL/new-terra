@@ -6,21 +6,47 @@
   padding: 0;
 }
 
-:root {
+/* --- Theme variables -------------------------------------------------------
+ * Two themes keyed off `<html data-theme="…">`. Default is dark (Twitter dim).
+ * lib/theme.ts is responsible for setting the data-theme attribute at boot
+ * and whenever the user picks a different mode in their profile settings.
+ */
+:root,
+[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #202124;
-  --bg-elevated: #292a2d;
-  --bg-soft: #303134;
-  --surface: #35363a;
-  --surface-strong: #3c4043;
-  --text: #e8eaed;
-  --text-muted: #bdc1c6;
-  --border: #5f6368;
-  --accent: #8ab4f8;
-  --accent-strong: #aecbfa;
-  --shadow: rgba(0, 0, 0, 0.42);
-  --error: #f28b82;
-  --success: #81c995;
+  /* Twitter "lights out" — neutral near-black palette, no blue tint. */
+  --bg: #000000;
+  --bg-elevated: #16181c;
+  --bg-soft: #0a0a0b;
+  --surface: #202327;
+  --surface-strong: #2d3033;
+  --text: #e7e9ea;
+  --text-muted: #71767b;
+  --border: #2f3336;
+  --accent: #1d9bf0;
+  --accent-strong: #1a8cd8;
+  --shadow: rgba(0, 0, 0, 0.6);
+  --error: #f4212e;
+  --success: #00ba7c;
+  --body-gradient: linear-gradient(180deg, #000000 0%, #000000 50%, #050505 100%);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-soft: #f7f9fa;
+  --surface: #f2f4f6;
+  --surface-strong: #e6ecf0;
+  --text: #0f1419;
+  --text-muted: #536471;
+  --border: #cfd9de;
+  --accent: #1d9bf0;
+  --accent-strong: #1a8cd8;
+  --shadow: rgba(15, 20, 25, 0.08);
+  --error: #d22d2d;
+  --success: #00734a;
+  --body-gradient: linear-gradient(180deg, #ffffff 0%, #f7f9fa 100%);
 }
 
 html, body, #root {
@@ -29,7 +55,7 @@ html, body, #root {
 
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: linear-gradient(180deg, #202124 0%, #1f2023 45%, #17181b 100%);
+  background: var(--body-gradient);
   color: var(--text);
   scroll-behavior: smooth;
 }
@@ -397,6 +423,23 @@ input:focus, textarea:focus, select:focus {
 .user-chip-meta { display: flex; flex-direction: column; line-height: 1.15; }
 .user-chip-name { font-size: 0.9rem; font-weight: 600; }
 .user-chip-role { font-size: 0.75rem; color: var(--text-muted); text-transform: capitalize; }
+.user-chip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.user-chip-row > .user-chip { flex: 1; min-width: 0; }
+.user-chip-settings {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.user-chip-settings:hover { background: var(--surface); color: var(--text); }
 
 .kv {
   display: grid;
@@ -446,6 +489,122 @@ input:focus, textarea:focus, select:focus {
 .inline-form input, .inline-form select { margin-bottom: 0; flex: 1; min-width: 180px; }
 
 .row-between { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.header-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.toolbar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 0.5rem 0;
+  background: transparent;
+  border: 0;
+}
+/* Override the global `width: 100%` on inputs/selects so they don't each
+   claim a full row inside the flex container. */
+.toolbar > input,
+.toolbar > select,
+.toolbar > label { margin-bottom: 0; width: auto; }
+.toolbar input[type="search"] { min-width: 200px; flex: 1 1 200px; max-width: 320px; }
+.toolbar select { min-width: 140px; flex: 0 0 auto; }
+.toolbar-spacer { flex: 1; }
+
+/* --- Emoji picker (compose toolbars) --- */
+.emoji-picker { position: relative; display: inline-block; }
+.emoji-trigger { padding: 0.4rem 0.5rem; }
+.emoji-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: repeat(5, 32px);
+  gap: 4px;
+  padding: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px var(--shadow);
+}
+.emoji-option {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text);
+}
+.emoji-option:hover { background: var(--surface); }
+
+/* --- Attachment input + gallery (compose + display in messages) --- */
+.attachment-input {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.attachment-pending {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.attachment-pending-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-pending-pill button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+}
+.attachment-pending-pill button:hover { color: var(--text); }
+.attachment-gallery {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+.attachment-thumb {
+  display: inline-block;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.attachment-thumb img {
+  display: block;
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+}
+.attachment-thumb:hover { border-color: var(--accent); }
+
+/* Composer toolbar — emoji + attach + send laid out horizontally on
+   message/board/comment forms. */
+.composer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
 
@@ -628,6 +787,22 @@ input:focus, textarea:focus, select:focus {
 
 /* Calendar */
 .calendar-card { padding: 0; overflow: hidden; }
+/* Two-column row for the staff dashboard: calendar on the left, "Next up"
+   stack panel on the right. Collapses to a single column under 1100px. */
+.calendar-with-aside {
+  display: grid;
+  /* Calendar capped at 1340px; Next up fills whatever space is left to
+     the right. */
+  grid-template-columns: minmax(0, 1340px) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+.calendar-with-aside > .calendar-card { max-width: none; }
+.calendar-aside { padding: 1rem 1.25rem; }
+.calendar-aside h2 { font-size: 1.05rem; margin-bottom: 0.5rem; }
+@media (max-width: 1100px) {
+  .calendar-with-aside { grid-template-columns: 1fr; }
+}
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -645,7 +820,7 @@ input:focus, textarea:focus, select:focus {
 }
 .calendar-cell {
   background: var(--bg-elevated);
-  min-height: 96px;
+  min-height: 110px;
   padding: 0.4rem;
   display: flex;
   flex-direction: column;
@@ -656,7 +831,8 @@ input:focus, textarea:focus, select:focus {
 .calendar-cell.today { background: rgba(138, 180, 248, 0.12); }
 .calendar-day-num {
   font-weight: 600;
-  margin-bottom: 0.2rem;
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
 }
 .calendar-event {
   background: var(--accent);
@@ -765,16 +941,26 @@ input:focus, textarea:focus, select:focus {
   color: var(--text);
   font-weight: 600;
 }
-.portal-brand img { width: 36px; height: 36px; }
+.portal-brand img { width: 56px; height: 56px; }
+.portal-brand span { font-size: 1.15rem; }
 .portal-sidebar nav { display: flex; flex-direction: column; gap: 0.25rem; }
 .portal-sidebar nav a {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
   padding: 0.6rem 0.75rem;
   border-radius: 8px;
   text-decoration: none;
   color: var(--text);
 }
+.portal-sidebar nav a > svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
 .portal-sidebar nav a:hover { background: var(--surface); }
+.portal-sidebar nav a:hover > svg { color: var(--text); }
 .portal-sidebar nav a.active { background: var(--surface-strong); color: var(--accent); }
+.portal-sidebar nav a.active > svg { color: var(--accent); }
 .portal-user { margin-top: auto; display: flex; flex-direction: column; gap: 0.5rem; }
 .portal-user-name { font-weight: 600; }
 .portal-user-role { font-size: 0.85rem; color: var(--text-muted); text-transform: capitalize; }
@@ -974,14 +1160,33 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* Dashboard */
-.dashboard { display: flex; flex-direction: column; gap: 1.5rem; max-width: 1100px; }
-.dashboard header h1 { margin-bottom: 0.25rem; }
+.dashboard { display: flex; flex-direction: column; gap: 1.5rem; }
+.dashboard header h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.25rem; }
 .card {
-  background: var(--bg-elevated);
-  border: 1px solid rgba(95, 99, 104, 0.32);
-  border-radius: 12px;
-  padding: 1.5rem;
-  box-shadow: 0 10px 24px var(--shadow);
+  /* Flat — no pane background, border, or shadow. Sections live on the
+     page background, separated by the parent container's gap. */
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0.5rem 0;
+  box-shadow: none;
+}
+
+/* Bring back the panes on the Overview page (StaffDashboard +
+   CustomerDashboard). Desktop only (>= 900px). On mobile/tablet the flat
+   layout reads better and saves vertical space. */
+@media (min-width: 900px) {
+  .dashboard-paneled .card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 10px 24px var(--shadow);
+  }
+  /* Calendar card keeps its edge-to-edge grid; aside keeps its tighter
+     padding. Both override the generic re-paneling above. */
+  .dashboard-paneled .card.calendar-card { padding: 0; }
+  .dashboard-paneled .card.calendar-aside { padding: 1rem 1.25rem; }
 }
 .card h2 { margin-bottom: 0.75rem; }
 .card h3 { margin: 0.75rem 0 0.5rem; }

@@ -98,6 +98,7 @@ export default function ProjectDetailPage() {
   const [endsAt, setEndsAt] = useState(toDatetimeLocal(defaultEnd));
   const [assigneeId, setAssigneeId] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [showAddSchedule, setShowAddSchedule] = useState(false);
 
   async function load() {
     if (!id) return;
@@ -191,21 +192,6 @@ export default function ProjectDetailPage() {
       await api(`/api/projects/${project.id}`, {
         method: 'PATCH',
         body: JSON.stringify(body),
-      });
-      await load();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Update failed');
-    }
-  }
-
-  // Patch one of the public-portfolio fields. The server handles slug
-  // auto-derivation when admin first opts in without supplying one.
-  async function patchPortfolio(patch: Record<string, unknown>) {
-    if (!project) return;
-    try {
-      await api(`/api/projects/${project.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(patch),
       });
       await load();
     } catch (err) {
@@ -345,70 +331,6 @@ export default function ProjectDetailPage() {
         </section>
       )}
 
-      {isPmOrAdmin && (
-        <section className="card">
-          <div className="row-between">
-            <h2 style={{ margin: 0 }}>Public portfolio</h2>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem' }}>
-              <input
-                type="checkbox"
-                checked={!!project.showOnPortfolio}
-                onChange={(e) => patchPortfolio({ showOnPortfolio: e.target.checked })}
-                style={{ width: 'auto' }}
-              />
-              Show on public site
-            </label>
-          </div>
-          <p className="muted" style={{ marginTop: '0.5rem' }}>
-            When on, this project appears at <code>/portfolio/{project.portfolioSlug ?? '…'}</code> on
-            the public site once the photos are tagged. Off by default — opt in deliberately.
-          </p>
-
-          {project.showOnPortfolio && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.5rem' }}>
-              <div>
-                <label>Service category</label>
-                <input
-                  list="service-cat-options"
-                  value={project.serviceCategory ?? ''}
-                  onChange={(e) => patchPortfolio({ serviceCategory: e.target.value || null })}
-                  placeholder="Decks, Hardscape, Fencing, Landscaping, Remodeling, …"
-                />
-                <datalist id="service-cat-options">
-                  <option value="Decks" />
-                  <option value="Hardscape" />
-                  <option value="Fencing" />
-                  <option value="Landscaping" />
-                  <option value="Remodeling" />
-                  <option value="Roofing" />
-                  <option value="Additions" />
-                  <option value="Kitchens" />
-                  <option value="Bathrooms" />
-                </datalist>
-              </div>
-              <div>
-                <label>URL slug (lowercase, dashes)</label>
-                <input
-                  value={project.portfolioSlug ?? ''}
-                  onChange={(e) => patchPortfolio({ portfolioSlug: e.target.value || null })}
-                  pattern="[a-z0-9-]+"
-                  placeholder="taylor-backyard-deck"
-                />
-              </div>
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label>Public summary (shown on the portfolio entry)</label>
-                <textarea
-                  rows={3}
-                  value={project.publicSummary ?? ''}
-                  onChange={(e) => patchPortfolio({ publicSummary: e.target.value || null })}
-                  placeholder="Short marketing description for prospects. e.g. 'Composite deck, 16x20, with screen panels and built-in storage.'"
-                />
-              </div>
-            </div>
-          )}
-        </section>
-      )}
-
       {isPmOrAdmin && project.status === 'COMPLETE' && (
         <section className="card">
           <div className="row-between">
@@ -443,12 +365,22 @@ export default function ProjectDetailPage() {
         </section>
       )}
 
-      <ProjectComments projectId={project.id} />
-
       <section className="card">
-        <h2>Schedule</h2>
+        <div className="row-between">
+          <h2 style={{ margin: 0 }}>Schedule</h2>
+          {canAddSchedule && (
+            <button
+              type="button"
+              className={showAddSchedule ? 'button button-ghost' : 'button'}
+              onClick={() => setShowAddSchedule((v) => !v)}
+            >
+              {showAddSchedule ? 'Cancel' : '+ Add entry'}
+            </button>
+          )}
+        </div>
+
         {schedules.length ? (
-          <ul className="list">
+          <ul className="list" style={{ marginTop: '0.75rem' }}>
             {schedules.map((s) => (
               <li key={s.id}>
                 <div className="row-between">
@@ -478,68 +410,21 @@ export default function ProjectDetailPage() {
             ))}
           </ul>
         ) : (
-          <p className="muted">Nothing scheduled yet.</p>
+          <p className="muted" style={{ marginTop: '0.75rem' }}>Nothing scheduled yet.</p>
         )}
-      </section>
 
-      <ProjectGallery projectId={project.id} />
-      <ProjectDocuments projectId={project.id} />
-      <PunchListSection projectId={project.id} />
-
-      <SelectionsSection projectId={project.id} />
-
-      {/* Contracts attached to this project — visible to anyone who can read
-          the project, since the server scopes the underlying contracts list. */}
-      <section className="card">
-        <h2>Contracts</h2>
-        {contracts.length ? (
-          <ul className="list">
-            {contracts.map((c) => (
-              <li key={c.id}>
-                <Link to={`/portal/contracts/${c.id}`}>
-                  <strong>{c.templateNameSnapshot}</strong>
-                </Link>
-                <div className="muted">
-                  {c.status.toLowerCase()}
-                  {c.sentAt && ` · sent ${formatDate(c.sentAt)}`}
-                  {c.signedAt && ` · signed ${formatDate(c.signedAt)}`}
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="muted">No contracts on this project.</p>
-        )}
-      </section>
-
-      <InvoicesSection
-        projectId={project.id}
-        customerId={project.customer.id}
-        customerName={project.customer.name}
-      />
-
-      <ChangeOrdersSection
-        projectId={project.id}
-        customerName={project.customer.name}
-      />
-
-      {(isAdmin
-        || (user?.role === 'EMPLOYEE' && (user.isProjectManager || user.isAccounting))
-        || (user?.role === 'CUSTOMER' && project.showBudgetToCustomer)) && (
-        <JobCostingSection
-          projectId={project.id}
-          canEditBudget={!!isPmOrAdmin}
-          showBudgetToCustomer={!!project.showBudgetToCustomer}
-          onShowBudgetToCustomerChange={isAdmin ? toggleBudgetVisibility : undefined}
-        />
-      )}
-
-      <LogEntriesSection projectId={project.id} />
-
-      {canAddSchedule && (
-        <section className="card">
-          <h2>Add schedule entry</h2>
-          <form onSubmit={addSchedule}>
+        {canAddSchedule && showAddSchedule && (
+          <form
+            onSubmit={async (e) => {
+              await addSchedule(e);
+              setShowAddSchedule(false);
+            }}
+            style={{
+              marginTop: '1rem',
+              paddingTop: '1rem',
+              borderTop: '1px solid var(--border)',
+            }}
+          >
             <label htmlFor="s-title">Title</label>
             <input
               id="s-title"
@@ -598,8 +483,64 @@ export default function ProjectDetailPage() {
               {submitting ? 'Adding…' : 'Add to schedule'}
             </button>
           </form>
-        </section>
+        )}
+      </section>
+
+      <ProjectComments projectId={project.id} />
+
+      <ProjectGallery projectId={project.id} />
+      <ProjectDocuments projectId={project.id} />
+      <PunchListSection projectId={project.id} />
+
+      <SelectionsSection projectId={project.id} />
+
+      {/* Contracts attached to this project — visible to anyone who can read
+          the project, since the server scopes the underlying contracts list. */}
+      <section className="card">
+        <h2>Contracts</h2>
+        {contracts.length ? (
+          <ul className="list">
+            {contracts.map((c) => (
+              <li key={c.id}>
+                <Link to={`/portal/contracts/${c.id}`}>
+                  <strong>{c.templateNameSnapshot}</strong>
+                </Link>
+                <div className="muted">
+                  {c.status.toLowerCase()}
+                  {c.sentAt && ` · sent ${formatDate(c.sentAt)}`}
+                  {c.signedAt && ` · signed ${formatDate(c.signedAt)}`}
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">No contracts on this project.</p>
+        )}
+      </section>
+
+      <InvoicesSection
+        projectId={project.id}
+        customerId={project.customer.id}
+        customerName={project.customer.name}
+      />
+
+      <ChangeOrdersSection
+        projectId={project.id}
+        customerName={project.customer.name}
+      />
+
+      {(isAdmin
+        || (user?.role === 'EMPLOYEE' && (user.isProjectManager || user.isAccounting))
+        || (user?.role === 'CUSTOMER' && project.showBudgetToCustomer)) && (
+        <JobCostingSection
+          projectId={project.id}
+          canEditBudget={!!isPmOrAdmin}
+          showBudgetToCustomer={!!project.showBudgetToCustomer}
+          onShowBudgetToCustomerChange={isAdmin ? toggleBudgetVisibility : undefined}
+        />
       )}
+
+      <LogEntriesSection projectId={project.id} />
     </div>
   );
 }

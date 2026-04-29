@@ -2,6 +2,14 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import { useAuth, type Role } from '../../auth/AuthContext';
 import { formatDateTime } from '../../lib/format';
+import EmojiPicker from '../../components/EmojiPicker';
+import {
+  AttachmentInput,
+  AttachmentGallery,
+  asAttachments,
+} from '../../components/MessageAttachments';
+
+const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
 interface Thread {
   otherUser: { id: string; name: string; role: Role };
@@ -19,6 +27,7 @@ interface ConvMessage {
   id: string;
   body: string;
   subject: string | null;
+  attachments?: unknown;
   createdAt: string;
   fromUser: { id: string; name: string; role: Role };
 }
@@ -35,6 +44,7 @@ export default function MessagesPage() {
   const [active, setActive] = useState<string | null>(null);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [body, setBody] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [showNew, setShowNew] = useState(false);
@@ -89,15 +99,26 @@ export default function MessagesPage() {
 
   async function send(e: FormEvent) {
     e.preventDefault();
-    if (!active || !body.trim()) return;
+    if (!active || (!body.trim() && files.length === 0)) return;
     setSending(true);
     setError(null);
     try {
-      await api('/api/messages', {
+      const form = new FormData();
+      form.append('toUserId', active);
+      if (body) form.append('body', body);
+      for (const f of files) form.append('attachments', f);
+      const token = localStorage.getItem('nt_token');
+      const res = await fetch(`${API_BASE}/api/messages`, {
         method: 'POST',
-        body: JSON.stringify({ toUserId: active, body }),
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new ApiError(res.status, data?.error ?? res.statusText, data);
+      }
       setBody('');
+      setFiles([]);
       await loadConversation(active);
       await loadThreads();
     } catch (err) {
@@ -181,6 +202,7 @@ export default function MessagesPage() {
                   className={`bubble ${m.fromUser.id === user?.id ? 'mine' : 'theirs'}`}
                 >
                   <div>{m.body}</div>
+                  <AttachmentGallery attachments={asAttachments(m.attachments)} />
                   <div className="bubble-time">{formatDateTime(m.createdAt)}</div>
                 </div>
               ))}
@@ -191,11 +213,15 @@ export default function MessagesPage() {
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 placeholder="Write a message…"
-                required
               />
-              <button type="submit" disabled={sending || !body.trim()}>
-                {sending ? 'Sending…' : 'Send'}
-              </button>
+              <div className="composer-toolbar">
+                <EmojiPicker onPick={(e) => setBody((b) => b + e)} />
+                <AttachmentInput files={files} onChange={setFiles} disabled={sending} />
+                <div className="toolbar-spacer" />
+                <button type="submit" disabled={sending || (!body.trim() && files.length === 0)}>
+                  {sending ? 'Sending…' : 'Send'}
+                </button>
+              </div>
             </form>
           </>
         ) : (

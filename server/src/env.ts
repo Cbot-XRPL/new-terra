@@ -34,6 +34,14 @@ export const env = {
   jwtSecret: required('JWT_SECRET'),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
   appUrl: process.env.APP_URL ?? 'http://localhost:5173',
+  resend: {
+    apiKey: process.env.RESEND_API_KEY ?? '',
+    // Resend requires either a verified sending domain OR the test address
+    // `onboarding@resend.dev` (which only delivers to the email you signed
+    // up with). Override RESEND_FROM in the prod .env once a domain is
+    // verified at https://resend.com/domains.
+    from: process.env.RESEND_FROM ?? 'New Terra Construction <onboarding@resend.dev>',
+  },
   smtp: {
     host: process.env.SMTP_HOST ?? '',
     port: Number(process.env.SMTP_PORT ?? 587),

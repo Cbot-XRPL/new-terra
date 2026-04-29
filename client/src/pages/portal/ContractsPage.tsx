@@ -116,44 +116,42 @@ export default function ContractsPage() {
 
   return (
     <div className="dashboard">
-      <header className="row-between">
-        <div>
-          <h1>Contracts</h1>
-          <p className="muted">
-            {user?.role === 'CUSTOMER'
-              ? 'Contracts sent to you for review and signature.'
-              : user?.role === 'ADMIN'
-                ? 'All contracts across every sales rep.'
-                : 'Your active and historical contracts.'}
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <input
-            type="search"
-            placeholder="Search…"
-            value={qInput}
-            onChange={(e) => setQInput(e.target.value)}
-            style={{ marginBottom: 0, minWidth: 180 }}
-          />
-          <select
-            value={status}
-            onChange={(e) =>
-              patchParams({ status: e.target.value === 'ALL' ? null : e.target.value }, { resetPage: true })
-            }
-            style={{ marginBottom: 0, minWidth: 140 }}
-          >
-            <option value="ALL">All statuses</option>
-            {(['DRAFT', 'SENT', 'VIEWED', 'SIGNED', 'DECLINED', 'VOID'] as ContractStatus[]).map((s) => (
-              <option key={s} value={s}>{s.toLowerCase()}</option>
-            ))}
-          </select>
-          {isStaffAccess && (
-            <Link to="/portal/contracts/new" className="button">
-              New contract
-            </Link>
-          )}
-        </div>
+      <header>
+        <h1>Contracts</h1>
+        <p className="muted">
+          {user?.role === 'CUSTOMER'
+            ? 'Contracts sent to you for review and signature.'
+            : user?.role === 'ADMIN'
+              ? 'All contracts across every sales rep.'
+              : 'Your active and historical contracts.'}
+        </p>
       </header>
+
+      <div className="toolbar">
+        <input
+          type="search"
+          placeholder="Search contracts…"
+          value={qInput}
+          onChange={(e) => setQInput(e.target.value)}
+        />
+        <select
+          value={status}
+          onChange={(e) =>
+            patchParams({ status: e.target.value === 'ALL' ? null : e.target.value }, { resetPage: true })
+          }
+        >
+          <option value="ALL">All statuses</option>
+          {(['DRAFT', 'SENT', 'VIEWED', 'SIGNED', 'DECLINED', 'VOID'] as ContractStatus[]).map((s) => (
+            <option key={s} value={s}>{s.toLowerCase()}</option>
+          ))}
+        </select>
+        <div className="toolbar-spacer" />
+        {isStaffAccess && (
+          <Link to="/portal/contracts/new" className="button">
+            New contract
+          </Link>
+        )}
+      </div>
 
       {error && <div className="form-error">{error}</div>}
 

@@ -1053,6 +1053,9 @@ model MessageBoardPost {
   title     String
   body      String
   pinned    Boolean  @default(false)
+  // Same JSON shape as ProjectComment.attachments:
+  // [{ url, thumbnailUrl, filename }, ...]. Nullable when no images.
+  attachments Json?
   createdAt DateTime @default(now())
 }
 
@@ -1064,6 +1067,7 @@ model Message {
   toUser      User     @relation("MessagesToUser", fields: [toUserId], references: [id])
   subject     String?
   body        String
+  attachments Json?
   readAt      DateTime?
   createdAt   DateTime @default(now())
 

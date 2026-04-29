@@ -2,12 +2,21 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import { useAuth, type Role } from '../../auth/AuthContext';
 import { formatDateTime } from '../../lib/format';
+import EmojiPicker from '../../components/EmojiPicker';
+import {
+  AttachmentInput,
+  AttachmentGallery,
+  asAttachments,
+} from '../../components/MessageAttachments';
+
+const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
 interface Post {
   id: string;
   title: string;
   body: string;
   pinned: boolean;
+  attachments?: unknown;
   createdAt: string;
   author: { id: string; name: string; role: Role };
 }
@@ -23,6 +32,7 @@ export default function MessageBoardPage() {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [pinned, setPinned] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   async function load() {
@@ -41,13 +51,25 @@ export default function MessageBoardPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await api('/api/board', {
+      const form = new FormData();
+      form.append('title', title);
+      form.append('body', body);
+      if (isAdmin && pinned) form.append('pinned', 'true');
+      for (const f of files) form.append('attachments', f);
+      const token = localStorage.getItem('nt_token');
+      const res = await fetch(`${API_BASE}/api/board`, {
         method: 'POST',
-        body: JSON.stringify({ title, body, pinned: isAdmin ? pinned : undefined }),
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new ApiError(res.status, data?.error ?? res.statusText, data);
+      }
       setTitle('');
       setBody('');
       setPinned(false);
+      setFiles([]);
       setShowForm(false);
       await load();
     } catch (err) {
@@ -120,9 +142,14 @@ export default function MessageBoardPage() {
               </label>
             )}
 
-            <button type="submit" disabled={submitting}>
-              {submitting ? 'Posting…' : 'Post'}
-            </button>
+            <div className="composer-toolbar">
+              <EmojiPicker onPick={(e) => setBody((b) => b + e)} />
+              <AttachmentInput files={files} onChange={setFiles} disabled={submitting} />
+              <div className="toolbar-spacer" />
+              <button type="submit" disabled={submitting}>
+                {submitting ? 'Posting…' : 'Post'}
+              </button>
+            </div>
           </form>
         </section>
       )}
@@ -162,6 +189,7 @@ export default function MessageBoardPage() {
               </div>
             </div>
             <p style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>{p.body}</p>
+            <AttachmentGallery attachments={asAttachments(p.attachments)} />
           </article>
         ))
       ) : (

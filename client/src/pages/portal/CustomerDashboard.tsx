@@ -31,7 +31,7 @@ export default function CustomerDashboard() {
   }, []);
 
   return (
-    <div className="dashboard">
+    <div className="dashboard dashboard-paneled">
       <header>
         <h1>Welcome, {user?.name.split(' ')[0]}</h1>
         <p className="muted">Your projects, invoices, selections, and membership.</p>

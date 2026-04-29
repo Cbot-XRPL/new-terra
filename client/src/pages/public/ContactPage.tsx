@@ -1,7 +1,15 @@
 import { type FormEvent, useCallback, useState } from 'react';
-import { ApiError, api } from '../../lib/api';
+import emailjs from '@emailjs/browser';
 import Turnstile from '../../components/Turnstile';
 import { usePageMeta } from '../../lib/pageMeta';
+
+// EmailJS does delivery directly from the browser — no backend SMTP needed.
+// Template on EmailJS expects: from_name, reply_to, phone, message. The
+// inquiry forwards to whatever address the template has configured (set in
+// the EmailJS dashboard, not here).
+const EMAILJS_PUBLIC_KEY = import.meta.env.VITE_EMAILJS_PUBLIC_KEY ?? '';
+const EMAILJS_SERVICE_ID = import.meta.env.VITE_EMAILJS_SERVICE_ID ?? '';
+const EMAILJS_TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID ?? '';
 
 export default function ContactPage() {
   usePageMeta({
@@ -14,7 +22,7 @@ export default function ContactPage() {
   const [message, setMessage] = useState('');
   // Honeypot — must remain empty for the submission to be processed.
   const [website, setWebsite] = useState('');
-  const [turnstileToken, setTurnstileToken] = useState<string | undefined>();
+  const [, setTurnstileToken] = useState<string | undefined>();
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -23,12 +31,28 @@ export default function ContactPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+
+    // Honeypot — bots fill hidden fields, humans don't. Drop silently to make
+    // it look like a successful submit so they don't try other strategies.
+    if (website) {
+      setStatus('sent');
+      return;
+    }
+
+    if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
+      setStatus('error');
+      setError('Email service is not configured. Please call us directly.');
+      return;
+    }
+
     setStatus('sending');
     try {
-      await api('/api/public/contact', {
-        method: 'POST',
-        body: JSON.stringify({ name, email, phone, message, website, turnstileToken }),
-      });
+      await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID,
+        { from_name: name, reply_to: email, phone, message },
+        { publicKey: EMAILJS_PUBLIC_KEY },
+      );
       setStatus('sent');
       setName('');
       setEmail('');
@@ -36,7 +60,8 @@ export default function ContactPage() {
       setMessage('');
     } catch (err) {
       setStatus('error');
-      setError(err instanceof ApiError ? err.message : 'Could not send your message');
+      const msg = err instanceof Error ? err.message : 'Could not send your message';
+      setError(msg);
     }
   }
 

@@ -205,75 +205,9 @@ export default function LeadsPage() {
 
   return (
     <div className="dashboard">
-      <header className="row-between">
-        <div>
-          <h1>Leads</h1>
-          <p className="muted">Track every potential customer from first contact to signed contract.</p>
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <input
-            type="search"
-            placeholder="Search…"
-            value={qInput}
-            onChange={(e) => setQInput(e.target.value)}
-            style={{ marginBottom: 0, minWidth: 180 }}
-          />
-          <select
-            value={status}
-            onChange={(e) => patchParams({ status: e.target.value }, { resetPage: true })}
-            style={{ marginBottom: 0, minWidth: 140 }}
-          >
-            <option value="ALL">All statuses</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>{humanize(s)}</option>
-            ))}
-          </select>
-          <select
-            value={source}
-            onChange={(e) => patchParams({ source: e.target.value }, { resetPage: true })}
-            style={{ marginBottom: 0, minWidth: 140 }}
-          >
-            <option value="ALL">All sources</option>
-            {SOURCES.map((s) => (
-              <option key={s} value={s}>{humanize(s)}</option>
-            ))}
-          </select>
-          {user?.role === 'EMPLOYEE' && user.isSales && (
-            <label style={{ marginBottom: 0, alignSelf: 'center' }}>
-              <input
-                type="checkbox"
-                checked={mine}
-                onChange={(e) => patchParams({ mine: e.target.checked ? 'true' : null }, { resetPage: true })}
-                style={{ width: 'auto', marginRight: 6 }}
-              />
-              Only mine
-            </label>
-          )}
-          <button
-            type="button"
-            className="button-ghost"
-            onClick={async () => {
-              try {
-                const r = await api<{ considered: number; notified: number; skippedNoOwner: number }>(
-                  '/api/leads/admin/notify-stale',
-                  { method: 'POST' },
-                );
-                alert(
-                  `Stale-lead nudge: emailed ${r.notified} rep${r.notified === 1 ? '' : 's'} ` +
-                    `(considered ${r.considered}, ${r.skippedNoOwner} unowned).`,
-                );
-              } catch (err) {
-                setError(err instanceof ApiError ? err.message : 'Notify failed');
-              }
-            }}
-            title="Email each assigned rep about leads that have gone quiet > 5 days"
-          >
-            Nudge stale
-          </button>
-          <button onClick={() => setShowForm((v) => !v)}>
-            {showForm ? 'Cancel' : 'New lead'}
-          </button>
-        </div>
+      <header>
+        <h1>Leads</h1>
+        <p className="muted">Track every potential customer from first contact to signed contract.</p>
       </header>
 
       {error && <div className="form-error">{error}</div>}
@@ -362,6 +296,69 @@ export default function LeadsPage() {
           </form>
         </section>
       )}
+
+      <div className="toolbar">
+        <input
+          type="search"
+          placeholder="Search leads…"
+          value={qInput}
+          onChange={(e) => setQInput(e.target.value)}
+        />
+        <select
+          value={status}
+          onChange={(e) => patchParams({ status: e.target.value }, { resetPage: true })}
+        >
+          <option value="ALL">All statuses</option>
+          {STATUSES.map((s) => (
+            <option key={s} value={s}>{humanize(s)}</option>
+          ))}
+        </select>
+        <select
+          value={source}
+          onChange={(e) => patchParams({ source: e.target.value }, { resetPage: true })}
+        >
+          <option value="ALL">All sources</option>
+          {SOURCES.map((s) => (
+            <option key={s} value={s}>{humanize(s)}</option>
+          ))}
+        </select>
+        {user?.role === 'EMPLOYEE' && user.isSales && (
+          <label>
+            <input
+              type="checkbox"
+              checked={mine}
+              onChange={(e) => patchParams({ mine: e.target.checked ? 'true' : null }, { resetPage: true })}
+              style={{ width: 'auto', marginRight: 6 }}
+            />
+            Only mine
+          </label>
+        )}
+        <div className="toolbar-spacer" />
+        <button
+          type="button"
+          className="button-ghost"
+          onClick={async () => {
+            try {
+              const r = await api<{ considered: number; notified: number; skippedNoOwner: number }>(
+                '/api/leads/admin/notify-stale',
+                { method: 'POST' },
+              );
+              alert(
+                `Stale-lead nudge: emailed ${r.notified} rep${r.notified === 1 ? '' : 's'} ` +
+                  `(considered ${r.considered}, ${r.skippedNoOwner} unowned).`,
+              );
+            } catch (err) {
+              setError(err instanceof ApiError ? err.message : 'Notify failed');
+            }
+          }}
+          title="Email each assigned rep about leads that have gone quiet > 5 days"
+        >
+          Nudge stale
+        </button>
+        <button onClick={() => setShowForm((v) => !v)}>
+          {showForm ? 'Cancel' : 'New lead'}
+        </button>
+      </div>
 
       <section className="card">
         {data && data.leads.length ? (

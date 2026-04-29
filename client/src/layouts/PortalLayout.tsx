@@ -1,9 +1,32 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import {
+  LayoutDashboard,
+  Hammer,
+  Target,
+  ClipboardList,
+  Receipt,
+  FileSignature,
+  Calendar,
+  Megaphone,
+  MessageSquare,
+  Clock,
+  HandCoins,
+  TrendingUp,
+  Landmark,
+  Files,
+  Package,
+  Box,
+  Calculator,
+  Shield,
+  Settings,
+} from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import Avatar from '../components/Avatar';
 import GlobalSearch from '../components/GlobalSearch';
+
+const ICON_SIZE = 18;
 
 export default function PortalLayout() {
   const { user, logout } = useAuth();
@@ -38,85 +61,142 @@ export default function PortalLayout() {
     <div className="portal-shell">
       <aside className="portal-sidebar">
         <Link to="/" className="portal-brand">
-          <img src="/media/logo.png" alt="New Terra" />
+          <img src="/media/logo.png" alt="New Terra Construction" />
           <span>New Terra</span>
         </Link>
         <nav>
           {user?.role === 'CUSTOMER' && (
-            <NavLink to="/portal/customer">Overview</NavLink>
+            <NavLink to="/portal/customer">
+              <LayoutDashboard size={ICON_SIZE} /> <span>Overview</span>
+            </NavLink>
           )}
           {(user?.role === 'EMPLOYEE' ||
             user?.role === 'SUBCONTRACTOR' ||
-            user?.role === 'ADMIN') && <NavLink to="/portal/staff">Staff</NavLink>}
-          <NavLink to="/portal/projects">Projects</NavLink>
-          {(user?.role === 'EMPLOYEE' ||
-            user?.role === 'SUBCONTRACTOR' ||
-            user?.role === 'ADMIN') && <NavLink to="/portal/calendar">Calendar</NavLink>}
-          <NavLink to="/portal/invoices">Invoices</NavLink>
-          <NavLink to="/portal/messages">
-            Messages
-            {unread > 0 && <span className="unread-dot" style={{ marginLeft: 8 }}>{unread}</span>}
-          </NavLink>
-          {(user?.role === 'EMPLOYEE' ||
-            user?.role === 'SUBCONTRACTOR' ||
-            user?.role === 'ADMIN') && <NavLink to="/portal/board">Message board</NavLink>}
-          {(user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isSales)) && (
-            <NavLink to="/portal/leads">Leads</NavLink>
-          )}
-          {(user?.role === 'ADMIN' ||
-            user?.role === 'CUSTOMER' ||
-            (user?.role === 'EMPLOYEE' && user.isSales)) && (
-            <NavLink to="/portal/estimates">Estimates</NavLink>
-          )}
-          {(user?.role === 'EMPLOYEE' ||
-            user?.role === 'SUBCONTRACTOR' ||
-            user?.role === 'ADMIN') && <NavLink to="/portal/calculators">Calculators</NavLink>}
-          {(user?.role === 'EMPLOYEE' ||
-            user?.role === 'SUBCONTRACTOR' ||
-            user?.role === 'ADMIN') && <NavLink to="/portal/time">Time</NavLink>}
-          {(user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isSales)) && (
-            <NavLink to="/portal/catalog">Catalog</NavLink>
+            user?.role === 'ADMIN') && (
+            <NavLink to="/portal/staff">
+              <LayoutDashboard size={ICON_SIZE} /> <span>Overview</span>
+            </NavLink>
           )}
           {(user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isSales)) && (
-            <NavLink to="/portal/estimator/visual">Visual estimator</NavLink>
-          )}
-          {(user?.role === 'ADMIN' ||
-            (user?.role === 'EMPLOYEE' && (user.isAccounting || user.isProjectManager))) && (
-            <NavLink to="/portal/finance">Finance</NavLink>
-          )}
-          {(user?.role === 'ADMIN' ||
-            (user?.role === 'EMPLOYEE' && user.isAccounting)) && (
-            <NavLink to="/portal/banking">Banking</NavLink>
-          )}
-          {(user?.role === 'ADMIN'
-            || (user?.role === 'EMPLOYEE' && user.isAccounting)
-            || user?.role === 'SUBCONTRACTOR') && (
-            <NavLink to="/portal/subcontractor-bills">
-              {user?.role === 'SUBCONTRACTOR' ? 'My bills' : 'Sub bills'}
+            <NavLink to="/portal/leads">
+              <Target size={ICON_SIZE} /> <span>Leads</span>
             </NavLink>
           )}
           {(user?.role === 'ADMIN' ||
             user?.role === 'CUSTOMER' ||
             (user?.role === 'EMPLOYEE' && user.isSales)) && (
-            <NavLink to="/portal/contracts">Contracts</NavLink>
+            <NavLink to="/portal/estimates">
+              <ClipboardList size={ICON_SIZE} /> <span>Estimates</span>
+            </NavLink>
+          )}
+          {(user?.role === 'ADMIN' ||
+            user?.role === 'CUSTOMER' ||
+            (user?.role === 'EMPLOYEE' && user.isSales)) && (
+            <NavLink to="/portal/contracts">
+              <FileSignature size={ICON_SIZE} /> <span>Contracts</span>
+            </NavLink>
+          )}
+          <NavLink to="/portal/projects">
+            <Hammer size={ICON_SIZE} /> <span>Projects</span>
+          </NavLink>
+          <NavLink to="/portal/invoices">
+            <Receipt size={ICON_SIZE} /> <span>Invoices</span>
+          </NavLink>
+          {(user?.role === 'EMPLOYEE' ||
+            user?.role === 'SUBCONTRACTOR' ||
+            user?.role === 'ADMIN') && (
+            <NavLink to="/portal/calendar">
+              <Calendar size={ICON_SIZE} /> <span>Calendar</span>
+            </NavLink>
+          )}
+          {(user?.role === 'EMPLOYEE' ||
+            user?.role === 'SUBCONTRACTOR' ||
+            user?.role === 'ADMIN') && (
+            <NavLink to="/portal/board">
+              <Megaphone size={ICON_SIZE} /> <span>Message board</span>
+            </NavLink>
+          )}
+          <NavLink to="/portal/messages">
+            <MessageSquare size={ICON_SIZE} /> <span>Messages</span>
+            {unread > 0 && <span className="unread-dot" style={{ marginLeft: 8 }}>{unread}</span>}
+          </NavLink>
+          {(user?.role === 'EMPLOYEE' ||
+            user?.role === 'SUBCONTRACTOR' ||
+            user?.role === 'ADMIN') && (
+            <NavLink to="/portal/time">
+              <Clock size={ICON_SIZE} /> <span>Time</span>
+            </NavLink>
+          )}
+          {(user?.role === 'ADMIN'
+            || (user?.role === 'EMPLOYEE' && user.isAccounting)
+            || user?.role === 'SUBCONTRACTOR') && (
+            <NavLink to="/portal/subcontractor-bills">
+              <HandCoins size={ICON_SIZE} />{' '}
+              <span>{user?.role === 'SUBCONTRACTOR' ? 'My bills' : 'Sub bills'}</span>
+            </NavLink>
+          )}
+          {(user?.role === 'ADMIN' ||
+            (user?.role === 'EMPLOYEE' && (user.isAccounting || user.isProjectManager))) && (
+            <NavLink to="/portal/finance">
+              <TrendingUp size={ICON_SIZE} /> <span>Finance</span>
+            </NavLink>
+          )}
+          {(user?.role === 'ADMIN' ||
+            (user?.role === 'EMPLOYEE' && user.isAccounting)) && (
+            <NavLink to="/portal/banking">
+              <Landmark size={ICON_SIZE} /> <span>Banking</span>
+            </NavLink>
           )}
           {user?.role === 'ADMIN' && (
-            <NavLink to="/portal/contract-templates">Templates</NavLink>
+            <NavLink to="/portal/contract-templates">
+              <Files size={ICON_SIZE} /> <span>Templates</span>
+            </NavLink>
           )}
-          {user?.role === 'ADMIN' && <NavLink to="/portal/admin">Admin</NavLink>}
+          {(user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isSales)) && (
+            <NavLink to="/portal/catalog">
+              <Package size={ICON_SIZE} /> <span>Catalog</span>
+            </NavLink>
+          )}
+          {(user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isSales)) && (
+            <NavLink to="/portal/estimator/visual">
+              <Box size={ICON_SIZE} /> <span>Visual estimator</span>
+            </NavLink>
+          )}
+          {(user?.role === 'EMPLOYEE' ||
+            user?.role === 'SUBCONTRACTOR' ||
+            user?.role === 'ADMIN') && (
+            <NavLink to="/portal/calculators">
+              <Calculator size={ICON_SIZE} /> <span>Calculators</span>
+            </NavLink>
+          )}
+          {user?.role === 'ADMIN' && (
+            <NavLink to="/portal/admin">
+              <Shield size={ICON_SIZE} /> <span>Admin</span>
+            </NavLink>
+          )}
         </nav>
         <div className="portal-user">
-          <Link to="/portal/profile" className="user-chip" style={{ marginBottom: '0.5rem' }}>
-            <Avatar
-              name={user?.name ?? ''}
-              url={user?.avatarThumbnailUrl ?? user?.avatarUrl}
-              size={44}
-            />
-            <span className="user-chip-meta">
-              <span className="user-chip-name">{user?.name}</span>
-              <span className="user-chip-role">{user?.role.toLowerCase()}</span>
-            </span>
-          </Link>
+          <div className="user-chip-row" style={{ marginBottom: '0.5rem' }}>
+            <Link to="/portal/profile" className="user-chip">
+              <Avatar
+                name={user?.name ?? ''}
+                url={user?.avatarUrl ?? user?.avatarThumbnailUrl}
+                size={64}
+              />
+              <span className="user-chip-meta">
+                <span className="user-chip-name">{user?.name}</span>
+                <span className="user-chip-role">{user?.role.toLowerCase()}</span>
+              </span>
+            </Link>
+            <Link
+              to="/portal/profile#settings"
+              className="user-chip-settings"
+              aria-label="Profile settings"
+              title="Profile & settings"
+            >
+              <Settings size={18} />
+            </Link>
+          </div>
           <button onClick={handleLogout} className="button button-ghost">
             Sign out
           </button>

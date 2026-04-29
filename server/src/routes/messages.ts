@@ -5,6 +5,7 @@ import { Role } from '@prisma/client';
 import { prisma } from '../db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { messageBus } from '../lib/eventBus.js';
+import { attachmentUpload, processAttachments } from '../lib/messageAttachments.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -99,10 +100,21 @@ router.get('/conversation', async (req, res, next) => {
   }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', attachmentUpload.array('attachments', 5), async (req, res, next) => {
   try {
-    const data = sendSchema.parse(req.body);
+    // Multipart bodies arrive as strings; relax body to allow empty when
+    // attachments are present.
+    const parsed = sendSchema.partial({ body: true }).parse(req.body);
+    const data = {
+      toUserId: parsed.toUserId!,
+      subject: parsed.subject,
+      body: parsed.body ?? '',
+    };
     const sender = req.user!;
+    const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+    if (!data.body && files.length === 0) {
+      return res.status(400).json({ error: 'Message must have body text or attachments' });
+    }
     if (data.toUserId === sender.sub) {
       return res.status(400).json({ error: 'Cannot message yourself' });
     }
@@ -115,7 +127,7 @@ router.post('/', async (req, res, next) => {
       return res.status(403).json({ error: 'Customers can only message staff' });
     }
 
-    const message = await prisma.message.create({
+    let message = await prisma.message.create({
       data: {
         fromUserId: sender.sub,
         toUserId: recipient.id,
@@ -124,6 +136,16 @@ router.post('/', async (req, res, next) => {
       },
       include: { fromUser: { select: { id: true, name: true, role: true } } },
     });
+
+    if (files.length > 0) {
+      const attachments = await processAttachments('messages', message.id, files);
+      message = await prisma.message.update({
+        where: { id: message.id },
+        data: { attachments: attachments as unknown as object },
+        include: { fromUser: { select: { id: true, name: true, role: true } } },
+      });
+    }
+
     // Publish to BOTH parties' streams so each side gets push without polling.
     const evt = {
       type: 'message.created' as const,
@@ -133,6 +155,7 @@ router.post('/', async (req, res, next) => {
         toUserId: message.toUserId,
         body: message.body,
         subject: message.subject,
+        attachments: message.attachments,
         createdAt: message.createdAt.toISOString(),
         fromUser: message.fromUser,
       },
