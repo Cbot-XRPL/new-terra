@@ -42,14 +42,12 @@ parties.
 3. DRAW SCHEDULE / PAYMENT TERMS
 
 The Owner shall pay the Contract Price in accordance with the following
-draw schedule. Each draw becomes due upon completion of the corresponding
-milestone. Invoices for each draw will be issued through the customer
-portal and are payable within {{payment_terms_days}} days of issuance.
+draw schedule. The first draw is due at contract signing; each subsequent
+draw becomes due upon completion of the corresponding milestone. Invoices
+are issued through the customer portal and are payable within
+{{payment_terms_days}} days of issuance.
 
 {{draw_schedule}}
-
-A {{deposit_percent}}% deposit is required at signing and is included in
-the schedule above.
 
 4. SCHEDULE
 
@@ -138,7 +136,6 @@ export const STANDARD_CONTRACT_VARIABLES = [
   { key: 'scope_of_work', label: 'Scope of work', required: true, multiline: true },
   { key: 'contract_total', label: 'Contract total ($)', required: true },
   { key: 'payment_terms_days', label: 'Payment terms (days)', required: false },
-  { key: 'deposit_percent', label: 'Deposit %', required: false },
   { key: 'start_date', label: 'Start date', required: false },
   { key: 'substantial_completion_date', label: 'Substantial completion date', required: false },
   { key: 'jurisdiction', label: 'Jurisdiction (for arbitration)', required: false },

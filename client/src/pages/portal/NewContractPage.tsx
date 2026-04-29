@@ -299,9 +299,9 @@ export default function NewContractPage() {
             <>
               <h2 style={{ marginTop: '1.5rem' }}>Fill in</h2>
               {template.variables
-                // Deposit % + payment terms render with the draws below
-                // since they're conceptually part of the payment plan.
-                .filter((v) => v.key !== 'deposit_percent' && v.key !== 'payment_terms_days')
+                // Payment terms renders with the draws below since it's
+                // part of the same payment-plan block.
+                .filter((v) => v.key !== 'payment_terms_days')
                 .map((v) => (
                   <div key={v.key}>
                     <label htmlFor={`var-${v.key}`}>
@@ -332,21 +332,11 @@ export default function NewContractPage() {
           {template && (
             <>
               <h2 style={{ marginTop: '1.5rem' }}>Draw schedule</h2>
-              {/* Deposit % + payment terms grouped here with the draws —
-                  they're the same conceptual block (how the customer pays). */}
-              <div className="form-row">
-                {template.variables.some((v) => v.key === 'deposit_percent') && (
-                  <div>
-                    <label htmlFor="var-deposit_percent">Deposit %</label>
-                    <input
-                      id="var-deposit_percent"
-                      value={values.deposit_percent ?? ''}
-                      onChange={(e) => setValues({ ...values, deposit_percent: e.target.value })}
-                      placeholder="e.g. 25"
-                    />
-                  </div>
-                )}
-                {template.variables.some((v) => v.key === 'payment_terms_days') && (
+              <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+                The first draw is the deposit due at signing. Add the remaining milestones below.
+              </p>
+              {template.variables.some((v) => v.key === 'payment_terms_days') && (
+                <div className="form-row">
                   <div>
                     <label htmlFor="var-payment_terms_days">Payment terms (days)</label>
                     <input
@@ -356,8 +346,8 @@ export default function NewContractPage() {
                       placeholder="e.g. 7"
                     />
                   </div>
-                )}
-              </div>
+                </div>
+              )}
               <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>
                 Progress-billing milestones. They render into the contract body and become
                 invoiceable from the project once work begins.
