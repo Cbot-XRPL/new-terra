@@ -44,6 +44,12 @@ function humanize(s: string) { return s.toLowerCase().replace(/_/g, ' '); }
 export default function ProjectsListPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
+  // Sales-flagged or PM-flagged employees can also create a project — both
+  // workflows naturally end up wanting one. Server-side check is in
+  // server/src/routes/projects.ts POST.
+  const canCreate =
+    isAdmin ||
+    (user?.role === 'EMPLOYEE' && (user.isSales || user.isProjectManager));
 
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
@@ -62,10 +68,10 @@ export default function ProjectsListPage() {
     try {
       const [{ projects }, customerRes, pmRes] = await Promise.all([
         api<{ projects: ProjectListItem[] }>('/api/projects'),
-        isAdmin
-          ? api<{ users: CustomerOption[] }>('/api/admin/users?roles=CUSTOMER&active=true')
+        canCreate
+          ? api<{ users: CustomerOption[] }>('/api/portal/customers')
           : Promise.resolve({ users: [] }),
-        isAdmin
+        canCreate
           ? api<{ users: PmOption[] }>('/api/portal/staff/pms')
           : Promise.resolve({ users: [] }),
       ]);
@@ -117,7 +123,7 @@ export default function ProjectsListPage() {
             {isAdmin ? 'All active projects.' : user?.role === 'CUSTOMER' ? 'Your projects.' : 'All company projects.'}
           </p>
         </div>
-        {isAdmin && (
+        {canCreate && (
           <button onClick={() => setShowForm((v) => !v)}>
             {showForm ? 'Cancel' : 'New project'}
           </button>
@@ -126,7 +132,7 @@ export default function ProjectsListPage() {
 
       {error && <div className="form-error">{error}</div>}
 
-      {isAdmin && showForm && (
+      {canCreate && showForm && (
         <section className="card">
           <h2>Create project</h2>
           <form onSubmit={createProject}>

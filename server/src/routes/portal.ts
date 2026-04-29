@@ -41,13 +41,15 @@ router.get('/customer/overview', requireRole(Role.CUSTOMER), async (req, res, ne
   }
 });
 
-// Customer lookup — admin and sales-flagged employees use this when picking
-// a customer (e.g. drafting a contract). Returns active customers only.
+// Customer lookup — admin, sales, and PM-flagged employees use this when
+// picking a customer (drafting a contract, creating a project). Returns
+// active customers only.
 router.get('/customers', async (req, res, next) => {
   try {
     const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
     const allowed =
-      me?.role === Role.ADMIN || (me?.role === Role.EMPLOYEE && me.isSales);
+      me?.role === Role.ADMIN ||
+      (me?.role === Role.EMPLOYEE && (me.isSales || me.isProjectManager));
     if (!allowed) return res.status(403).json({ error: 'Forbidden' });
     const users = await prisma.user.findMany({
       where: { role: Role.CUSTOMER, isActive: true },
@@ -60,10 +62,17 @@ router.get('/customers', async (req, res, next) => {
   }
 });
 
-// Project-manager lookup — used by the project create/edit form. Returns the
-// EMPLOYEE users flagged as PM. Admin only since reassignment is admin-only.
-router.get('/staff/pms', requireRole(Role.ADMIN), async (_req, res, next) => {
+// Project-manager lookup — used by the project create form. Returns the
+// EMPLOYEE users flagged as PM. Admins, sales, and PMs can read this list
+// (any of those workflows can spin up a project). PM *reassignment* on an
+// existing project is still gated to admin in the projects PATCH route.
+router.get('/staff/pms', async (req, res, next) => {
   try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    const allowed =
+      me?.role === Role.ADMIN ||
+      (me?.role === Role.EMPLOYEE && (me.isSales || me.isProjectManager));
+    if (!allowed) return res.status(403).json({ error: 'Forbidden' });
     const users = await prisma.user.findMany({
       where: { role: Role.EMPLOYEE, isProjectManager: true, isActive: true },
       orderBy: { name: 'asc' },

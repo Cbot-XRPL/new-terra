@@ -164,8 +164,23 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.post('/', requireRole(Role.ADMIN), async (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
+    // Admins always allowed; employees need sales OR PM capability — both
+    // workflows naturally produce a new project (sales converts a lead, a PM
+    // sets one up for an existing customer). Accounting alone doesn't.
+    const me = await prisma.user.findUnique({
+      where: { id: req.user!.sub },
+      select: { role: true, isSales: true, isProjectManager: true },
+    });
+    if (
+      !me ||
+      (me.role !== Role.ADMIN &&
+        !(me.role === Role.EMPLOYEE && (me.isSales || me.isProjectManager)))
+    ) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
     const data = createProjectSchema.parse(req.body);
     const customer = await prisma.user.findUnique({ where: { id: data.customerId } });
     if (!customer || customer.role !== Role.CUSTOMER) {
