@@ -10,7 +10,7 @@ type ContractStatus = 'DRAFT' | 'SENT' | 'VIEWED' | 'SIGNED' | 'DECLINED' | 'VOI
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
 async function downloadPdf(id: string, filename: string) {
-  const token = localStorage.getItem('nt_token');
+  const token = (sessionStorage.getItem('nt_token') ?? localStorage.getItem('nt_token'));
   const res = await fetch(`${API_BASE}/api/contracts/${id}/pdf`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });

@@ -7,7 +7,9 @@ export class ApiError extends Error {
 }
 
 function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem('nt_token');
+  // Login uses sessionStorage when "Remember me" is unchecked, localStorage
+  // otherwise. Read both so existing logged-in users aren't kicked out.
+  const token = sessionStorage.getItem('nt_token') ?? localStorage.getItem('nt_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 

@@ -30,7 +30,7 @@ export interface AuthUser {
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<AuthUser>;
+  login: (email: string, password: string, remember?: boolean) => Promise<AuthUser>;
   acceptInvite: (input: {
     token: string;
     name: string;
@@ -47,28 +47,49 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const TOKEN_KEY = 'nt_token';
 
+// Stash the token in sessionStorage when the user opted out of "Remember
+// me" — clears as soon as the browser tab closes. localStorage persists
+// indefinitely. The bootstrap reader checks both so existing logged-in
+// users aren't kicked out by this change.
+function readToken(): string | null {
+  return sessionStorage.getItem(TOKEN_KEY) ?? localStorage.getItem(TOKEN_KEY);
+}
+function saveToken(token: string, remember: boolean): void {
+  if (remember) {
+    localStorage.setItem(TOKEN_KEY, token);
+    sessionStorage.removeItem(TOKEN_KEY);
+  } else {
+    sessionStorage.setItem(TOKEN_KEY, token);
+    localStorage.removeItem(TOKEN_KEY);
+  }
+}
+function clearToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem(TOKEN_KEY);
+    const token = readToken();
     if (!token) {
       setLoading(false);
       return;
     }
     api<{ user: AuthUser }>('/api/auth/me')
       .then((d) => setUser(d.user))
-      .catch(() => localStorage.removeItem(TOKEN_KEY))
+      .catch(() => clearToken())
       .finally(() => setLoading(false));
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string, remember = true) => {
     const data = await api<{ token: string; user: AuthUser }>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
-    localStorage.setItem(TOKEN_KEY, data.token);
+    saveToken(data.token, remember);
     setUser(data.user);
     return data.user;
   }, []);
@@ -78,13 +99,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       method: 'POST',
       body: JSON.stringify(input),
     });
-    localStorage.setItem(TOKEN_KEY, data.token);
+    // Newly-accepted invites default to "remember" — they just set their
+    // password, no point making them log in twice.
+    saveToken(data.token, true);
     setUser(data.user);
     return data.user;
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
+    clearToken();
     setUser(null);
   }, []);
 

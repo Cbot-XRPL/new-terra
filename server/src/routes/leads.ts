@@ -311,8 +311,9 @@ router.post('/:id/convert', async (req, res, next) => {
 
     res.json({
       lead: updated,
-      // Echo the dev URL when SMTP isn't configured so the rep can copy it.
-      inviteUrl: env.smtp.host ? undefined : inviteUrl,
+      // Echo the dev URL when no mail transport is configured so the rep
+      // can copy it. Resend or SMTP both count as configured.
+      inviteUrl: (env.resend.apiKey || env.smtp.host) ? undefined : inviteUrl,
     });
   } catch (err) {
     next(err);

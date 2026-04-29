@@ -70,7 +70,7 @@ export default function AdminDashboard() {
       });
       setFeedback(
         res.inviteUrl
-          ? `Invite created. Dev link (no SMTP configured): ${res.inviteUrl}`
+          ? `Invite created. Dev link (no email transport configured): ${res.inviteUrl}`
           : `Invite emailed to ${email}`,
       );
       setEmail('');

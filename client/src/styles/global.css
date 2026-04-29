@@ -1119,6 +1119,10 @@ input:focus, textarea:focus, select:focus {
   display: grid;
   grid-template-columns: 240px 1fr;
   min-height: 100vh;
+  /* Compact density — shrink the whole portal ~20% so more fits on a screen
+     without redoing every rem. `zoom` is now in CSS spec and supported in
+     all major browsers (Firefox 126+, May 2024). */
+  zoom: 0.8;
 }
 .portal-sidebar {
   background: var(--bg-elevated);

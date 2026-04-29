@@ -65,8 +65,9 @@ router.post('/invitations', async (req, res, next) => {
         role: invite.role,
         expiresAt: invite.expiresAt,
       },
-      // Returned in dev so admin can copy/paste the link if SMTP isn't set.
-      inviteUrl: env.smtp.host ? undefined : inviteUrl,
+      // Returned in dev so admin can copy/paste the link if no mail transport
+      // is configured. Resend (preferred) or SMTP both count as configured.
+      inviteUrl: (env.resend.apiKey || env.smtp.host) ? undefined : inviteUrl,
     });
   } catch (err) {
     next(err);

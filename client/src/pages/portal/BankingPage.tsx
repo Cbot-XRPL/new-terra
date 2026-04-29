@@ -176,7 +176,7 @@ export default function BankingPage() {
     setError(null); setInfo(null);
     try {
       const apiBase = import.meta.env.VITE_API_URL ?? '';
-      const token = localStorage.getItem('nt_token');
+      const token = (sessionStorage.getItem('nt_token') ?? localStorage.getItem('nt_token'));
       const form = new FormData();
       form.append('file', fileInputRef.current.files[0]);
       const res = await fetch(`${apiBase}/api/banking/accounts/${active}/import`, {

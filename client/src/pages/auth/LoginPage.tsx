@@ -8,6 +8,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -16,7 +17,7 @@ export default function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await login(email, password);
+      await login(email, password, remember);
       navigate('/portal');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Sign in failed');
@@ -51,6 +52,24 @@ export default function LoginPage() {
             required
             autoComplete="current-password"
           />
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              fontWeight: 'normal',
+              cursor: 'pointer',
+              margin: '0.25rem 0 0.75rem',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              style={{ width: 'auto', margin: 0 }}
+            />
+            <span>Remember me on this device</span>
+          </label>
           {error && <div className="form-error">{error}</div>}
           <button type="submit" disabled={submitting}>
             {submitting ? 'Signing in…' : 'Sign in'}

@@ -151,7 +151,7 @@ export default function ProjectDetailPage() {
   async function downloadJobFolder() {
     if (!project) return;
     const apiBase = import.meta.env.VITE_API_URL ?? '';
-    const token = localStorage.getItem('nt_token');
+    const token = (sessionStorage.getItem('nt_token') ?? localStorage.getItem('nt_token'));
     const res = await fetch(`${apiBase}/api/projects/${project.id}/job-folder.pdf`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });

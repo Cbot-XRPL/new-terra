@@ -219,7 +219,7 @@ export default function TimePage() {
               start.setHours(0, 0, 0, 0);
               const end = new Date();
               end.setHours(23, 59, 59, 999);
-              const token = localStorage.getItem('nt_token');
+              const token = (sessionStorage.getItem('nt_token') ?? localStorage.getItem('nt_token'));
               const params = new URLSearchParams({
                 from: start.toISOString(),
                 to: end.toISOString(),

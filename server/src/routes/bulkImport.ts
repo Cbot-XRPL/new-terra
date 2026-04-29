@@ -80,9 +80,9 @@ router.post('/invitations', async (req, res, next) => {
           email,
           role,
           status: 'invited',
-          // Only echo the URL when SMTP isn't configured so admins can copy
-          // it manually; otherwise the link is in the invitee's inbox.
-          inviteUrl: env.smtp.host ? undefined : inviteUrl,
+          // Only echo the URL when no mail transport is configured so admins
+          // can copy it manually; otherwise the link is in the invitee's inbox.
+          inviteUrl: (env.resend.apiKey || env.smtp.host) ? undefined : inviteUrl,
         });
       } catch (err) {
         results.push({

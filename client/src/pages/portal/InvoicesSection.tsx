@@ -123,7 +123,7 @@ export default function InvoicesSection({ projectId, customerId, customerName }:
   // the result in a new tab.
   async function downloadInvoicePdf(id: string, number: string) {
     const apiBase = import.meta.env.VITE_API_URL ?? '';
-    const token = localStorage.getItem('nt_token');
+    const token = (sessionStorage.getItem('nt_token') ?? localStorage.getItem('nt_token'));
     try {
       const res = await fetch(`${apiBase}/api/invoices/${id}/invoice.pdf`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},

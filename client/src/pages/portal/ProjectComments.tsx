@@ -43,7 +43,7 @@ export default function ProjectComments({ projectId }: { projectId: string }) {
     // so attachments + ordering come back consistent. EventSource
     // auto-reconnects so we don't need a poll fallback for transient
     // network blips.
-    const token = localStorage.getItem('nt_token');
+    const token = (sessionStorage.getItem('nt_token') ?? localStorage.getItem('nt_token'));
     if (!token) return;
     const base = import.meta.env.VITE_API_URL ?? '';
     const es = new EventSource(
@@ -65,7 +65,7 @@ export default function ProjectComments({ projectId }: { projectId: string }) {
       const form = new FormData();
       if (body) form.append('body', body);
       for (const f of files) form.append('attachments', f);
-      const token = localStorage.getItem('nt_token');
+      const token = (sessionStorage.getItem('nt_token') ?? localStorage.getItem('nt_token'));
       const res = await fetch(`${API_BASE}/api/projects/${projectId}/comments`, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},

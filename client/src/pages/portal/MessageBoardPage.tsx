@@ -182,7 +182,7 @@ export default function MessageBoardPage() {
       form.append('body', body);
       if (isAdmin && pinned) form.append('pinned', 'true');
       for (const f of files) form.append('attachments', f);
-      const token = localStorage.getItem('nt_token');
+      const token = (sessionStorage.getItem('nt_token') ?? localStorage.getItem('nt_token'));
       const res = await fetch(`${API_BASE}/api/board`, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},

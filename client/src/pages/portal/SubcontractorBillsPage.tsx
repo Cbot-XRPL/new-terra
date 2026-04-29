@@ -229,7 +229,7 @@ export default function SubcontractorBillsPage() {
     setError(null);
     try {
       const apiBase = import.meta.env.VITE_API_URL ?? '';
-      const token = localStorage.getItem('nt_token');
+      const token = (sessionStorage.getItem('nt_token') ?? localStorage.getItem('nt_token'));
       const form = new FormData();
       for (const f of Array.from(files)) form.append('files', f);
       const res = await fetch(`${apiBase}/api/subcontractor-bills/${billId}/attachments`, {

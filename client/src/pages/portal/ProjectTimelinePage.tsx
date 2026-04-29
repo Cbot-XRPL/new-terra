@@ -37,7 +37,7 @@ interface ProjectStub {
 // browser saves it with the right filename.
 async function downloadZip(projectId: string, projectName: string) {
   const apiBase = import.meta.env.VITE_API_URL ?? '';
-  const token = localStorage.getItem('nt_token');
+  const token = (sessionStorage.getItem('nt_token') ?? localStorage.getItem('nt_token'));
   const res = await fetch(`${apiBase}/api/projects/${projectId}/photos.zip`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });

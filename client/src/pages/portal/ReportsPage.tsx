@@ -79,7 +79,7 @@ export default function ReportsPage() {
   // Auth-required CSV download via fetch+blob.
   async function downloadCsv(path: string, filename: string) {
     const apiBase = import.meta.env.VITE_API_URL ?? '';
-    const token = localStorage.getItem('nt_token');
+    const token = (sessionStorage.getItem('nt_token') ?? localStorage.getItem('nt_token'));
     const res = await fetch(`${apiBase}${path}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });

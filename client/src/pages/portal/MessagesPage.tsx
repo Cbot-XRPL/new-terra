@@ -78,7 +78,7 @@ export default function MessagesPage() {
     // Subscribe to push events; refresh threads / active conversation when
     // anything involving us arrives. Falls back to manual reloads if the
     // EventSource fails (older proxies, locked-down networks).
-    const token = localStorage.getItem('nt_token');
+    const token = (sessionStorage.getItem('nt_token') ?? localStorage.getItem('nt_token'));
     if (!token) return;
     const base = import.meta.env.VITE_API_URL ?? '';
     const es = new EventSource(`${base}/api/messages/stream?token=${encodeURIComponent(token)}`);
@@ -120,7 +120,7 @@ export default function MessagesPage() {
       form.append('toUserId', active);
       if (body) form.append('body', body);
       for (const f of files) form.append('attachments', f);
-      const token = localStorage.getItem('nt_token');
+      const token = (sessionStorage.getItem('nt_token') ?? localStorage.getItem('nt_token'));
       const res = await fetch(`${API_BASE}/api/messages`, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
