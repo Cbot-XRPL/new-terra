@@ -334,27 +334,6 @@ export default function LeadsPage() {
           </label>
         )}
         <div className="toolbar-spacer" />
-        <button
-          type="button"
-          className="button-ghost"
-          onClick={async () => {
-            try {
-              const r = await api<{ considered: number; notified: number; skippedNoOwner: number }>(
-                '/api/leads/admin/notify-stale',
-                { method: 'POST' },
-              );
-              alert(
-                `Stale-lead nudge: emailed ${r.notified} rep${r.notified === 1 ? '' : 's'} ` +
-                  `(considered ${r.considered}, ${r.skippedNoOwner} unowned).`,
-              );
-            } catch (err) {
-              setError(err instanceof ApiError ? err.message : 'Notify failed');
-            }
-          }}
-          title="Email each assigned rep about leads that have gone quiet > 5 days"
-        >
-          Nudge stale
-        </button>
         <button onClick={() => setShowForm((v) => !v)}>
           {showForm ? 'Cancel' : 'New lead'}
         </button>

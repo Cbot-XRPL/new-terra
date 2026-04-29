@@ -20,6 +20,8 @@ export interface AuthUser {
   isSales?: boolean;
   isProjectManager?: boolean;
   isAccounting?: boolean;
+  billingMode?: 'HOURLY' | 'DAILY';
+  dailyRateCents?: number;
   avatarUrl?: string | null;
   avatarThumbnailUrl?: string | null;
 }

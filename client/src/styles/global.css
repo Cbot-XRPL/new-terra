@@ -791,9 +791,9 @@ input:focus, textarea:focus, select:focus {
    stack panel on the right. Collapses to a single column under 1100px. */
 .calendar-with-aside {
   display: grid;
-  /* Calendar capped at 1340px; Next up fills whatever space is left to
+  /* Calendar capped at 1450px; Next up fills whatever space is left to
      the right. */
-  grid-template-columns: minmax(0, 1340px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1450px) minmax(0, 1fr);
   gap: 1.25rem;
   align-items: start;
 }

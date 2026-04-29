@@ -11,6 +11,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum BillingMode {
+  HOURLY  // punch-in/out clock; pay computed from minutes × hourlyRateCents
+  DAILY   // logs days (1, 0.5, 0.25 …); pay = dayUnits × dailyRateCents
+}
+
 enum Role {
   ADMIN
   EMPLOYEE
@@ -113,6 +118,13 @@ model User {
   // Employees flagged as accounting see the finance dashboard, all expenses,
   // and can manage vendors + expense categories. Toggleable by admin.
   isAccounting  Boolean  @default(false)
+  // How the user reports time. HOURLY = punch-in/out clock (default).
+  // DAILY = logs days (1, 0.5, 0.25 etc.) without punching a clock —
+  // matches in-house guys who bill by the day.
+  billingMode   BillingMode @default(HOURLY)
+  // Day rate (in cents) for DAILY users; ignored for HOURLY users (they
+  // use hourlyRateCents on each entry instead).
+  dailyRateCents Int @default(0)
   isActive      Boolean  @default(true)
   // Bumped on password reset, role change, and admin "sign out everywhere".
   // The auth middleware compares this against the JWT claim and rejects
@@ -1664,9 +1676,17 @@ model TimeEntry {
   endedAt     DateTime?
   minutes     Int @default(0)
 
-  // Snapshot of the hourly rate at recording time so historical labor cost
-  // is immune to later rate changes.
+  // For DAILY-mode entries: how many days this represents (1.0 full,
+  // 0.5 half, 0.25 quarter, or any custom decimal). Null for hourly
+  // entries — those use minutes. Float over Decimal because we don't
+  // need money-grade precision and querying is simpler.
+  dayUnits    Float?
+
+  // Snapshot of the rate at recording time so historical labor cost is
+  // immune to later rate changes. hourlyRateCents is set for hourly
+  // entries, dailyRateCents for daily entries.
   hourlyRateCents Int @default(0)
+  dailyRateCents  Int @default(0)
   // Whether the time is billable to the project (vs internal/admin time).
   billable    Boolean @default(true)
   notes       String?

@@ -10,9 +10,11 @@ interface TimeEntry {
   startedAt: string;
   endedAt: string | null;
   minutes: number;
+  dayUnits: number | null;
   notes: string | null;
   billable: boolean;
   hourlyRateCents: number;
+  dailyRateCents: number;
   user: { id: string; name: string };
   project: { id: string; name: string } | null;
 }
@@ -21,6 +23,7 @@ interface ListResponse {
   entries: TimeEntry[];
   total: number;
   totalMinutes: number;
+  totalDayUnits: number;
 }
 
 function formatHours(minutes: number): string {
@@ -30,9 +33,23 @@ function formatHours(minutes: number): string {
   return `${h}h ${m}m`;
 }
 
+function formatDays(units: number): string {
+  // 1 → "1 day", 0.5 → "0.5 day", 2 → "2 days"
+  return `${units % 1 === 0 ? units.toFixed(0) : units.toFixed(2)} day${units === 1 ? '' : 's'}`;
+}
+
+function todayLocalIso(): string {
+  // Default the date input to today, midday local time, so picking it
+  // doesn't surprise anyone with timezone shifts at midnight.
+  const d = new Date();
+  d.setHours(12, 0, 0, 0);
+  return d.toISOString().slice(0, 10); // <input type="date"> wants YYYY-MM-DD
+}
+
 export default function TimePage() {
   const { user } = useAuth();
   const isAccounting = user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isAccounting);
+  const isDaily = user?.billingMode === 'DAILY';
 
   const [active, setActive] = useState<TimeEntry | null>(null);
   const [projects, setProjects] = useState<ProjectRef[]>([]);
@@ -40,10 +57,16 @@ export default function TimePage() {
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
 
-  // Punch-in form
+  // Punch-in form (hourly users)
   const [projectId, setProjectId] = useState('');
   const [notes, setNotes] = useState('');
   const [billable, setBillable] = useState(true);
+
+  // Log-a-day form (daily users)
+  const [logDate, setLogDate] = useState<string>(todayLocalIso());
+  const [logUnits, setLogUnits] = useState<string>('1'); // string so the
+  // dropdown's "custom" option can carry its own input
+  const [logCustomUnits, setLogCustomUnits] = useState<string>('1');
 
   async function load() {
     try {
@@ -98,6 +121,39 @@ export default function TimePage() {
     }
   }
 
+  async function logDay(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const units =
+      logUnits === 'custom' ? Number(logCustomUnits) : Number(logUnits);
+    if (!Number.isFinite(units) || units <= 0) {
+      setError('Day units must be a positive number');
+      return;
+    }
+    // Anchor to noon local on the picked date so it sorts as "this day"
+    // regardless of the user's timezone.
+    const at = new Date(`${logDate}T12:00:00`);
+    try {
+      await api('/api/time/log-day', {
+        method: 'POST',
+        body: JSON.stringify({
+          projectId: projectId || null,
+          date: at.toISOString(),
+          dayUnits: units,
+          notes: notes || undefined,
+          billable,
+        }),
+      });
+      setNotes('');
+      setLogUnits('1');
+      setLogCustomUnits('1');
+      setLogDate(todayLocalIso());
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Log-day failed');
+    }
+  }
+
   async function deleteEntry(id: string) {
     if (!confirm('Delete this time entry?')) return;
     try {
@@ -118,7 +174,10 @@ export default function TimePage() {
         <div>
           <h1>Time</h1>
           <p className="muted">
-            Punch in / out per project. {isAccounting ? 'You see the whole team.' : 'You see only your own entries.'}
+            {isDaily
+              ? 'Log full or partial days you worked.'
+              : 'Punch in / out per project.'}{' '}
+            {isAccounting ? 'You see the whole team.' : 'You see only your own entries.'}
           </p>
         </div>
         {isAccounting && (
@@ -154,7 +213,76 @@ export default function TimePage() {
       {error && <div className="form-error">{error}</div>}
 
       <section className="card">
-        {active ? (
+        {isDaily ? (
+          <>
+            <h2>Log a day</h2>
+            <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+              Day rate: <strong>${((user?.dailyRateCents ?? 0) / 100).toFixed(2)}/day</strong>.
+              Pick the date you worked and how much of a day it was.
+            </p>
+            <form onSubmit={logDay}>
+              <div className="form-row">
+                <div>
+                  <label>Date</label>
+                  <input
+                    type="date"
+                    value={logDate}
+                    onChange={(e) => setLogDate(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label>How much</label>
+                  <select value={logUnits} onChange={(e) => setLogUnits(e.target.value)}>
+                    <option value="1">1 — full day</option>
+                    <option value="0.75">0.75 — three-quarter day</option>
+                    <option value="0.5">0.5 — half day</option>
+                    <option value="0.25">0.25 — quarter day</option>
+                    <option value="custom">Custom…</option>
+                  </select>
+                </div>
+                {logUnits === 'custom' && (
+                  <div>
+                    <label>Custom units</label>
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0.05"
+                      max="7"
+                      value={logCustomUnits}
+                      onChange={(e) => setLogCustomUnits(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="form-row">
+                <div>
+                  <label>Project</label>
+                  <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+                    <option value="">— general / overhead —</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ alignSelf: 'end' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={billable}
+                      onChange={(e) => setBillable(e.target.checked)}
+                      style={{ width: 'auto' }}
+                    />
+                    Billable
+                  </label>
+                </div>
+              </div>
+              <label>Notes (optional)</label>
+              <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="What did you work on?" />
+              <button type="submit">Log day</button>
+            </form>
+          </>
+        ) : active ? (
           <>
             <h2>On the clock</h2>
             <p>
@@ -205,7 +333,11 @@ export default function TimePage() {
           <h2>Recent entries</h2>
           {list && (
             <span className="muted">
-              <strong>{formatHours(list.totalMinutes)}</strong> total ({list.total} entries)
+              <strong>{formatHours(list.totalMinutes)}</strong>
+              {list.totalDayUnits > 0 && (
+                <> + <strong>{formatDays(list.totalDayUnits)}</strong></>
+              )}
+              {' '}total ({list.total} entries)
             </span>
           )}
         </div>
@@ -213,9 +345,9 @@ export default function TimePage() {
           <table className="table">
             <thead>
               <tr>
-                <th>Started</th>
-                <th>Ended</th>
-                <th>Duration</th>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Amount</th>
                 {isAccounting && <th>User</th>}
                 <th>Project</th>
                 <th>Notes</th>
@@ -223,23 +355,38 @@ export default function TimePage() {
               </tr>
             </thead>
             <tbody>
-              {list.entries.map((e) => (
-                <tr key={e.id}>
-                  <td>{formatDateTime(e.startedAt)}</td>
-                  <td>{e.endedAt ? formatDateTime(e.endedAt) : <em className="muted">in progress</em>}</td>
-                  <td>{e.endedAt ? formatHours(e.minutes) : <span className="muted">—</span>}</td>
-                  {isAccounting && <td>{e.user.name}</td>}
-                  <td>{e.project?.name ?? <span className="muted">general</span>}</td>
-                  <td className="muted" style={{ maxWidth: 280 }}>
-                    {e.notes ?? '—'}{!e.billable && ' · non-billable'}
-                  </td>
-                  <td>
-                    <button className="button-ghost button-small" onClick={() => deleteEntry(e.id)}>
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {list.entries.map((e) => {
+                const isDailyEntry = e.dayUnits != null;
+                return (
+                  <tr key={e.id}>
+                    <td>{formatDateTime(e.startedAt)}</td>
+                    <td>
+                      {isDailyEntry
+                        ? 'Daily'
+                        : e.endedAt
+                          ? 'Hourly'
+                          : <em className="muted">in progress</em>}
+                    </td>
+                    <td>
+                      {isDailyEntry
+                        ? formatDays(e.dayUnits!)
+                        : e.endedAt
+                          ? formatHours(e.minutes)
+                          : <span className="muted">—</span>}
+                    </td>
+                    {isAccounting && <td>{e.user.name}</td>}
+                    <td>{e.project?.name ?? <span className="muted">general</span>}</td>
+                    <td className="muted" style={{ maxWidth: 280 }}>
+                      {e.notes ?? '—'}{!e.billable && ' · non-billable'}
+                    </td>
+                    <td>
+                      <button className="button-ghost button-small" onClick={() => deleteEntry(e.id)}>
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         ) : (

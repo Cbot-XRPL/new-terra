@@ -91,6 +91,49 @@ router.post('/punch-out', async (req, res, next) => {
   }
 });
 
+// ----- Daily-rate workers: log a day -----
+//
+// Skip the punch-in/out clock entirely. Each entry represents a worked day
+// (or fraction). The backing TimeEntry row stores dayUnits + the user's
+// snapshotted dailyRateCents so historical pay is immune to later rate
+// changes; minutes stays 0.
+
+const logDaySchema = z.object({
+  projectId: z.string().nullable().optional(),
+  // ISO datetime — caller picks whichever time-of-day they prefer (we use
+  // it just for sorting; the day-units field carries the actual quantity).
+  date: z.string().datetime(),
+  dayUnits: z.number().positive().max(7), // 7 = generous max for a single entry
+  notes: z.string().max(1000).optional(),
+  billable: z.boolean().optional(),
+});
+
+router.post('/log-day', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!me || me.role === Role.CUSTOMER) return res.status(403).json({ error: 'Forbidden' });
+    const data = logDaySchema.parse(req.body ?? {});
+    const at = new Date(data.date);
+    const entry = await prisma.timeEntry.create({
+      data: {
+        userId: me.id,
+        projectId: data.projectId ?? null,
+        startedAt: at,
+        endedAt: at, // closed-on-creation; clock semantics don't apply
+        minutes: 0,
+        dayUnits: data.dayUnits,
+        dailyRateCents: me.dailyRateCents,
+        notes: data.notes,
+        billable: data.billable ?? true,
+      },
+      include: { project: { select: { id: true, name: true } } },
+    });
+    res.status(201).json({ entry });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ----- List / edit -----
 
 const listQuery = z.object({
@@ -138,7 +181,7 @@ router.get('/', async (req, res, next) => {
         },
       }),
       prisma.timeEntry.count({ where }),
-      prisma.timeEntry.aggregate({ where, _sum: { minutes: true } }),
+      prisma.timeEntry.aggregate({ where, _sum: { minutes: true, dayUnits: true } }),
     ]);
     res.json({
       entries,
@@ -146,6 +189,7 @@ router.get('/', async (req, res, next) => {
       page: q.page,
       pageSize: q.pageSize,
       totalMinutes: agg._sum.minutes ?? 0,
+      totalDayUnits: agg._sum.dayUnits ?? 0,
     });
   } catch (err) {
     next(err);
@@ -238,7 +282,7 @@ router.get('/payroll.csv', async (req, res, next) => {
     const grouped = await prisma.timeEntry.groupBy({
       by: ['userId', 'projectId', 'billable'],
       where: { startedAt: { gte: start, lte: end }, endedAt: { not: null } },
-      _sum: { minutes: true },
+      _sum: { minutes: true, dayUnits: true },
     });
 
     // Hydrate user + project names so the CSV is human-readable without
@@ -262,10 +306,11 @@ router.get('/payroll.csv', async (req, res, next) => {
       return s;
     }
 
-    const header = ['user_id', 'user_name', 'user_email', 'project_id', 'project_name', 'billable', 'minutes', 'hours_decimal'];
+    const header = ['user_id', 'user_name', 'user_email', 'project_id', 'project_name', 'billable', 'minutes', 'hours_decimal', 'day_units'];
     const rows = grouped.map((g) => {
       const user = userById.get(g.userId);
       const minutes = g._sum.minutes ?? 0;
+      const dayUnits = g._sum.dayUnits ?? 0;
       return [
         g.userId,
         user?.name ?? '',
@@ -275,6 +320,7 @@ router.get('/payroll.csv', async (req, res, next) => {
         g.billable ? 'true' : 'false',
         minutes,
         (minutes / 60).toFixed(2),
+        dayUnits,
       ];
     });
 

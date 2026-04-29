@@ -14,6 +14,8 @@ interface AdminUser {
   isSales: boolean;
   isProjectManager: boolean;
   isAccounting: boolean;
+  billingMode: 'HOURLY' | 'DAILY';
+  dailyRateCents: number;
   // Optional 1099 fields for subs.
   taxId: string | null;
   mailingAddress: string | null;
@@ -127,6 +129,43 @@ export default function AdminDashboard() {
     }
   }
 
+  async function editPay(user: AdminUser) {
+    const modeRaw = prompt(
+      `Billing mode for ${user.name}: enter "hourly" (punch-in/out clock) or "daily" (logs days).`,
+      user.billingMode.toLowerCase(),
+    );
+    if (modeRaw === null) return;
+    const mode = modeRaw.trim().toLowerCase();
+    if (mode !== 'hourly' && mode !== 'daily') {
+      setError('Mode must be "hourly" or "daily"');
+      return;
+    }
+    const billingMode = mode === 'daily' ? 'DAILY' : 'HOURLY';
+    let dailyRateCents = user.dailyRateCents;
+    if (billingMode === 'DAILY') {
+      const rateRaw = prompt(
+        `Day rate for ${user.name} in dollars (e.g. 250 = $250/day).`,
+        (user.dailyRateCents / 100).toString(),
+      );
+      if (rateRaw === null) return;
+      const rate = Number(rateRaw);
+      if (!Number.isFinite(rate) || rate < 0) {
+        setError('Day rate must be a non-negative number');
+        return;
+      }
+      dailyRateCents = Math.round(rate * 100);
+    }
+    try {
+      await api(`/api/admin/users/${user.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ billingMode, dailyRateCents }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Update failed');
+    }
+  }
+
   // Quick inline editor for 1099 fields. Two prompts is good enough for an
   // infrequent admin task — a richer modal isn't worth the surface area.
   async function editTaxInfo(user: AdminUser) {
@@ -205,6 +244,7 @@ export default function AdminDashboard() {
               <th>Sales</th>
               <th>PM</th>
               <th>Acct</th>
+              <th>Pay</th>
               <th>Status</th>
               <th></th>
             </tr>
@@ -249,6 +289,21 @@ export default function AdminDashboard() {
                       title={u.isAccounting ? 'Remove accounting access' : 'Grant accounting access'}
                     >
                       {u.isAccounting ? 'Acct ✓' : 'Grant'}
+                    </button>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
+                <td>
+                  {u.role === 'EMPLOYEE' || u.role === 'SUBCONTRACTOR' ? (
+                    <button
+                      className="button-small button-ghost"
+                      onClick={() => editPay(u)}
+                      title="Set hourly clock or daily rate billing for this worker"
+                    >
+                      {u.billingMode === 'DAILY'
+                        ? `Daily · $${(u.dailyRateCents / 100).toFixed(0)}/d`
+                        : 'Hourly'}
                     </button>
                   ) : (
                     <span className="muted">—</span>

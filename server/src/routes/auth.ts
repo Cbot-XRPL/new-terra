@@ -118,6 +118,8 @@ router.get('/me', requireAuth, async (req, res, next) => {
         isSales: true,
         isProjectManager: true,
         isAccounting: true,
+        billingMode: true,
+        dailyRateCents: true,
         avatarUrl: true,
         avatarThumbnailUrl: true,
       },

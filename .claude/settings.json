@@ -24,7 +24,9 @@
       "Bash(npx tsc *)",
       "Bash(grep -rn \"prefers-color-scheme\\\\|data-theme\\\\|themeMode\\\\|cookieConsent\\\\|nt_theme\\\\|--bg-elevated\\\\|@media.*color-scheme\\\\|\\\\\\\\[data-theme\" client/src/styles/global.css client/src)",
       "Bash(grep -E \"background:\\\\s*#[0-9a-fA-F]{3,8}|background:\\\\s*rgb|color:\\\\s*#[0-9a-fA-F]{3,8}\" /c/Users/codyr/Desktop/code/new-terra-4/client/src/styles/global.css)",
-      "Bash(grep -n -B1 -A20 \"router\\\\.get.*'/'\\\\|router\\\\.get.*'\\\\\\\\/'\\\\\\\\\\)\" server/src/routes/projects.ts)"
+      "Bash(grep -n -B1 -A20 \"router\\\\.get.*'/'\\\\|router\\\\.get.*'\\\\\\\\/'\\\\\\\\\\)\" server/src/routes/projects.ts)",
+      "Bash(taskkill //F //PID 402948)",
+      "Bash(grep -rn \"router\\\\.get.*\\\\\\\\/me\\\\\\\\|/me'\\\\\\\\|me\\\\\\\\.role.*me\\\\\\\\.isSales\" server/src/routes)"
     ]
   }
 }
