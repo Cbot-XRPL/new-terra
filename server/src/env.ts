@@ -18,8 +18,11 @@ function findEnvFile(): string | null {
 }
 
 const envFile = findEnvFile();
-if (envFile) dotenv.config({ path: envFile });
-else dotenv.config();
+// `override: true` so the .env file is the source of truth — without it,
+// any stale value already in process.env (e.g. captured by PM2 at first
+// launch before .env was filled in) silently wins and dotenv is a no-op.
+if (envFile) dotenv.config({ path: envFile, override: true });
+else dotenv.config({ override: true });
 
 function required(name: string): string {
   const v = process.env[name];
