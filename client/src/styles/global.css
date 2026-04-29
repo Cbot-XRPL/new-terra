@@ -1118,7 +1118,9 @@ input:focus, textarea:focus, select:focus {
 .portal-shell {
   display: grid;
   grid-template-columns: 240px 1fr;
-  min-height: 100vh;
+  /* 125vh because zoom: 0.8 shrinks rendered output to 80% — 100vh / 0.8
+     = 125vh of pre-zoom space resolves to exactly 100vh on screen. */
+  min-height: 125vh;
   /* Compact density — shrink the whole portal ~20% so more fits on a screen
      without redoing every rem. `zoom` is now in CSS spec and supported in
      all major browsers (Firefox 126+, May 2024). */
@@ -1138,7 +1140,9 @@ input:focus, textarea:focus, select:focus {
   position: sticky;
   top: 0;
   align-self: start;
-  min-height: 100vh;
+  /* 125vh for the same reason as .portal-shell — compensates for zoom:0.8
+     so the sidebar background fills the full viewport after scaling. */
+  min-height: 125vh;
 }
 .portal-sidebar nav {
   min-height: 0;
