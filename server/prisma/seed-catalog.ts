@@ -15,6 +15,11 @@
  * Treat them as a starting bid — review each project before quoting.
  */
 
+// Side-effect import — triggers our env walker so DATABASE_URL is loaded
+// from the repo-root .env before PrismaClient instantiates. Without this
+// the script fails with "Environment variable not found: DATABASE_URL"
+// because Prisma's own dotenv only looks in cwd and cwd/prisma.
+import '../src/env.js';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
