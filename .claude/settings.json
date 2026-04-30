@@ -44,7 +44,9 @@
       "Bash(taskkill //F //PID 392180)",
       "Bash(taskkill //F //PID 408684)",
       "Bash(npm --prefix server install --package-lock-only)",
-      "Bash(npm --prefix client install --package-lock-only)"
+      "Bash(npm --prefix client install --package-lock-only)",
+      "WebSearch",
+      "WebFetch(domain:www.homedepot.com)"
     ]
   }
 }

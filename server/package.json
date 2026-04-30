@@ -18,6 +18,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:demo": "tsx prisma/seed-demo.ts",
+    "db:seed:catalog": "tsx prisma/seed-catalog.ts",
     "db:update-template": "tsx prisma/update-default-template.ts",
     "db:studio": "prisma studio"
   },
