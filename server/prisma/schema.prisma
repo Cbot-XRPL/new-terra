@@ -1659,7 +1659,13 @@ model Estimate {
 
   // Pricing — totals are persisted (rather than recalculated each request)
   // so historical estimates are immune to later price-list edits.
+  // unitPriceCents on each line is the IN-HOUSE COST. markupBps is the
+  // sales markup applied at customer-display time: customer sees
+  // unitPriceCents * (1 + markupBps/10_000). 1500 = 15.00% markup.
+  // subtotal/tax/totalCents are the COST-SIDE rollup (what we'll spend).
+  // Customer-facing totals are derived in the masking helper at read time.
   subtotalCents Int @default(0)
+  markupBps   Int @default(0)
   taxRateBps  Int @default(0) // 700 = 7.00%
   taxCents    Int @default(0)
   totalCents  Int @default(0)

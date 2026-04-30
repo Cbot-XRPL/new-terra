@@ -179,6 +179,8 @@ export default function NewEstimatePage() {
     'Materials and labor as described above. Estimate valid 30 days. 50% deposit due at signing; balance due on completion.',
   );
   const [taxRatePct, setTaxRatePct] = useState('0');
+  const [markupPct, setMarkupPct] = useState('20');
+  const [previewCustomer, setPreviewCustomer] = useState(false);
   const [validUntil, setValidUntil] = useState('');
   const [lines, setLines] = useState<WorkingLine[]>(() =>
     seedLine ? [seedLine] : [blankLine(0)],
@@ -365,17 +367,30 @@ export default function NewEstimatePage() {
   }
 
   // Live totals — keep all math in cents to dodge float drift.
-  const subtotal = useMemo(
+  // unitPriceCents on each line is our IN-HOUSE COST. The customer sees
+  // unitPriceCents * (1 + markupBps/10_000). We compute both so the rep
+  // can see margin while building the estimate.
+  const subtotalCost = useMemo(
     () => lines.reduce((s, l) => s + Math.round(l.quantity * l.unitPriceCents), 0),
     [lines],
   );
   const taxBps = useMemo(() => {
     const n = Number(taxRatePct);
     if (!Number.isFinite(n) || n < 0) return 0;
-    return Math.round(n * 100); // 7.5% → 750
+    return Math.round(n * 100);
   }, [taxRatePct]);
-  const tax = Math.round((subtotal * taxBps) / 10_000);
-  const total = subtotal + tax;
+  const markupBps = useMemo(() => {
+    const n = Number(markupPct);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.min(10_000, Math.round(n * 100));
+  }, [markupPct]);
+  const taxCost = Math.round((subtotalCost * taxBps) / 10_000);
+  const totalCost = subtotalCost + taxCost;
+
+  const subtotalCustomer = Math.round(subtotalCost * (1 + markupBps / 10_000));
+  const taxCustomer = Math.round((subtotalCustomer * taxBps) / 10_000);
+  const totalCustomer = subtotalCustomer + taxCustomer;
+  const grossMargin = totalCustomer - totalCost;
 
   // Group line totals by category for the by-category subtotal display.
   const byCategory = useMemo(() => {
@@ -406,6 +421,7 @@ export default function NewEstimatePage() {
         notes: notes || undefined,
         termsText: termsText || undefined,
         taxRateBps: taxBps,
+        markupBps,
         validUntil: validUntil ? new Date(validUntil).toISOString() : null,
         lines: lines.map((l, idx) => ({
           description: l.description,
@@ -446,6 +462,31 @@ export default function NewEstimatePage() {
       </header>
 
       {error && <div className="form-error">{error}</div>}
+      {previewCustomer && (
+        <div
+          className="form-success"
+          style={{
+            background: 'var(--accent)',
+            color: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.75rem',
+          }}
+        >
+          <span>
+            Customer preview · prices show with {(markupBps / 100).toFixed(1)}% markup
+          </span>
+          <button
+            type="button"
+            className="button-ghost button-small"
+            onClick={() => setPreviewCustomer(false)}
+            style={{ color: '#fff', borderColor: '#fff' }}
+          >
+            Exit preview
+          </button>
+        </div>
+      )}
 
       <section className="card">
         <div className="form-row">
@@ -653,7 +694,12 @@ export default function NewEstimatePage() {
           </thead>
           <tbody>
             {lines.map((l, idx) => {
-              const total = Math.round(l.quantity * l.unitPriceCents);
+              // Display price + total honour the preview toggle: in
+              // preview the rep sees what the customer will see (after
+              // markup); in build mode they see in-house cost.
+              const factor = previewCustomer ? 1 + markupBps / 10_000 : 1;
+              const displayUnit = Math.round(l.unitPriceCents * factor);
+              const total = Math.round(l.quantity * displayUnit);
               const isCustom = l.productId === null;
               return (
                 <tr key={idx}>
@@ -737,16 +783,25 @@ export default function NewEstimatePage() {
                     />
                   </td>
                   <td>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={(l.unitPriceCents / 100).toFixed(2)}
-                      onChange={(e) =>
-                        patchLine(idx, { unitPriceCents: Math.round(Number(e.target.value) * 100) })
-                      }
-                      style={{ marginBottom: 0, width: 100 }}
-                    />
+                    {previewCustomer ? (
+                      // Preview mode is read-only — show the marked-up
+                      // price the customer would see, no editing.
+                      <span title="Customer-facing price (after markup)">
+                        {formatCents(displayUnit)}
+                      </span>
+                    ) : (
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={(l.unitPriceCents / 100).toFixed(2)}
+                        onChange={(e) =>
+                          patchLine(idx, { unitPriceCents: Math.round(Number(e.target.value) * 100) })
+                        }
+                        style={{ marginBottom: 0, width: 100 }}
+                        title="In-house cost per unit"
+                      />
+                    )}
                   </td>
                   <td>
                     <select
@@ -793,14 +848,50 @@ export default function NewEstimatePage() {
           </div>
           <div>
             <h3 style={{ marginTop: 0 }}>Totals</h3>
+            <div style={{ marginBottom: '0.75rem' }}>
+              <label htmlFor="e-markup">Markup % (applied at customer view)</label>
+              <input
+                id="e-markup"
+                type="number"
+                step="0.5"
+                min="0"
+                max="100"
+                value={markupPct}
+                onChange={(e) => setMarkupPct(e.target.value)}
+                style={{ width: 100 }}
+              />
+            </div>
             <dl className="kv">
-              <dt>Subtotal</dt>
-              <dd>{formatCents(subtotal)}</dd>
+              <dt className="muted">In-house subtotal</dt>
+              <dd className="muted">{formatCents(subtotalCost)}</dd>
+              <dt className="muted">In-house tax</dt>
+              <dd className="muted">{formatCents(taxCost)}</dd>
+              <dt className="muted">In-house total</dt>
+              <dd className="muted">{formatCents(totalCost)}</dd>
+              <dt>Customer subtotal</dt>
+              <dd>{formatCents(subtotalCustomer)}</dd>
               <dt>Tax ({(taxBps / 100).toFixed(2)}%)</dt>
-              <dd>{formatCents(tax)}</dd>
-              <dt><strong>Total</strong></dt>
-              <dd><strong>{formatCents(total)}</strong></dd>
+              <dd>{formatCents(taxCustomer)}</dd>
+              <dt><strong>Customer total</strong></dt>
+              <dd><strong>{formatCents(totalCustomer)}</strong></dd>
+              <dt style={{ color: 'var(--success)' }}>Gross margin</dt>
+              <dd style={{ color: 'var(--success)' }}>
+                <strong>{formatCents(grossMargin)}</strong>
+                {totalCustomer > 0 && (
+                  <span className="muted" style={{ marginLeft: 6, fontSize: '0.85rem' }}>
+                    ({((grossMargin / totalCustomer) * 100).toFixed(1)}%)
+                  </span>
+                )}
+              </dd>
             </dl>
+            <button
+              type="button"
+              className="button-ghost button-small"
+              onClick={() => setPreviewCustomer((v) => !v)}
+              style={{ marginTop: '0.5rem' }}
+            >
+              {previewCustomer ? 'Back to build view' : 'Preview customer view'}
+            </button>
           </div>
         </div>
       </section>

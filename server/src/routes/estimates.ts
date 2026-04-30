@@ -39,34 +39,76 @@ function recalcTotals(
   return { subtotalCents: subtotal, taxCents: tax, totalCents: subtotal + tax };
 }
 
-// Masks contractor identity from a customer-bound estimate payload. For
-// any line attached to a contractor: rewrite the description to the trade
-// label (line.displayTrade ?? contractor.tradeType ?? "Labor"), drop the
-// contractor relation + id, and clear internal notes. Used on both the
-// detail and "by-project" customer reads. Staff endpoints never call it.
+// Masks an estimate for a customer-bound payload. Two transformations:
 //
-// Typed loosely on purpose — the include shape varies between callers.
-// We only touch fields we know are safe.
-function maskEstimateForCustomer<E extends { lines: Array<{
-  description: string;
-  contractorId?: string | null;
-  displayTrade?: string | null;
-  notes?: string | null;
-  contractor?: { id: string; name: string; tradeType: string | null } | null;
-}> }>(estimate: E): E {
+//   1. Contractor identity scrub — for any line attached to a contractor,
+//      rewrite description to the trade label (line.displayTrade ??
+//      contractor.tradeType ?? "Labor"), drop the contractor id+relation,
+//      clear internal notes.
+//   2. Markup application — multiply every line's unitPriceCents +
+//      totalCents by (1 + markupBps/10_000) so the customer sees the
+//      sale price, not our cost. Subtotal/tax/total at the estimate
+//      level are recomputed from the marked-up line totals (rather than
+//      scaling the stored cost-side totals separately) so rounding stays
+//      consistent.
+//
+// Used on customer reads only — staff endpoints get the raw cost data.
+function maskEstimateForCustomer<E extends {
+  markupBps?: number;
+  taxRateBps?: number;
+  subtotalCents?: number;
+  taxCents?: number;
+  totalCents?: number;
+  lines: Array<{
+    description: string;
+    unitPriceCents: number;
+    totalCents: number;
+    contractorId?: string | null;
+    displayTrade?: string | null;
+    notes?: string | null;
+    contractor?: { id: string; name: string; tradeType: string | null } | null;
+  }>;
+}>(estimate: E): E {
+  const markupBps = estimate.markupBps ?? 0;
+  const factor = 1 + markupBps / 10_000;
+
+  const lines = estimate.lines.map((l) => {
+    const unitPriceCents = Math.round(l.unitPriceCents * factor);
+    const totalCents = Math.round(l.totalCents * factor);
+    if (!l.contractorId && !l.contractor) {
+      return { ...l, unitPriceCents, totalCents };
+    }
+    const trade = l.displayTrade ?? l.contractor?.tradeType ?? 'Labor';
+    return {
+      ...l,
+      description: trade,
+      notes: null,
+      contractorId: null,
+      contractor: null,
+      unitPriceCents,
+      totalCents,
+    };
+  });
+
+  // Recompute totals from the marked-up line totals so the cents tie out.
+  let subtotalCents = estimate.subtotalCents;
+  let taxCents = estimate.taxCents;
+  let totalCents = estimate.totalCents;
+  if (markupBps > 0) {
+    subtotalCents = lines.reduce((s, l) => s + l.totalCents, 0);
+    const taxRateBps = estimate.taxRateBps ?? 0;
+    taxCents = Math.round((subtotalCents * taxRateBps) / 10_000);
+    totalCents = subtotalCents + taxCents;
+  }
+
   return {
     ...estimate,
-    lines: estimate.lines.map((l) => {
-      if (!l.contractorId && !l.contractor) return l;
-      const trade = l.displayTrade ?? l.contractor?.tradeType ?? 'Labor';
-      return {
-        ...l,
-        description: trade,
-        notes: null,
-        contractorId: null,
-        contractor: null,
-      };
-    }),
+    lines,
+    subtotalCents,
+    taxCents,
+    totalCents,
+    // Don't leak markup info to the customer — they don't need to know.
+    markupBps: 0,
   };
 }
 
@@ -114,6 +156,10 @@ const createSchema = z.object({
   notes: z.string().max(5000).optional(),
   termsText: z.string().max(5000).optional(),
   taxRateBps: z.number().int().min(0).max(10_000).optional(),
+  // Sales markup in basis points applied to every line at customer view
+  // time. 1500 = 15%. Cap at 100% (10_000 bps) — anything above that is
+  // almost certainly a typo and would scare a customer.
+  markupBps: z.number().int().min(0).max(10_000).optional(),
   validUntil: z.string().datetime().optional().nullable(),
   // Lines optional on create — when a templateId is provided we'll seed
   // from the template's lines.
@@ -321,6 +367,7 @@ router.post('/', async (req, res, next) => {
         notes: data.notes,
         termsText: data.termsText,
         taxRateBps: data.taxRateBps ?? 0,
+        markupBps: data.markupBps ?? 0,
         validUntil: data.validUntil ? new Date(data.validUntil) : null,
         customerId: data.customerId ?? null,
         leadId: data.leadId ?? null,
@@ -410,6 +457,7 @@ router.patch('/:id', async (req, res, next) => {
           notes: data.notes,
           termsText: data.termsText,
           taxRateBps: data.taxRateBps,
+          markupBps: data.markupBps,
           validUntil: data.validUntil === null ? null : data.validUntil ? new Date(data.validUntil) : undefined,
           ...(totals ?? {}),
         },
