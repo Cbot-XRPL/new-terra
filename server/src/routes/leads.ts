@@ -8,6 +8,7 @@ import { sendInviteEmail } from '../lib/mailer.js';
 import { env } from '../env.js';
 import { hasSalesAccess } from '../lib/permissions.js';
 import { notifyStaleLeads } from '../lib/reminders.js';
+import { linkPreviousLeadDataToCustomer } from '../lib/leadLinking.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -272,6 +273,12 @@ router.post('/:id/convert', async (req, res, next) => {
     if (existing) {
       // Link the lead to the existing user (no new invitation needed).
       customerId = existing.id;
+      // Also back-fill any *other* unconverted leads + their orphan
+      // estimates that share this email so the customer sees them all
+      // in one shot. Wrapped in a tx for atomicity.
+      await prisma.$transaction(async (tx) => {
+        await linkPreviousLeadDataToCustomer(tx, email, existing.id);
+      });
     } else {
       const { token, tokenHash } = generateInviteToken();
       await prisma.invitation.create({

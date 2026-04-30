@@ -30,25 +30,55 @@ router.post('/janitor/uploads', async (req, res, next) => {
 const inviteSchema = z.object({
   email: z.string().email(),
   role: z.nativeEnum(Role),
+  // Optional pre-fill so the admin can populate the user record up-front
+  // and have them appear in dropdowns *before* the invite is accepted.
+  // The invitee can edit name/phone when they claim the invite.
+  name: z.string().min(1).max(120).optional(),
+  phone: z.string().max(40).optional(),
+  isSales: z.boolean().optional(),
+  isProjectManager: z.boolean().optional(),
+  isAccounting: z.boolean().optional(),
+  tradeType: z.string().max(60).optional(),
 });
 
 router.post('/invitations', async (req, res, next) => {
   try {
-    const { email, role } = inviteSchema.parse(req.body);
-    const normalized = email.toLowerCase();
+    const data = inviteSchema.parse(req.body);
+    const normalized = data.email.toLowerCase();
 
     const existingUser = await prisma.user.findUnique({ where: { email: normalized } });
-    if (existingUser) {
+    if (existingUser && existingUser.passwordHash) {
       return res.status(409).json({ error: 'A user with that email already exists' });
     }
 
     const { token, tokenHash } = generateInviteToken();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
+    // Create the user row immediately (without a password) so the rest of
+    // the app — sales dropdowns, project assignment, etc. — can reference
+    // them right away. The invitee adds their password when they claim
+    // the invite link. If the row already exists (e.g. lead-converted but
+    // never accepted), update it in place instead of erroring.
+    const userData = {
+      email: normalized,
+      role: data.role,
+      name: data.name ?? normalized.split('@')[0]!,
+      phone: data.phone ?? null,
+      isSales: data.role === Role.EMPLOYEE ? !!data.isSales : false,
+      isProjectManager: data.role === Role.EMPLOYEE ? !!data.isProjectManager : false,
+      isAccounting: data.role === Role.EMPLOYEE ? !!data.isAccounting : false,
+      tradeType: data.role === Role.SUBCONTRACTOR ? (data.tradeType ?? null) : null,
+    };
+    if (existingUser) {
+      await prisma.user.update({ where: { id: existingUser.id }, data: userData });
+    } else {
+      await prisma.user.create({ data: userData });
+    }
+
     const invite = await prisma.invitation.create({
       data: {
         email: normalized,
-        role,
+        role: data.role,
         tokenHash,
         expiresAt,
         invitedById: req.user!.sub,
@@ -56,7 +86,7 @@ router.post('/invitations', async (req, res, next) => {
     });
 
     const inviteUrl = `${env.appUrl}/accept-invite?token=${token}`;
-    await sendInviteEmail(normalized, inviteUrl, role);
+    await sendInviteEmail(normalized, inviteUrl, data.role);
 
     res.status(201).json({
       invitation: {

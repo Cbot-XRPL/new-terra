@@ -156,6 +156,11 @@ model User {
   w9SignedAt           DateTime?
   w9SignedName         String?
   w9SignedIp           String?
+  // Baseline trade for SUBCONTRACTOR users — Framing, Plumbing, Electrical,
+  // Demo, etc. Free-form so we don't have to ship a migration to add a new
+  // trade. Surfaced to customers as the default line label so we never
+  // expose the contractor's name on a customer-facing estimate.
+  tradeType            String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -233,6 +238,8 @@ model User {
   estimateTemplates EstimateTemplate[] @relation("EstimateTemplateAuthor")
   estimatesCreated  Estimate[]         @relation("EstimatesCreated")
   estimatesReceived Estimate[]         @relation("EstimatesForCustomer")
+  // Estimate lines that route work to this user as the contractor.
+  estimateLinesAsContractor EstimateLine[] @relation("EstimateLineContractor")
 
   // Time tracking
   timeEntries       TimeEntry[]        @relation("TimeEntries")
@@ -1691,6 +1698,18 @@ model EstimateLine {
   category    String   @default("Custom")
   notes       String?
   position    Int @default(0)
+  // Optional contractor (SUBCONTRACTOR user) this line is attached to.
+  // Drives the PM-side "who do I owe" rollup; never exposed to customers.
+  contractorId String?
+  contractor   User?    @relation("EstimateLineContractor", fields: [contractorId], references: [id], onDelete: SetNull)
+  // Trade label shown to the customer in place of the description (or the
+  // contractor name) when this is a labor line tied to a contractor. If
+  // null, falls back to the contractor's User.tradeType, then to "Labor".
+  // Per-line so a sales rep can flip-flop the same contractor between
+  // demo / framing / etc. on different lines of the same estimate.
+  displayTrade String?
+
+  @@index([contractorId])
 }
 
 // Product — a single SKU in the catalog. Materials, labor units, fees, etc.

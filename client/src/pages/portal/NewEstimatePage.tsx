@@ -62,6 +62,19 @@ interface WorkingLine {
   category: 'Labor' | 'Materials';
   notes: string;
   position: number;
+  // Optional sub-contractor attribution. Customer never sees the name
+  // (server masks it). PMs get a "who do I owe" rollup off this.
+  contractorId: string | null;
+  // Per-line trade label override (Demo, Framing, Electrical, …). Falls
+  // back to the contractor's baseline tradeType when blank.
+  displayTrade: string;
+}
+
+interface ContractorOption {
+  id: string;
+  name: string;
+  email: string;
+  tradeType: string | null;
 }
 
 function blankLine(position: number): WorkingLine {
@@ -74,6 +87,8 @@ function blankLine(position: number): WorkingLine {
     category: 'Materials',
     notes: '',
     position,
+    contractorId: null,
+    displayTrade: '',
   };
 }
 
@@ -96,6 +111,8 @@ function fromTemplate(t: Template): WorkingLine[] {
     category: l.category === 'Labor' ? 'Labor' : 'Materials',
     notes: l.notes ?? '',
     position: idx,
+    contractorId: null,
+    displayTrade: '',
   }));
 }
 
@@ -124,6 +141,8 @@ export default function NewEstimatePage() {
         category: 'Materials' as const,
         notes: '',
         position: 0,
+        contractorId: null,
+        displayTrade: '',
       };
     } catch {
       return null;
@@ -135,6 +154,7 @@ export default function NewEstimatePage() {
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [products, setProducts] = useState<ProductRef[]>([]);
   const [assemblies, setAssemblies] = useState<AssemblyRef[]>([]);
+  const [contractors, setContractors] = useState<ContractorOption[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   // Catalog picker state
@@ -168,13 +188,17 @@ export default function NewEstimatePage() {
       api<{ leads: LeadOption[] }>('/api/leads?pageSize=200').catch(() => ({ leads: [] as LeadOption[] })),
       api<{ products: ProductRef[] }>('/api/catalog/products').catch(() => ({ products: [] as ProductRef[] })),
       api<{ assemblies: AssemblyRef[] }>('/api/catalog/assemblies').catch(() => ({ assemblies: [] as AssemblyRef[] })),
+      api<{ users: ContractorOption[] }>('/api/portal/staff/contractors').catch(
+        () => ({ users: [] as ContractorOption[] }),
+      ),
     ])
-      .then(([t, c, l, p, a]) => {
+      .then(([t, c, l, p, a, ctr]) => {
         setTemplates(t.templates);
         setCustomers(c.users);
         setLeads(l.leads ?? []);
         setProducts(p.products ?? []);
         setAssemblies(a.assemblies ?? []);
+        setContractors(ctr.users ?? []);
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load form data'));
   }, []);
@@ -191,6 +215,8 @@ export default function NewEstimatePage() {
         category: categoryFromProduct(p),
         notes: '',
         position: cur.length,
+        contractorId: null,
+        displayTrade: '',
       },
     ]);
   }
@@ -246,6 +272,8 @@ export default function NewEstimatePage() {
         category: (l.category === 'Labor' ? 'Labor' : 'Materials') as 'Labor' | 'Materials',
         notes: '',
         position: cur.length + idx,
+        contractorId: null,
+        displayTrade: '',
       })),
     ]);
     setAssemblyPreview(null);
@@ -372,6 +400,8 @@ export default function NewEstimatePage() {
           category: l.category || undefined,
           notes: l.notes || undefined,
           position: idx,
+          contractorId: l.contractorId || null,
+          displayTrade: l.displayTrade.trim() || null,
         })),
       };
       const created = await api<{ estimate: { id: string } }>('/api/estimates', {
@@ -629,6 +659,47 @@ export default function NewEstimatePage() {
                     ) : (
                       <div className="muted" style={{ fontSize: '0.75rem', marginTop: 4 }}>
                         From catalog · description locked to product name
+                      </div>
+                    )}
+                    {/* Contractor attribution — optional, only useful on
+                        labor lines. The customer never sees the
+                        contractor's name (server masks it); they see the
+                        per-line trade label below. */}
+                    {contractors.length > 0 && (
+                      <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                        <select
+                          value={l.contractorId ?? ''}
+                          onChange={(e) => {
+                            const id = e.target.value || null;
+                            const c = contractors.find((c) => c.id === id);
+                            patchLine(idx, {
+                              contractorId: id,
+                              // Pre-fill the trade label from the contractor's
+                              // baseline only if the rep hasn't typed one yet.
+                              displayTrade: l.displayTrade || c?.tradeType || '',
+                              // A line with a contractor is implicitly Labor.
+                              category: id ? 'Labor' : l.category,
+                            });
+                          }}
+                          style={{ marginBottom: 0, flex: '1 1 140px', minWidth: 0 }}
+                          title="Pay this line to a contractor (hidden from customer)"
+                        >
+                          <option value="">No contractor</option>
+                          {contractors.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}{c.tradeType ? ` · ${c.tradeType}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                        {l.contractorId && (
+                          <input
+                            value={l.displayTrade}
+                            onChange={(e) => patchLine(idx, { displayTrade: e.target.value })}
+                            placeholder="Customer sees…"
+                            title="Trade label shown to the customer (e.g. Demo, Framing). Leave blank to use the contractor's baseline."
+                            style={{ marginBottom: 0, flex: '1 1 100px', minWidth: 0 }}
+                          />
+                        )}
                       </div>
                     )}
                   </td>

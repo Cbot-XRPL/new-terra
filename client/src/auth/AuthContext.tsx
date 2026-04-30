@@ -37,6 +37,14 @@ interface AuthContextValue {
     password: string;
     phone?: string;
   }) => Promise<AuthUser>;
+  register: (input: {
+    email: string;
+    password: string;
+    name: string;
+    phone?: string;
+    role?: 'CUSTOMER' | 'SUBCONTRACTOR';
+    tradeType?: string;
+  }) => Promise<AuthUser>;
   logout: () => void;
   // Profile + avatar updates call this so the cached user (and derived UI like
   // the nav avatar) updates without a full page reload.
@@ -106,6 +114,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data.user;
   }, []);
 
+  const register = useCallback<AuthContextValue['register']>(async (input) => {
+    const data = await api<{ token: string; user: AuthUser }>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    saveToken(data.token, true);
+    setUser(data.user);
+    return data.user;
+  }, []);
+
   const logout = useCallback(() => {
     clearToken();
     setUser(null);
@@ -125,8 +143,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, loading, login, acceptInvite, logout, refreshUser }),
-    [user, loading, login, acceptInvite, logout, refreshUser],
+    () => ({ user, loading, login, acceptInvite, register, logout, refreshUser }),
+    [user, loading, login, acceptInvite, register, logout, refreshUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

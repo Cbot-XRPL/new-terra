@@ -62,6 +62,27 @@ router.get('/customers', async (req, res, next) => {
   }
 });
 
+// Contractor lookup — used by estimate line attribution + project pay
+// rollups. Returns active SUBCONTRACTOR users with their trade type so
+// the sales rep can pre-fill the line label. Admin / sales / PM all read.
+router.get('/staff/contractors', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    const allowed =
+      me?.role === Role.ADMIN ||
+      (me?.role === Role.EMPLOYEE && (me.isSales || me.isProjectManager));
+    if (!allowed) return res.status(403).json({ error: 'Forbidden' });
+    const users = await prisma.user.findMany({
+      where: { role: Role.SUBCONTRACTOR, isActive: true },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, email: true, tradeType: true },
+    });
+    res.json({ users });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Project-manager lookup — used by the project create form. Returns the
 // EMPLOYEE users flagged as PM. Admins, sales, and PMs can read this list
 // (any of those workflows can spin up a project). PM *reassignment* on an

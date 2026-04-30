@@ -39,6 +39,37 @@ function recalcTotals(
   return { subtotalCents: subtotal, taxCents: tax, totalCents: subtotal + tax };
 }
 
+// Masks contractor identity from a customer-bound estimate payload. For
+// any line attached to a contractor: rewrite the description to the trade
+// label (line.displayTrade ?? contractor.tradeType ?? "Labor"), drop the
+// contractor relation + id, and clear internal notes. Used on both the
+// detail and "by-project" customer reads. Staff endpoints never call it.
+//
+// Typed loosely on purpose — the include shape varies between callers.
+// We only touch fields we know are safe.
+function maskEstimateForCustomer<E extends { lines: Array<{
+  description: string;
+  contractorId?: string | null;
+  displayTrade?: string | null;
+  notes?: string | null;
+  contractor?: { id: string; name: string; tradeType: string | null } | null;
+}> }>(estimate: E): E {
+  return {
+    ...estimate,
+    lines: estimate.lines.map((l) => {
+      if (!l.contractorId && !l.contractor) return l;
+      const trade = l.displayTrade ?? l.contractor?.tradeType ?? 'Labor';
+      return {
+        ...l,
+        description: trade,
+        notes: null,
+        contractorId: null,
+        contractor: null,
+      };
+    }),
+  };
+}
+
 async function nextEstimateNumber(): Promise<string> {
   const year = new Date().getFullYear();
   const prefix = `EST-${year}-`;
@@ -65,6 +96,13 @@ const lineInputSchema = z.object({
   category: z.enum(['Labor', 'Materials']).default('Materials'),
   notes: z.string().max(1000).optional().nullable(),
   position: z.number().int().nonnegative().optional(),
+  // Optional contractor (SUBCONTRACTOR user id) the labor flows to. Hidden
+  // from customers in the read path — they only see the trade label.
+  contractorId: z.string().nullable().optional(),
+  // Per-line trade label override. If null we fall back to the
+  // contractor's User.tradeType (or "Labor"). Lets sales flip the same
+  // contractor between e.g. Demo and Framing across different lines.
+  displayTrade: z.string().max(60).nullable().optional(),
 });
 
 const createSchema = z.object({
@@ -122,10 +160,13 @@ router.get('/by-project/:projectId', async (req, res, next) => {
       include: {
         customer: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true } },
-        lines: { orderBy: { position: 'asc' } },
+        lines: {
+          orderBy: { position: 'asc' },
+          include: { contractor: { select: { id: true, name: true, tradeType: true } } },
+        },
       },
     });
-    res.json({ estimates });
+    res.json({ estimates: isCustomer ? estimates.map(maskEstimateForCustomer) : estimates });
   } catch (err) {
     next(err);
   }
@@ -191,7 +232,12 @@ router.get('/:id', async (req, res, next) => {
         customer: { select: { id: true, name: true, email: true } },
         lead: { select: { id: true, name: true, email: true } },
         createdBy: { select: { id: true, name: true } },
-        lines: { orderBy: { position: 'asc' } },
+        // Pull the contractor relation so we can resolve the trade label.
+        // Staff still see the contractor directly; customers get masked.
+        lines: {
+          orderBy: { position: 'asc' },
+          include: { contractor: { select: { id: true, name: true, tradeType: true } } },
+        },
         convertedProject: { select: { id: true, name: true } },
         convertedContract: { select: { id: true, status: true } },
       },
@@ -213,7 +259,7 @@ router.get('/:id', async (req, res, next) => {
         estimate.status = EstimateStatus.VIEWED;
         estimate.viewedAt = new Date();
       }
-      return res.json({ estimate });
+      return res.json({ estimate: maskEstimateForCustomer(estimate) });
     }
     if (!hasSalesAccess(me)) return res.status(403).json({ error: 'Forbidden' });
     res.json({ estimate });
@@ -292,6 +338,8 @@ router.post('/', async (req, res, next) => {
             category: l.category === 'Labor' ? 'Labor' : 'Materials',
             notes: l.notes ?? null,
             position: l.position,
+            contractorId: l.contractorId ?? null,
+            displayTrade: l.displayTrade ?? null,
           })),
         },
       },
@@ -330,6 +378,7 @@ router.patch('/:id', async (req, res, next) => {
     let lines: Array<{
       description: string; quantity: number; unit: string | null; unitPriceCents: number;
       totalCents: number; category: string; notes: string | null; position: number;
+      contractorId: string | null; displayTrade: string | null;
     }> | null = null;
 
     if (data.lines) {
@@ -342,6 +391,8 @@ router.patch('/:id', async (req, res, next) => {
         notes: l.notes ?? null,
         position: l.position ?? idx,
         totalCents: recalcLineTotal(l.quantity, l.unitPriceCents),
+        contractorId: l.contractorId ?? null,
+        displayTrade: l.displayTrade ?? null,
       }));
       totals = recalcTotals(lines, data.taxRateBps ?? existing.taxRateBps);
     } else if (data.taxRateBps !== undefined) {
@@ -377,6 +428,8 @@ router.patch('/:id', async (req, res, next) => {
               category: l.category,
               notes: l.notes,
               position: l.position,
+              contractorId: l.contractorId,
+              displayTrade: l.displayTrade,
             })),
           });
         }

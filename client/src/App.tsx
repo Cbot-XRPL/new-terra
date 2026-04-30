@@ -9,6 +9,7 @@ import PortalLayout from './layouts/PortalLayout';
 // the initial JS bundle stays under the Vite 500 KB warning threshold.
 import HomePage from './pages/public/HomePage';
 import LoginPage from './pages/auth/LoginPage';
+import RegisterPage from './pages/auth/RegisterPage';
 import AcceptInvitePage from './pages/auth/AcceptInvitePage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
@@ -98,6 +99,7 @@ export default function App() {
         <Route path="/survey/:token" element={<SurveyPage />} />
         <Route path="/start" element={<SignupPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
         <Route path="/accept-invite" element={<AcceptInvitePage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />

@@ -523,6 +523,81 @@ const budgetLineSchema = z.object({
   notes: z.string().max(500).nullable().optional(),
 });
 
+// Contractor-pay rollup — sums every estimate line attached to a sub
+// across the estimate(s) that fed this project. Lets a PM see who they
+// owe and how much without scrolling through line items. Visible to
+// admin / assigned PM / accounting; hidden from customers + the
+// contractors themselves (they don't need other contractors' totals).
+router.get('/:id/contractor-pay', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!me) return res.status(401).json({ error: 'Unauthenticated' });
+    const project = await prisma.project.findUnique({ where: { id: req.params.id } });
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const access =
+      me.role === Role.ADMIN ||
+      hasAccountingAccess(me) ||
+      canManageProject(me, project).write;
+    if (!access) return res.status(403).json({ error: 'Forbidden' });
+
+    const lines = await prisma.estimateLine.findMany({
+      where: {
+        estimate: { convertedProjectId: project.id },
+        contractorId: { not: null },
+      },
+      include: {
+        contractor: { select: { id: true, name: true, email: true, tradeType: true } },
+        estimate: { select: { id: true, number: true } },
+      },
+      orderBy: [{ contractorId: 'asc' }, { position: 'asc' }],
+    });
+
+    // Group by contractor and sum totalCents.
+    const byContractor = new Map<string, {
+      contractor: { id: string; name: string; email: string; tradeType: string | null };
+      totalCents: number;
+      lines: Array<{
+        id: string;
+        description: string;
+        displayTrade: string | null;
+        quantity: string;
+        unit: string | null;
+        unitPriceCents: number;
+        totalCents: number;
+        estimate: { id: string; number: string };
+      }>;
+    }>();
+    for (const l of lines) {
+      if (!l.contractor) continue;
+      const k = l.contractor.id;
+      const cur = byContractor.get(k);
+      const summary = {
+        id: l.id,
+        description: l.description,
+        displayTrade: l.displayTrade,
+        quantity: l.quantity.toString(),
+        unit: l.unit,
+        unitPriceCents: l.unitPriceCents,
+        totalCents: l.totalCents,
+        estimate: l.estimate,
+      };
+      if (cur) {
+        cur.totalCents += l.totalCents;
+        cur.lines.push(summary);
+      } else {
+        byContractor.set(k, {
+          contractor: l.contractor,
+          totalCents: l.totalCents,
+          lines: [summary],
+        });
+      }
+    }
+    res.json({ contractors: Array.from(byContractor.values()) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/:id/job-cost', async (req, res, next) => {
   try {
     const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });

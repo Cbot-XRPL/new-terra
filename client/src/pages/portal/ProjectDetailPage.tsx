@@ -12,6 +12,7 @@ import LogEntriesSection from './LogEntriesSection';
 import ProjectComments from './ProjectComments';
 import JobCostingSection from './JobCostingSection';
 import ChangeOrdersSection from './ChangeOrdersSection';
+import ContractorPayCard from '../../components/ContractorPayCard';
 import DrawSchedule from './DrawSchedule';
 import ProjectSourceEstimate from './ProjectSourceEstimate';
 
@@ -536,6 +537,8 @@ export default function ProjectDetailPage() {
         projectId={project.id}
         customerName={project.customer.name}
       />
+
+      <ContractorPayCard projectId={project.id} />
 
       <ProjectSourceEstimate
         projectId={project.id}

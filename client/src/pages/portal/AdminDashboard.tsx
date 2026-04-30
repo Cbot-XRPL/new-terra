@@ -38,10 +38,23 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [role, setRole] = useState<Role>('CUSTOMER');
+  const [isSales, setIsSales] = useState(false);
+  const [isProjectManager, setIsProjectManager] = useState(false);
+  const [isAccounting, setIsAccounting] = useState(false);
+  const [tradeType, setTradeType] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const COMMON_TRADES = [
+    'Framing', 'Demolition', 'Concrete', 'Roofing', 'Siding', 'Electrical',
+    'Plumbing', 'HVAC', 'Drywall', 'Insulation', 'Painting', 'Flooring',
+    'Tile', 'Cabinets', 'Countertops', 'Decks', 'Fencing', 'Hardscape',
+    'Landscape', 'Excavation', 'Other',
+  ];
 
   async function load() {
     try {
@@ -66,7 +79,14 @@ export default function AdminDashboard() {
     try {
       const res = await api<{ inviteUrl?: string }>('/api/admin/invitations', {
         method: 'POST',
-        body: JSON.stringify({ email, role }),
+        body: JSON.stringify({
+          email,
+          role,
+          name: name.trim() || undefined,
+          phone: phone.trim() || undefined,
+          ...(role === 'EMPLOYEE' ? { isSales, isProjectManager, isAccounting } : {}),
+          ...(role === 'SUBCONTRACTOR' && tradeType ? { tradeType } : {}),
+        }),
       });
       setFeedback(
         res.inviteUrl
@@ -74,6 +94,12 @@ export default function AdminDashboard() {
           : `Invite emailed to ${email}`,
       );
       setEmail('');
+      setName('');
+      setPhone('');
+      setIsSales(false);
+      setIsProjectManager(false);
+      setIsAccounting(false);
+      setTradeType('');
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to send invite');
@@ -228,23 +254,83 @@ export default function AdminDashboard() {
 
       <section className="card">
         <h2>Invite a user</h2>
-        <form onSubmit={invite} className="inline-form">
-          <input
-            type="email"
-            placeholder="email@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {r.toLowerCase()}
-              </option>
-            ))}
-          </select>
+        <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+          The user appears in our dropdowns immediately and can claim their account
+          via the invitation email when ready.
+        </p>
+        <form onSubmit={invite}>
+          <div className="form-row">
+            <div>
+              <label>Email</label>
+              <input
+                type="email"
+                placeholder="email@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label>Role</label>
+              <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
+                {ROLES.map((r) => (
+                  <option key={r} value={r}>{r.toLowerCase()}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="form-row">
+            <div>
+              <label>Name (optional, prefills their profile)</label>
+              <input
+                type="text"
+                placeholder="Jane Doe"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+            <div>
+              <label>Phone (optional)</label>
+              <input
+                type="tel"
+                placeholder="(555) 123-4567"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {role === 'EMPLOYEE' && (
+            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+              <label style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center', fontWeight: 'normal', margin: 0 }}>
+                <input type="checkbox" checked={isSales} onChange={(e) => setIsSales(e.target.checked)} style={{ width: 'auto', margin: 0 }} />
+                Sales
+              </label>
+              <label style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center', fontWeight: 'normal', margin: 0 }}>
+                <input type="checkbox" checked={isProjectManager} onChange={(e) => setIsProjectManager(e.target.checked)} style={{ width: 'auto', margin: 0 }} />
+                Project Manager
+              </label>
+              <label style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center', fontWeight: 'normal', margin: 0 }}>
+                <input type="checkbox" checked={isAccounting} onChange={(e) => setIsAccounting(e.target.checked)} style={{ width: 'auto', margin: 0 }} />
+                Accounting
+              </label>
+            </div>
+          )}
+
+          {role === 'SUBCONTRACTOR' && (
+            <div style={{ marginBottom: '1rem' }}>
+              <label>Trade</label>
+              <select value={tradeType} onChange={(e) => setTradeType(e.target.value)} required>
+                <option value="">Pick a trade…</option>
+                {COMMON_TRADES.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <button type="submit" disabled={submitting}>
-            {submitting ? 'Sending…' : 'Send invite'}
+            {submitting ? 'Sending…' : 'Create + send invite'}
           </button>
         </form>
       </section>
