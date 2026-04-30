@@ -28,6 +28,7 @@ interface LeadRow {
   serviceCategory: string | null;
   createdAt: string;
   updatedAt: string;
+  convertedAt: string | null;
   owner: { id: string; name: string } | null;
   createdBy: { id: string; name: string };
   convertedToCustomer: { id: string; name: string; email: string } | null;
@@ -95,6 +96,7 @@ export default function LeadsPage() {
   const [data, setData] = useState<ListResponse | null>(null);
   const [board, setBoard] = useState<BoardSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [convertResult, setConvertResult] = useState<string | null>(null);
 
   // New-lead form
   const [showForm, setShowForm] = useState(false);
@@ -189,15 +191,57 @@ export default function LeadsPage() {
     }
   }
 
-  async function quickStatus(id: string, next: LeadStatus) {
+  async function quickStatus(l: LeadRow, next: LeadStatus) {
     try {
-      await api(`/api/leads/${id}`, {
+      await api(`/api/leads/${l.id}`, {
         method: 'PATCH',
         body: JSON.stringify({ status: next }),
       });
-      await load();
+      // Auto-fire conversion when a lead is flipped to WON and hasn't been
+      // converted yet. Cuts an extra click on the most common path: the
+      // sales rep marks "Won" on the row, the customer record is created
+      // and the welcome invite goes out automatically.
+      const alreadyConverted = !!l.convertedToCustomer || !!l.convertedAt;
+      if (next === 'WON' && !alreadyConverted) {
+        await convertLead(l);
+      } else {
+        await load();
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Status update failed');
+    }
+  }
+
+  async function convertLead(l: LeadRow) {
+    setError(null);
+    setConvertResult(null);
+    let email = l.email ?? '';
+    if (!email) {
+      const raw = prompt(`Convert ${l.name} to a customer. What email should they use?`);
+      if (raw == null) return;
+      email = raw.trim();
+      if (!email) {
+        setError('An email is required to convert a lead.');
+        return;
+      }
+    } else if (!confirm(`Convert ${l.name} to a customer at ${email}? An invite email will be sent.`)) {
+      return;
+    }
+    try {
+      const res = await api<{ lead: LeadRow; inviteUrl?: string }>(
+        `/api/leads/${l.id}/convert`,
+        { method: 'POST', body: JSON.stringify({ email, sendInvite: true }) },
+      );
+      setConvertResult(
+        res.lead.convertedToCustomer
+          ? `Linked to existing customer ${res.lead.convertedToCustomer.email}`
+          : res.inviteUrl
+            ? `Invitation created — dev URL: ${res.inviteUrl}`
+            : `Invitation emailed to ${email}`,
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Convert failed');
     }
   }
 
@@ -211,6 +255,11 @@ export default function LeadsPage() {
       </header>
 
       {error && <div className="form-error">{error}</div>}
+      {convertResult && (
+        <div className="form-success" style={{ wordBreak: 'break-all' }}>
+          {convertResult}
+        </div>
+      )}
 
       {board && (
         <section className="card">
@@ -378,7 +427,7 @@ export default function LeadsPage() {
                     <td>
                       <select
                         value={l.status}
-                        onChange={(e) => quickStatus(l.id, e.target.value as LeadStatus)}
+                        onChange={(e) => quickStatus(l, e.target.value as LeadStatus)}
                         style={{ marginBottom: 0 }}
                       >
                         {STATUSES.map((s) => (
@@ -392,7 +441,27 @@ export default function LeadsPage() {
                     <td>{l.estimatedValueCents ? formatCents(l.estimatedValueCents) : <span className="muted">—</span>}</td>
                     <td>{formatDate(l.updatedAt)}</td>
                     <td>
-                      <Link to={`/portal/leads/${l.id}`} className="button button-ghost button-small">Open</Link>
+                      <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                        <Link to={`/portal/leads/${l.id}`} className="button button-ghost button-small">Open</Link>
+                        {l.convertedToCustomer ? (
+                          <span className="muted" style={{ fontSize: '0.75rem', alignSelf: 'center' }}>
+                            ✓ customer
+                          </span>
+                        ) : l.convertedAt ? (
+                          <span className="muted" style={{ fontSize: '0.75rem', alignSelf: 'center' }}>
+                            invite sent
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="button-small"
+                            onClick={() => convertLead(l)}
+                            title="Convert this lead to a customer and send an invite"
+                          >
+                            Convert
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

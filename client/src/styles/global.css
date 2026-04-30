@@ -774,6 +774,177 @@ input:focus, textarea:focus, select:focus {
   /* Always show actions on touch — there's no hover. */
   .chat-msg-actions { opacity: 1; }
 }
+
+/* ─── Chat / message-board UI (X / Discord-style) ────────────────────
+   .chat-shell wraps the whole page: pill strip on top, scrollable
+   stream in the middle, sticky composer at the bottom. Designed so
+   dropping a message feels the same as any chat app — no toggle, no
+   separate "new post" form. */
+.chat-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  /* Lets the stream fill the viewport so the composer can sit below it. */
+  min-height: calc(100vh - 4rem);
+}
+.chat-channels {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.25rem 0;
+  scrollbar-width: thin;
+}
+.chat-channel-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.chat-channel-pill:hover { background: var(--surface); }
+.chat-channel-pill.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.chat-channel-pill > svg { flex-shrink: 0; opacity: 0.85; }
+.chat-channel-add { padding: 0.4rem 0.6rem; }
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.chat-header h1 { margin: 0; font-size: 1.25rem; }
+.chat-header p { margin: 0.15rem 0 0; font-size: 0.85rem; }
+.chat-channel-tools { display: flex; gap: 0.25rem; flex-shrink: 0; }
+.chat-empty {
+  text-align: center;
+  padding: 2rem 1rem;
+  font-size: 0.95rem;
+}
+/* Bubble = avatar on the left, content stack on the right. Hover surfaces
+   the action buttons; on touch they're always visible (see media query). */
+.chat-bubble {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.5rem;
+  border-radius: 8px;
+}
+.chat-bubble:hover { background: var(--surface); }
+.chat-bubble > .avatar { flex-shrink: 0; }
+.chat-bubble-body { flex: 1; min-width: 0; }
+.chat-bubble-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  margin-bottom: 0.15rem;
+}
+.chat-bubble-author { font-weight: 600; color: var(--text); }
+.chat-bubble-role { font-size: 0.7rem; text-transform: capitalize; }
+.chat-bubble-time { font-size: 0.75rem; }
+.chat-bubble-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+  line-height: 1.4;
+}
+.chat-bubble-actions {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.chat-bubble:hover .chat-bubble-actions { opacity: 1; }
+/* Composer — full-width text area with the action toolbar tucked beneath.
+   On phone widths this sticks to the bottom of the viewport so it feels
+   like a real chat window. */
+.chat-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.6rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-top: auto;
+}
+.chat-composer textarea {
+  width: 100%;
+  min-height: 2.5rem;
+  max-height: 12rem;
+  resize: vertical;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.95rem;
+  padding: 0.25rem;
+  outline: none;
+  font-family: inherit;
+}
+.chat-composer-pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: normal;
+  margin: 0;
+  cursor: pointer;
+}
+.chat-composer-pin > input { width: auto; margin: 0; }
+.chat-composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.chat-composer-send {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+.chat-composer-send:disabled {
+  background: var(--surface-strong);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+@media (max-width: 700px) {
+  /* Always-visible actions on touch (no hover). */
+  .chat-bubble-actions { opacity: 1; }
+  /* Pin the composer to the bottom of the screen so the user can always
+     reach it — this is what makes the page feel like a real chat. */
+  .chat-composer {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
+  }
+  /* Headline shrinks so the channel name + tools fit a phone width. */
+  .chat-header h1 { font-size: 1.05rem; }
+}
+
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
 
@@ -1083,6 +1254,72 @@ input:focus, textarea:focus, select:focus {
 
 .sortable { cursor: pointer; user-select: none; }
 .sortable:hover { color: var(--accent); }
+
+/* ─── Combobox (search-as-you-type product picker) ────────────────── */
+.combobox { position: relative; }
+.combobox-input {
+  width: 100%;
+  margin-bottom: 0;
+  /* Right padding leaves room for the clear (×) button when something is
+     selected. Inputs have their own padding from form-input rules. */
+  padding-right: 1.75rem;
+}
+.combobox-clear {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0 0.25rem;
+  cursor: pointer;
+}
+.combobox-clear:hover { color: var(--text); }
+.combobox-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 18rem;
+  overflow-y: auto;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px var(--shadow);
+  margin-top: 4px;
+}
+.combobox-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+.combobox-item:last-child { border-bottom: none; }
+.combobox-item.active,
+.combobox-item:hover { background: var(--surface); }
+.combobox-item-name {
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+.combobox-item-meta {
+  font-size: 0.78rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.combobox-empty { padding: 0.6rem 0.75rem; font-size: 0.9rem; }
 
 .pagination {
   display: flex;
@@ -1785,11 +2022,12 @@ input:focus, textarea:focus, select:focus {
   .form-row > div { flex: 1 1 100%; }
   /* Stat tiles stack vertically so each value gets full width. */
   .invoice-stats { flex-direction: column; gap: 0.75rem; }
-  /* Tables don't truncate well on phone widths — let them scroll
-     horizontally inside their parent so the user can swipe to see the
-     full row instead of awkward wrapping that breaks alignment. */
-  .card .table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .card .table thead, .card .table tbody, .card .table tr { display: table; width: 100%; table-layout: fixed; }
+  /* Tables on tablet width: scroll the table inside the card instead of
+     squishing columns. Don't force table-layout: fixed — that's what was
+     causing column content to overlap on narrow screens. */
+  .card .table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+  .card .table thead, .card .table tbody { display: table-row-group; }
+  .card .table tr { display: table-row; }
   /* Collapse big-button groups to wrap. */
   .row-between { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
   .row-between > * { width: 100%; }
@@ -1856,6 +2094,38 @@ input:focus, textarea:focus, select:focus {
   /* Action buttons (Approve / Sign / Delete) on phone-width tables stack
      vertically so they don't overflow the right edge. */
   .table button + button { margin-left: 0; margin-top: 0.25rem; display: inline-block; }
+
+  /* Stacked-card table layout — at phone width, columns can't survive
+     side-by-side so each row becomes a vertical block. Header is hidden
+     (the cell content is self-describing for our tables: the first cell
+     is always a name/identifier, follow-on cells are short metadata).
+     Keeps tap targets generous and kills the column-overlap bug. */
+  .card .table { display: block; overflow-x: visible; max-width: 100%; }
+  .card .table thead { display: none; }
+  .card .table tbody, .card .table tr { display: block; }
+  .card .table tr {
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+  .card .table tr:last-child { border-bottom: none; }
+  .card .table td {
+    display: block;
+    padding: 0.1rem 0;
+    border: none;
+    word-break: break-word;
+  }
+  /* First cell — usually the name — gets a touch more weight so the row
+     reads like a list item with a heading + supporting metadata below. */
+  .card .table td:first-child { font-weight: 600; font-size: 0.95rem; }
+  /* Inputs / selects inside table cells (e.g. the Active toggle, qty
+     fields) shouldn't be jammed against text — let them sit on their
+     own row at full width. */
+  .card .table td input,
+  .card .table td select,
+  .card .table td textarea { width: 100%; max-width: 100%; }
   /* Sticky CTA only on phone widths. Add bottom padding to the public
      shell so the last footer line isn't hidden under it. */
   .sticky-cta { display: flex; }

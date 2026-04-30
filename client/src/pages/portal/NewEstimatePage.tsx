@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { formatCents } from '../../lib/format';
+import ProductCombobox from '../../components/ProductCombobox';
 
 interface CustomerOption { id: string; name: string; email: string }
 interface LeadOption { id: string; name: string; email: string | null }
@@ -251,12 +252,54 @@ export default function NewEstimatePage() {
     setCatalogOpen(false);
   }
 
-  const filteredProducts = products.filter((p) =>
-    !catalogQuery || p.name.toLowerCase().includes(catalogQuery.toLowerCase()),
-  );
-  const filteredAssemblies = assemblies.filter((a) =>
-    !catalogQuery || a.name.toLowerCase().includes(catalogQuery.toLowerCase()),
-  );
+  // Picker dialog list — filter by name OR category OR unit so a rep can
+  // type "framing", "electrical", "lf", etc. and narrow quickly.
+  const filteredProducts = useMemo(() => {
+    const q = catalogQuery.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.category?.toLowerCase().includes(q) ?? false) ||
+        (p.unit?.toLowerCase().includes(q) ?? false),
+    );
+  }, [products, catalogQuery]);
+  const filteredAssemblies = useMemo(() => {
+    const q = catalogQuery.trim().toLowerCase();
+    if (!q) return assemblies;
+    return assemblies.filter(
+      (a) =>
+        a.name.toLowerCase().includes(q) ||
+        (a.category?.toLowerCase().includes(q) ?? false),
+    );
+  }, [assemblies, catalogQuery]);
+
+  // Picker dialog sort. Default order matches the API (creation order).
+  type PickSortKey = 'name' | 'category' | 'unit' | 'price';
+  const [pickSort, setPickSort] = useState<PickSortKey | null>(null);
+  const [pickDir, setPickDir] = useState<'asc' | 'desc'>('asc');
+  function togglePickSort(k: PickSortKey) {
+    if (pickSort === k) setPickDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setPickSort(k); setPickDir('asc'); }
+  }
+  function pickIndicator(k: PickSortKey) {
+    return pickSort === k ? (pickDir === 'asc' ? ' ▲' : ' ▼') : '';
+  }
+  const sortedFilteredProducts = useMemo(() => {
+    if (!pickSort) return filteredProducts;
+    const dir = pickDir === 'asc' ? 1 : -1;
+    const cmpStr = (a: string, b: string) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    return [...filteredProducts].sort((a, b) => {
+      switch (pickSort) {
+        case 'name':     return dir * cmpStr(a.name, b.name);
+        case 'category': return dir * cmpStr(a.category ?? '', b.category ?? '');
+        case 'unit':     return dir * cmpStr(a.unit ?? '', b.unit ?? '');
+        case 'price':    return dir * (a.defaultUnitPriceCents - b.defaultUnitPriceCents);
+        default: return 0;
+      }
+    });
+  }, [filteredProducts, pickSort, pickDir]);
 
   // Apply a template — replaces lines and prefills title if blank.
   function applyTemplate(id: string) {
@@ -456,9 +499,17 @@ export default function NewEstimatePage() {
 
             {catalogTab === 'products' && (
               <table className="table" style={{ marginTop: '0.75rem' }}>
-                <thead><tr><th>Name</th><th>Category</th><th>Unit</th><th>Price</th><th></th></tr></thead>
+                <thead>
+                  <tr>
+                    <th className="sortable" onClick={() => togglePickSort('name')}>Name{pickIndicator('name')}</th>
+                    <th className="sortable" onClick={() => togglePickSort('category')}>Category{pickIndicator('category')}</th>
+                    <th className="sortable" onClick={() => togglePickSort('unit')}>Unit{pickIndicator('unit')}</th>
+                    <th className="sortable" onClick={() => togglePickSort('price')}>Price{pickIndicator('price')}</th>
+                    <th></th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {filteredProducts.map((p) => (
+                  {sortedFilteredProducts.map((p) => (
                     <tr key={p.id}>
                       <td>{p.name}</td>
                       <td>{p.category ?? <span className="muted">—</span>}</td>
@@ -471,7 +522,7 @@ export default function NewEstimatePage() {
                       </td>
                     </tr>
                   ))}
-                  {filteredProducts.length === 0 && (
+                  {sortedFilteredProducts.length === 0 && (
                     <tr><td colSpan={5} className="muted">No products. Admin can add them under /portal/catalog.</td></tr>
                   )}
                 </tbody>
@@ -562,19 +613,11 @@ export default function NewEstimatePage() {
               return (
                 <tr key={idx}>
                   <td>
-                    <select
-                      value={l.productId ?? ''}
-                      onChange={(e) => pickItem(idx, e.target.value || null)}
-                      style={{ marginBottom: 0 }}
-                    >
-                      <option value="">Custom — type your own</option>
-                      {products.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                          {p.category ? ` (${p.category})` : ''}
-                        </option>
-                      ))}
-                    </select>
+                    <ProductCombobox
+                      products={products}
+                      selectedId={l.productId}
+                      onSelect={(pid) => pickItem(idx, pid)}
+                    />
                     {isCustom ? (
                       <input
                         value={l.description}

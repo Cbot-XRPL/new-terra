@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
@@ -109,6 +109,100 @@ export default function CatalogPage() {
   const [pUnit, setPUnit] = useState('ea');
   const [pPrice, setPPrice] = useState('');
   const [pCategory, setPCategory] = useState('Materials');
+
+  // Column sorting for the products table. Click a header to sort by that
+  // column; click the same header again to flip asc/desc. Default order
+  // matches what the API returns (creation order from the catalog seed).
+  type ProductSortKey = 'name' | 'sku' | 'kind' | 'unit' | 'price' | 'category' | 'status' | 'inventory';
+  const [sortKey, setSortKey] = useState<ProductSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  function toggleSort(key: ProductSortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  }
+
+  const sortedProducts = useMemo(() => {
+    if (!sortKey) return products;
+    const dir = sortDir === 'asc' ? 1 : -1;
+    // Localized string compare so "10ft" sorts naturally next to "8ft".
+    const cmpStr = (a: string, b: string) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    return [...products].sort((a, b) => {
+      switch (sortKey) {
+        case 'name':     return dir * cmpStr(a.name, b.name);
+        case 'sku':      return dir * cmpStr(a.sku ?? '', b.sku ?? '');
+        case 'kind':     return dir * cmpStr(a.kind, b.kind);
+        case 'unit':     return dir * cmpStr(a.unit ?? '', b.unit ?? '');
+        case 'price':    return dir * (a.defaultUnitPriceCents - b.defaultUnitPriceCents);
+        case 'category': return dir * cmpStr(a.category ?? '', b.category ?? '');
+        case 'status':   return dir * (Number(b.active) - Number(a.active));
+        case 'inventory':return dir * ((a.onHandQtyMilli ?? 0) - (b.onHandQtyMilli ?? 0));
+        default: return 0;
+      }
+    });
+  }, [products, sortKey, sortDir]);
+
+  function sortIndicator(key: ProductSortKey): string {
+    if (sortKey !== key) return '';
+    return sortDir === 'asc' ? ' ▲' : ' ▼';
+  }
+
+  // Per-row inline edit. editingId points at the product whose row is in
+  // edit mode; editForm holds the in-flight values. Only one row can be
+  // edited at a time — clicking Edit on another row swaps the form over.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    sku: '',
+    kind: 'material',
+    unit: '',
+    price: '',
+    category: '',
+  });
+  const [editSaving, setEditSaving] = useState(false);
+
+  function startEdit(p: Product) {
+    setEditingId(p.id);
+    setEditForm({
+      name: p.name,
+      sku: p.sku ?? '',
+      kind: p.kind,
+      unit: p.unit ?? '',
+      price: (p.defaultUnitPriceCents / 100).toFixed(2),
+      category: p.category ?? '',
+    });
+  }
+  function cancelEdit() {
+    setEditingId(null);
+  }
+  async function saveEdit(id: string) {
+    setError(null);
+    setEditSaving(true);
+    try {
+      await api(`/api/catalog/products/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: editForm.name,
+          sku: editForm.sku || null,
+          kind: editForm.kind,
+          unit: editForm.unit || null,
+          defaultUnitPriceCents: Math.round(Number(editForm.price || 0) * 100),
+          category: editForm.category || null,
+        }),
+      });
+      setEditingId(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Save failed');
+    } finally {
+      setEditSaving(false);
+    }
+  }
 
   async function load() {
     try {
@@ -353,70 +447,175 @@ export default function CatalogPage() {
                         />
                       </th>
                     )}
-                    <th>Name</th><th>SKU</th><th>Kind</th><th>Unit</th><th>Price</th><th>Category</th><th>Status</th><th>Inventory</th>
+                    <th className="sortable" onClick={() => toggleSort('name')}>Name{sortIndicator('name')}</th>
+                    <th className="sortable" onClick={() => toggleSort('sku')}>SKU{sortIndicator('sku')}</th>
+                    <th className="sortable" onClick={() => toggleSort('kind')}>Kind{sortIndicator('kind')}</th>
+                    <th className="sortable" onClick={() => toggleSort('unit')}>Unit{sortIndicator('unit')}</th>
+                    <th className="sortable" onClick={() => toggleSort('price')}>Price{sortIndicator('price')}</th>
+                    <th className="sortable" onClick={() => toggleSort('category')}>Category{sortIndicator('category')}</th>
+                    <th className="sortable" onClick={() => toggleSort('status')}>Status{sortIndicator('status')}</th>
+                    <th className="sortable" onClick={() => toggleSort('inventory')}>Inventory{sortIndicator('inventory')}</th>
+                    {isAdmin && <th></th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {products.map((p) => (
-                    <tr key={p.id} style={{ opacity: p.active ? 1 : 0.55 }}>
-                      {isAdmin && (
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={selectedProducts.has(p.id)}
-                            onChange={() => setSelectedProducts((s) => toggleId(s, p.id))}
-                            aria-label={`Select ${p.name}`}
-                          />
-                        </td>
-                      )}
-                      <td><strong>{p.name}</strong></td>
-                      <td>{p.sku ?? <span className="muted">—</span>}</td>
-                      <td>{p.kind}</td>
-                      <td>{p.unit ?? '—'}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="button-ghost button-small"
-                          onClick={() => openPriceHistory(p.id)}
-                          title="Click to see price history"
-                        >
-                          {formatCents(p.defaultUnitPriceCents)}
-                        </button>
-                      </td>
-                      <td>{p.category ?? <span className="muted">—</span>}</td>
-                      <td>{p.active ? <span className="muted">active</span> : <em className="muted">archived</em>}</td>
-                      <td>
+                  {sortedProducts.map((p) => {
+                    const isEditing = editingId === p.id;
+                    if (isEditing) {
+                      return (
+                        <tr key={p.id} className="catalog-edit-row">
+                          <td colSpan={isAdmin ? 10 : 8}>
+                            <div className="form-row">
+                              <div>
+                                <label>Name</label>
+                                <input
+                                  value={editForm.name}
+                                  onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                                  required
+                                />
+                              </div>
+                              <div>
+                                <label>SKU</label>
+                                <input
+                                  value={editForm.sku}
+                                  onChange={(e) => setEditForm((f) => ({ ...f, sku: e.target.value }))}
+                                />
+                              </div>
+                            </div>
+                            <div className="form-row">
+                              <div>
+                                <label>Kind</label>
+                                <select
+                                  value={editForm.kind}
+                                  onChange={(e) => setEditForm((f) => ({ ...f, kind: e.target.value }))}
+                                >
+                                  <option value="material">material</option>
+                                  <option value="labor">labor</option>
+                                  <option value="fee">fee</option>
+                                  <option value="subcontract">subcontract</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label>Unit</label>
+                                <input
+                                  value={editForm.unit}
+                                  onChange={(e) => setEditForm((f) => ({ ...f, unit: e.target.value }))}
+                                  placeholder="ea, lf, sqft, hr"
+                                />
+                              </div>
+                            </div>
+                            <div className="form-row">
+                              <div>
+                                <label>Default price (USD per unit)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={editForm.price}
+                                  onChange={(e) => setEditForm((f) => ({ ...f, price: e.target.value }))}
+                                />
+                              </div>
+                              <div>
+                                <label>Category</label>
+                                <input
+                                  value={editForm.category}
+                                  onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))}
+                                />
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                              <button
+                                type="button"
+                                onClick={() => saveEdit(p.id)}
+                                disabled={editSaving || !editForm.name.trim()}
+                              >
+                                {editSaving ? 'Saving…' : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                className="button-ghost"
+                                onClick={cancelEdit}
+                                disabled={editSaving}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return (
+                      <tr key={p.id} style={{ opacity: p.active ? 1 : 0.55 }}>
                         {isAdmin && (
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={selectedProducts.has(p.id)}
+                              onChange={() => setSelectedProducts((s) => toggleId(s, p.id))}
+                              aria-label={`Select ${p.name}`}
+                            />
+                          </td>
+                        )}
+                        <td><strong>{p.name}</strong></td>
+                        <td>{p.sku ?? <span className="muted">—</span>}</td>
+                        <td>{p.kind}</td>
+                        <td>{p.unit ?? '—'}</td>
+                        <td>
                           <button
                             type="button"
-                            className={`button-small ${p.trackInventory ? '' : 'button-ghost'}`}
-                            onClick={async () => {
-                              if (!p.trackInventory) {
-                                const raw = prompt(`Current on-hand qty for ${p.name} (in ${p.unit ?? 'units'}):`, '0');
-                                if (raw == null) return;
-                                const qty = Number(raw);
-                                if (!Number.isFinite(qty) || qty < 0) return;
-                                await api(`/api/inventory/products/${p.id}`, {
-                                  method: 'PATCH',
-                                  body: JSON.stringify({ trackInventory: true, onHandQty: qty }),
-                                }).catch((err) => setError(err instanceof ApiError ? err.message : 'Update failed'));
-                              } else {
-                                if (!confirm(`Stop tracking inventory for ${p.name}?`)) return;
-                                await api(`/api/inventory/products/${p.id}`, {
-                                  method: 'PATCH',
-                                  body: JSON.stringify({ trackInventory: false }),
-                                }).catch((err) => setError(err instanceof ApiError ? err.message : 'Update failed'));
-                              }
-                              await load();
-                            }}
-                            title={p.trackInventory ? 'Inventory tracked — click to disable' : 'Click to start tracking inventory'}
+                            className="button-ghost button-small"
+                            onClick={() => openPriceHistory(p.id)}
+                            title="Click to see price history"
                           >
-                            {p.trackInventory ? `${(p.onHandQtyMilli ?? 0) / 1000} on hand` : 'Track stock'}
+                            {formatCents(p.defaultUnitPriceCents)}
                           </button>
+                        </td>
+                        <td>{p.category ?? <span className="muted">—</span>}</td>
+                        <td>{p.active ? <span className="muted">active</span> : <em className="muted">archived</em>}</td>
+                        <td>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              className={`button-small ${p.trackInventory ? '' : 'button-ghost'}`}
+                              onClick={async () => {
+                                if (!p.trackInventory) {
+                                  const raw = prompt(`Current on-hand qty for ${p.name} (in ${p.unit ?? 'units'}):`, '0');
+                                  if (raw == null) return;
+                                  const qty = Number(raw);
+                                  if (!Number.isFinite(qty) || qty < 0) return;
+                                  await api(`/api/inventory/products/${p.id}`, {
+                                    method: 'PATCH',
+                                    body: JSON.stringify({ trackInventory: true, onHandQty: qty }),
+                                  }).catch((err) => setError(err instanceof ApiError ? err.message : 'Update failed'));
+                                } else {
+                                  if (!confirm(`Stop tracking inventory for ${p.name}?`)) return;
+                                  await api(`/api/inventory/products/${p.id}`, {
+                                    method: 'PATCH',
+                                    body: JSON.stringify({ trackInventory: false }),
+                                  }).catch((err) => setError(err instanceof ApiError ? err.message : 'Update failed'));
+                                }
+                                await load();
+                              }}
+                              title={p.trackInventory ? 'Inventory tracked — click to disable' : 'Click to start tracking inventory'}
+                            >
+                              {p.trackInventory ? `${(p.onHandQtyMilli ?? 0) / 1000} on hand` : 'Track stock'}
+                            </button>
+                          )}
+                        </td>
+                        {isAdmin && (
+                          <td>
+                            <button
+                              type="button"
+                              className="button-ghost button-small"
+                              onClick={() => startEdit(p)}
+                            >
+                              Edit
+                            </button>
+                          </td>
                         )}
-                      </td>
-                    </tr>
-                  ))}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             ) : (

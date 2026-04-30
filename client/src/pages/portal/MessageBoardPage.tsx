@@ -8,7 +8,8 @@ import {
   AttachmentGallery,
   asAttachments,
 } from '../../components/MessageAttachments';
-import { Hash, Plus, Pencil, Archive, Trash2 } from 'lucide-react';
+import { Hash, Plus, Pencil, Archive, Trash2, Send } from 'lucide-react';
+import Avatar from '../../components/Avatar';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -39,7 +40,6 @@ export default function MessageBoardPage() {
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
 
   // Compose form
   const [body, setBody] = useState('');
@@ -195,7 +195,6 @@ export default function MessageBoardPage() {
       setBody('');
       setPinned(false);
       setFiles([]);
-      setShowForm(false);
       await loadPosts(activeChannelId);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Post failed');
@@ -227,181 +226,190 @@ export default function MessageBoardPage() {
   }
 
   return (
-    <div className="dashboard channels-shell">
-      <aside className="channels-sidebar card">
-        <div className="row-between" style={{ marginBottom: '0.5rem' }}>
-          <h2 style={{ margin: 0, fontSize: '1rem' }}>Channels</h2>
-          {isAdmin && (
-            <button
-              type="button"
-              className="button-ghost button-small"
-              onClick={createChannel}
-              title="Create a new channel"
-            >
-              <Plus size={14} />
-            </button>
-          )}
-        </div>
-        {channels.length === 0 ? (
-          <p className="muted" style={{ fontSize: '0.85rem' }}>
-            No channels yet.
-            {isAdmin && ' Click + to add one.'}
-          </p>
-        ) : (
-          <ul className="channel-list">
-            {channels.map((c) => (
-              <li key={c.id}>
+    <div className="dashboard chat-shell">
+      {/* Channel pills — horizontal strip at the top. Tap a pill to switch
+          channels; admins get a separate pencil/archive/trash button below
+          the active one so the strip itself stays clean. */}
+      <nav className="chat-channels" aria-label="Channels">
+        {channels.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            className={`chat-channel-pill ${activeChannelId === c.id ? 'active' : ''}`}
+            onClick={() => setActiveChannelId(c.id)}
+            title={c.description ?? c.name}
+          >
+            <Hash size={14} />
+            <span>{c.name}</span>
+          </button>
+        ))}
+        {isAdmin && (
+          <button
+            type="button"
+            className="chat-channel-pill chat-channel-add"
+            onClick={createChannel}
+            title="Create a new channel"
+            aria-label="Create channel"
+          >
+            <Plus size={14} />
+          </button>
+        )}
+      </nav>
+
+      {activeChannel ? (
+        <>
+          <header className="chat-header">
+            <div>
+              <h1>
+                <Hash size={18} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                {activeChannel.name}
+              </h1>
+              {activeChannel.description && (
+                <p className="muted">{activeChannel.description}</p>
+              )}
+            </div>
+            {isAdmin && (
+              <div className="chat-channel-tools">
                 <button
                   type="button"
-                  className={`channel-link ${activeChannelId === c.id ? 'active' : ''}`}
-                  onClick={() => setActiveChannelId(c.id)}
-                  title={c.description ?? c.name}
+                  className="button-ghost button-small"
+                  onClick={() => renameChannel(activeChannel)}
+                  title="Rename"
+                  aria-label="Rename channel"
                 >
-                  <Hash size={14} />
-                  <span>{c.name}</span>
+                  <Pencil size={14} />
                 </button>
-                {isAdmin && activeChannelId === c.id && (
-                  <div className="channel-admin-row">
-                    <button
-                      type="button"
-                      className="button-ghost button-small"
-                      onClick={() => renameChannel(c)}
-                      title="Rename"
-                    >
-                      <Pencil size={12} />
-                    </button>
-                    <button
-                      type="button"
-                      className="button-ghost button-small"
-                      onClick={() => archiveChannel(c)}
-                      title="Archive (keeps history)"
-                    >
-                      <Archive size={12} />
-                    </button>
-                    <button
-                      type="button"
-                      className="button-ghost button-small"
-                      onClick={() => deleteChannel(c)}
-                      title="Delete + all posts"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </aside>
-
-      <main className="channels-main">
-        {activeChannel ? (
-          <>
-            <header className="row-between" style={{ marginBottom: '0.5rem' }}>
-              <div>
-                <h1 style={{ margin: 0 }}>
-                  <Hash size={20} style={{ verticalAlign: 'middle', marginRight: '0.25rem' }} />
-                  {activeChannel.name}
-                </h1>
-                {activeChannel.description && (
-                  <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-                    {activeChannel.description}
-                  </p>
-                )}
+                <button
+                  type="button"
+                  className="button-ghost button-small"
+                  onClick={() => archiveChannel(activeChannel)}
+                  title="Archive (keeps history)"
+                  aria-label="Archive channel"
+                >
+                  <Archive size={14} />
+                </button>
+                <button
+                  type="button"
+                  className="button-ghost button-small"
+                  onClick={() => deleteChannel(activeChannel)}
+                  title="Delete + all posts"
+                  aria-label="Delete channel"
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
-              <button onClick={() => setShowForm((v) => !v)}>
-                {showForm ? 'Cancel' : 'New post'}
-              </button>
-            </header>
-
-            {error && <div className="form-error">{error}</div>}
-
-            {showForm && (
-              <section className="card">
-                <form onSubmit={createPost}>
-                  <label htmlFor="b-body">Message</label>
-                  <textarea
-                    id="b-body"
-                    rows={4}
-                    value={body}
-                    onChange={(e) => setBody(e.target.value)}
-                    required
-                    placeholder={`Message #${activeChannel.name}`}
-                  />
-                  {isAdmin && (
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={pinned}
-                        onChange={(e) => setPinned(e.target.checked)}
-                        style={{ width: 'auto', marginRight: 8 }}
-                      />
-                      Pin to top of #{activeChannel.name}
-                    </label>
-                  )}
-                  <div className="composer-toolbar">
-                    <EmojiPicker onPick={(em) => setBody((b) => b + em)} />
-                    <AttachmentInput files={files} onChange={setFiles} disabled={submitting} />
-                    <div className="toolbar-spacer" />
-                    <button type="submit" disabled={submitting || !body.trim()}>
-                      {submitting ? 'Posting…' : 'Post'}
-                    </button>
-                  </div>
-                </form>
-              </section>
             )}
+          </header>
 
-            {posts.length ? (
-              <div className="chat-stream">
-                {posts.map((p) => (
-                  <div key={p.id} className="chat-msg">
-                    <div className="chat-msg-meta">
-                      {p.pinned && <span title="Pinned">📌</span>}
-                      <span className="chat-msg-author">{p.author.name}</span>
-                      <span className="muted chat-msg-role">
-                        {p.author.role.toLowerCase()}
-                      </span>
-                      <span className="muted chat-msg-time">{formatDateTime(p.createdAt)}</span>
-                      <span className="chat-msg-actions">
-                        {isAdmin && (
-                          <button
-                            type="button"
-                            className="button-ghost button-small"
-                            onClick={() => togglePin(p)}
-                          >
-                            {p.pinned ? 'Unpin' : 'Pin'}
-                          </button>
-                        )}
-                        {(p.author.id === user?.id || isAdmin) && (
-                          <button
-                            type="button"
-                            className="button-ghost button-small"
-                            onClick={() => removePost(p.id)}
-                          >
-                            Delete
-                          </button>
-                        )}
-                      </span>
-                    </div>
-                    <div className="chat-msg-body">{p.body}</div>
-                    <AttachmentGallery attachments={asAttachments(p.attachments)} />
-                  </div>
-                ))}
-              </div>
+          {error && <div className="form-error">{error}</div>}
+
+          {/* Stream of message bubbles — each post shows the author avatar
+              on the left, name + time inline, body below. Hover/long-press
+              reveals admin actions on the right. */}
+          <div className="chat-stream">
+            {posts.length === 0 ? (
+              <p className="muted chat-empty">
+                No messages in #{activeChannel.name} yet — say hi 👋
+              </p>
             ) : (
-              <p className="muted">No messages in #{activeChannel.name} yet.</p>
+              posts.map((p) => {
+                const mine = p.author.id === user?.id;
+                const canDelete = mine || isAdmin;
+                return (
+                  <article key={p.id} className={`chat-bubble ${mine ? 'mine' : ''}`}>
+                    <Avatar name={p.author.name} size={36} />
+                    <div className="chat-bubble-body">
+                      <div className="chat-bubble-meta">
+                        <span className="chat-bubble-author">{p.author.name}</span>
+                        <span className="muted chat-bubble-role">
+                          {p.author.role.toLowerCase()}
+                        </span>
+                        <span className="muted chat-bubble-time">
+                          {formatDateTime(p.createdAt)}
+                        </span>
+                        {p.pinned && <span title="Pinned" aria-label="Pinned">📌</span>}
+                      </div>
+                      <div className="chat-bubble-text">{p.body}</div>
+                      <AttachmentGallery attachments={asAttachments(p.attachments)} />
+                      {(isAdmin || canDelete) && (
+                        <div className="chat-bubble-actions">
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              className="button-ghost button-small"
+                              onClick={() => togglePin(p)}
+                            >
+                              {p.pinned ? 'Unpin' : 'Pin'}
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              type="button"
+                              className="button-ghost button-small"
+                              onClick={() => removePost(p.id)}
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                );
+              })
             )}
-          </>
-        ) : (
-          <p className="muted">
-            {channels.length === 0
-              ? isAdmin
-                ? 'Create your first channel using the + button to start the conversation.'
-                : 'No channels available yet — ask an admin to create one.'
-              : 'Select a channel from the left to read or post.'}
-          </p>
-        )}
-      </main>
+          </div>
+
+          {/* Always-visible composer — sticky at the bottom of the viewport
+              on mobile so dropping a message feels like any chat app. */}
+          <form className="chat-composer" onSubmit={createPost}>
+            <textarea
+              rows={1}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder={`Message #${activeChannel.name}`}
+              onKeyDown={(e) => {
+                // Cmd/Ctrl+Enter sends; plain Enter still inserts a newline
+                // so multi-line posts (e.g. punch-list updates) stay easy.
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                  e.preventDefault();
+                  if (body.trim()) (e.currentTarget.form as HTMLFormElement).requestSubmit();
+                }
+              }}
+            />
+            {isAdmin && (
+              <label className="chat-composer-pin">
+                <input
+                  type="checkbox"
+                  checked={pinned}
+                  onChange={(e) => setPinned(e.target.checked)}
+                />
+                Pin
+              </label>
+            )}
+            <div className="chat-composer-tools">
+              <EmojiPicker onPick={(em) => setBody((b) => b + em)} />
+              <AttachmentInput files={files} onChange={setFiles} disabled={submitting} />
+              <button
+                type="submit"
+                className="chat-composer-send"
+                disabled={submitting || (!body.trim() && files.length === 0)}
+                aria-label="Send"
+              >
+                <Send size={16} />
+              </button>
+            </div>
+          </form>
+        </>
+      ) : (
+        <p className="muted">
+          {channels.length === 0
+            ? isAdmin
+              ? 'Create your first channel using the + button to start the conversation.'
+              : 'No channels available yet — ask an admin to create one.'
+            : 'Select a channel above to read or post.'}
+        </p>
+      )}
     </div>
   );
 }
