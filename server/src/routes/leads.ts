@@ -280,16 +280,35 @@ router.post('/:id/convert', async (req, res, next) => {
         await linkPreviousLeadDataToCustomer(tx, email, existing.id);
       });
     } else {
+      // Create the customer user row immediately (no password). The rest
+      // of the app — project create, contract create, estimate
+      // attribution, etc. — can reference them right away. The invitee
+      // sets their password when they claim the invite link.
       const { token, tokenHash } = generateInviteToken();
-      await prisma.invitation.create({
-        data: {
-          email,
-          role: Role.CUSTOMER,
-          tokenHash,
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          invitedById: me.id,
-        },
+      const created = await prisma.$transaction(async (tx) => {
+        const u = await tx.user.create({
+          data: {
+            email,
+            name: lead.name,
+            phone: lead.phone ?? null,
+            role: Role.CUSTOMER,
+          },
+        });
+        await tx.invitation.create({
+          data: {
+            email,
+            role: Role.CUSTOMER,
+            tokenHash,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            invitedById: me.id,
+          },
+        });
+        // Back-fill any *other* unconverted leads + their orphan
+        // estimates that share this email so everything attaches at once.
+        await linkPreviousLeadDataToCustomer(tx, email, u.id);
+        return u;
       });
+      customerId = created.id;
       inviteUrl = `${env.appUrl}/accept-invite?token=${token}`;
       if (data.sendInvite) {
         await sendInviteEmail(email, inviteUrl, Role.CUSTOMER).catch((err) =>

@@ -24,6 +24,41 @@ import { ensureContractorCatalogItem } from '../src/lib/contractorCatalog.js';
 const prisma = new PrismaClient();
 
 async function main() {
+  // Repair orphaned converted leads — leads marked WON / convertedAt but
+  // missing a convertedToCustomerId. Older convert calls only created an
+  // Invitation row, not the User row, so the customer never showed up in
+  // the project / contract dropdowns until they accepted the invite.
+  // For each one: create the User row (if no user exists for the email)
+  // or link to the existing user, then point convertedToCustomerId at it.
+  const orphanLeads = await prisma.lead.findMany({
+    where: {
+      convertedAt: { not: null },
+      convertedToCustomerId: null,
+      email: { not: null },
+    },
+    select: { id: true, name: true, email: true, phone: true },
+  });
+  for (const l of orphanLeads) {
+    if (!l.email) continue;
+    const email = l.email.toLowerCase();
+    const existing = await prisma.user.findUnique({ where: { email } });
+    let userId: string;
+    if (existing) {
+      userId = existing.id;
+    } else {
+      const created = await prisma.user.create({
+        data: { email, name: l.name, phone: l.phone ?? null, role: 'CUSTOMER' },
+      });
+      userId = created.id;
+    }
+    await prisma.lead.update({
+      where: { id: l.id },
+      data: { convertedToCustomerId: userId },
+    });
+    console.log(`[backfill] orphan-converted lead "${l.name}" → user ${email}`);
+  }
+  console.log(`[backfill] orphan leads done — ${orphanLeads.length} repaired`);
+
   const customers = await prisma.user.findMany({
     where: { role: 'CUSTOMER', isActive: true },
     select: { id: true, email: true, name: true },
