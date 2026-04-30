@@ -47,6 +47,7 @@ const FinanceOverviewPage = lazy(() => import('./pages/portal/FinanceOverviewPag
 const ExpensesPage = lazy(() => import('./pages/portal/ExpensesPage'));
 const NewExpensePage = lazy(() => import('./pages/portal/NewExpensePage'));
 const ExpenseDetailPage = lazy(() => import('./pages/portal/ExpenseDetailPage'));
+const JobReceiptsPage = lazy(() => import('./pages/portal/JobReceiptsPage'));
 const QuickBooksPage = lazy(() => import('./pages/portal/QuickBooksPage'));
 const EstimatesPage = lazy(() => import('./pages/portal/EstimatesPage'));
 const NewEstimatePage = lazy(() => import('./pages/portal/NewEstimatePage'));
@@ -343,6 +344,14 @@ export default function App() {
           element={
             <RequireAuth submitExpense>
               <ExpenseDetailPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="job-receipts"
+          element={
+            <RequireAuth submitExpense>
+              <JobReceiptsPage />
             </RequireAuth>
           }
         />

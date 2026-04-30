@@ -20,6 +20,7 @@ import {
   Shield,
   Settings,
   Wrench,
+  Camera,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
@@ -133,6 +134,13 @@ export default function PortalLayout() {
             <NavLink to="/portal/subcontractor-bills">
               <Wrench size={ICON_SIZE} />{' '}
               <span>{user?.role === 'SUBCONTRACTOR' ? 'My bills' : 'Sub bills'}</span>
+            </NavLink>
+          )}
+          {(user?.role === 'ADMIN'
+            || (user?.role === 'EMPLOYEE'
+              && (user.isProjectManager || user.isAccounting))) && (
+            <NavLink to="/portal/job-receipts">
+              <Camera size={ICON_SIZE} /> <span>Job receipts</span>
             </NavLink>
           )}
           {(user?.role === 'ADMIN' ||

@@ -1450,6 +1450,11 @@ model Expense {
   receiptUrl          String?
   receiptThumbnailUrl String?
 
+  // Trade tag (Plumbing / Framing / Electrical / …). Optional for general
+  // overhead expenses; PM-uploaded job receipts always carry one. Mirrors
+  // the trade taxonomy used on the user record + estimate-line picker.
+  tradeType  String?
+
   // Integration: tracks whether this expense has been pushed to an external
   // accounting system. Always populated; default LOCAL_ONLY so the app works
   // identically with or without a QB connection.
