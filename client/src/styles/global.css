@@ -1750,7 +1750,16 @@ input:focus, textarea:focus, select:focus {
 /* Responsive */
 @media (max-width: 900px) {
   .two-col { grid-template-columns: 1fr; }
-  .portal-shell { grid-template-columns: 1fr; }
+  .portal-shell {
+    grid-template-columns: 1fr;
+    /* Disable the desktop compact-density zoom on mobile — the layout
+       already collapses to a stack and zoom + 125vh interact badly with
+       the single-column flow (left big empty bands and pushed main
+       content off-screen so links appeared dead). */
+    zoom: 1;
+    min-height: 100vh;
+  }
+  .portal-sidebar { min-height: 0; }
   /* Top-bar layout on tablet+phone: brand on the left, user avatar on the
      right, nav wraps to its own row below. justify-content + flex order
      keep them on opposite ends without depending on DOM order. */
