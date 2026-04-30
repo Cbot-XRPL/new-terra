@@ -14,6 +14,7 @@ import { sendPasswordResetEmail } from '../lib/mailer.js';
 import { audit } from '../lib/audit.js';
 import { env } from '../env.js';
 import { linkPreviousLeadDataToCustomer } from '../lib/leadLinking.js';
+import { ensureContractorCatalogItem } from '../lib/contractorCatalog.js';
 import { Role } from '@prisma/client';
 
 const router = Router();
@@ -205,6 +206,9 @@ router.post('/register', registerLimiter, async (req, res, next) => {
       if (upserted.role === Role.CUSTOMER) {
         await linkPreviousLeadDataToCustomer(tx, upserted.email, upserted.id);
       }
+      // Subcontractor self-signup: spin up their labor catalog item so
+      // sales can drop them onto an estimate immediately.
+      await ensureContractorCatalogItem(tx, upserted);
       return upserted;
     });
 
@@ -318,6 +322,9 @@ router.post('/accept-invite', acceptInviteLimiter, async (req, res, next) => {
       if (invite.role === Role.CUSTOMER) {
         await linkPreviousLeadDataToCustomer(tx, upserted.email, upserted.id);
       }
+      // Sync the catalog mirror so admin's name update / phone update
+      // doesn't desync the labor product. No-op for customer/admin.
+      await ensureContractorCatalogItem(tx, upserted);
       return upserted;
     });
 

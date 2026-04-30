@@ -7,6 +7,7 @@ import { generateInviteToken } from '../lib/auth.js';
 import { sendInviteEmail } from '../lib/mailer.js';
 import { env } from '../env.js';
 import { audit } from '../lib/audit.js';
+import { ensureContractorCatalogItem } from '../lib/contractorCatalog.js';
 import { runUploadJanitor } from '../lib/uploadJanitor.js';
 
 const router = Router();
@@ -69,11 +70,14 @@ router.post('/invitations', async (req, res, next) => {
       isAccounting: data.role === Role.EMPLOYEE ? !!data.isAccounting : false,
       tradeType: data.role === Role.SUBCONTRACTOR ? (data.tradeType ?? null) : null,
     };
-    if (existingUser) {
-      await prisma.user.update({ where: { id: existingUser.id }, data: userData });
-    } else {
-      await prisma.user.create({ data: userData });
-    }
+    await prisma.$transaction(async (tx) => {
+      const u = existingUser
+        ? await tx.user.update({ where: { id: existingUser.id }, data: userData })
+        : await tx.user.create({ data: userData });
+      // Auto-mirror contractors + employees into the catalog as labor
+      // products so sales sees them in the estimator combobox right away.
+      await ensureContractorCatalogItem(tx, u);
+    });
 
     const invite = await prisma.invitation.create({
       data: {
@@ -172,6 +176,8 @@ const updateUserSchema = z.object({
   hourlyRateCents: z.number().int().nonnegative().optional(),
   taxId: z.string().max(40).nullable().optional(),
   mailingAddress: z.string().max(400).nullable().optional(),
+  // Trade label only relevant for SUBCONTRACTOR users; null clears it.
+  tradeType: z.string().max(60).nullable().optional(),
 });
 
 router.patch('/users/:id', async (req, res, next) => {
@@ -182,28 +188,36 @@ router.patch('/users/:id', async (req, res, next) => {
       where: { id },
       select: { isActive: true, role: true, isSales: true, isProjectManager: true, isAccounting: true },
     });
-    const updated = await prisma.user.update({
-      where: { id },
-      data: {
-        ...data,
-        taxId: data.taxId === null ? null : data.taxId,
-        mailingAddress: data.mailingAddress === null ? null : data.mailingAddress,
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        isActive: true,
-        isSales: true,
-        isProjectManager: true,
-        isAccounting: true,
-        billingMode: true,
-        dailyRateCents: true,
-        hourlyRateCents: true,
-        taxId: true,
-        mailingAddress: true,
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      const u = await tx.user.update({
+        where: { id },
+        data: {
+          ...data,
+          taxId: data.taxId === null ? null : data.taxId,
+          mailingAddress: data.mailingAddress === null ? null : data.mailingAddress,
+          tradeType: data.tradeType === null ? null : data.tradeType,
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          isActive: true,
+          isSales: true,
+          isProjectManager: true,
+          isAccounting: true,
+          billingMode: true,
+          dailyRateCents: true,
+          hourlyRateCents: true,
+          tradeType: true,
+          taxId: true,
+          mailingAddress: true,
+        },
+      });
+      // Resync the auto-managed catalog product so a rate or trade
+      // change here flows straight into the estimator picker.
+      await ensureContractorCatalogItem(tx, u);
+      return u;
     });
     // Record only the fields that actually changed so the audit trail stays
     // signal-heavy — granting/revoking capabilities is the interesting part.

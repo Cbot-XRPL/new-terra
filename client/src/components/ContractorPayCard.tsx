@@ -15,7 +15,8 @@ interface PayLine {
 
 interface ContractorPay {
   contractor: { id: string; name: string; email: string; tradeType: string | null };
-  totalCents: number;
+  committedCents: number;
+  paidCents: number;
   lines: PayLine[];
 }
 
@@ -56,13 +57,15 @@ export default function ContractorPayCard({ projectId }: Props) {
   if (forbidden) return null;
   if (!data && !error) return null;
 
-  const grandTotal = (data ?? []).reduce((s, c) => s + c.totalCents, 0);
+  const totalCommitted = (data ?? []).reduce((s, c) => s + c.committedCents, 0);
+  const totalPaid = (data ?? []).reduce((s, c) => s + c.paidCents, 0);
 
   return (
     <section className="card">
       <h2>Contractor pay</h2>
       <p className="muted" style={{ fontSize: '0.85rem' }}>
-        Committed amounts from this project's estimate(s), grouped by sub.
+        Committed amounts come from this project's estimate(s). Paid /
+        allocated amounts come from approved or paid pay requests.
         Internal — never visible to the customer.
       </p>
       {error && <div className="form-error">{error}</div>}
@@ -78,39 +81,52 @@ export default function ContractorPayCard({ projectId }: Props) {
                 <th>Trade</th>
                 <th>Lines</th>
                 <th style={{ textAlign: 'right' }}>Committed</th>
+                <th style={{ textAlign: 'right' }}>Paid / approved</th>
+                <th style={{ textAlign: 'right' }}>Remaining</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {data.map((c) => (
-                <tr key={c.contractor.id}>
-                  <td>
-                    <strong>{c.contractor.name}</strong>
-                    <div className="muted" style={{ fontSize: '0.75rem' }}>{c.contractor.email}</div>
-                  </td>
-                  <td>{c.contractor.tradeType ?? <span className="muted">—</span>}</td>
-                  <td>{c.lines.length}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    <strong>{formatCents(c.totalCents)}</strong>
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="button-ghost button-small"
-                      onClick={() => setOpenId(openId === c.contractor.id ? null : c.contractor.id)}
-                    >
-                      {openId === c.contractor.id ? 'Hide' : 'Lines'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {data.map((c) => {
+                const remaining = c.committedCents - c.paidCents;
+                return (
+                  <tr key={c.contractor.id}>
+                    <td>
+                      <strong>{c.contractor.name}</strong>
+                      <div className="muted" style={{ fontSize: '0.75rem' }}>{c.contractor.email}</div>
+                    </td>
+                    <td>{c.contractor.tradeType ?? <span className="muted">—</span>}</td>
+                    <td>{c.lines.length}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <strong>{formatCents(c.committedCents)}</strong>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      {formatCents(c.paidCents)}
+                    </td>
+                    <td style={{ textAlign: 'right', color: remaining < 0 ? 'var(--error)' : undefined }}>
+                      {formatCents(remaining)}
+                    </td>
+                    <td>
+                      {c.lines.length > 0 ? (
+                        <button
+                          type="button"
+                          className="button-ghost button-small"
+                          onClick={() => setOpenId(openId === c.contractor.id ? null : c.contractor.id)}
+                        >
+                          {openId === c.contractor.id ? 'Hide' : 'Lines'}
+                        </button>
+                      ) : (
+                        <span className="muted" style={{ fontSize: '0.75rem' }}>paid only</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
               <tr>
-                <td colSpan={3} style={{ textAlign: 'right' }}>
-                  <em>Total contractor commitment</em>
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  <strong>{formatCents(grandTotal)}</strong>
-                </td>
+                <td colSpan={3} style={{ textAlign: 'right' }}><em>Total</em></td>
+                <td style={{ textAlign: 'right' }}><strong>{formatCents(totalCommitted)}</strong></td>
+                <td style={{ textAlign: 'right' }}><strong>{formatCents(totalPaid)}</strong></td>
+                <td style={{ textAlign: 'right' }}><strong>{formatCents(totalCommitted - totalPaid)}</strong></td>
                 <td></td>
               </tr>
             </tbody>

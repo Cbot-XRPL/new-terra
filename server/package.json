@@ -19,6 +19,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:demo": "tsx prisma/seed-demo.ts",
     "db:seed:catalog": "tsx prisma/seed-catalog.ts",
+    "db:backfill": "tsx prisma/backfill.ts",
     "db:update-template": "tsx prisma/update-default-template.ts",
     "db:studio": "prisma studio"
   },

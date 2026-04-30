@@ -14,6 +14,10 @@ interface ProductRef {
   defaultUnitPriceCents: number;
   category: string | null;
   kind: string;
+  // Set on auto-generated labor products that mirror a contractor /
+  // employee user. Picking such a product on a line auto-fills
+  // contractorId so the PM rollup wires up without a second click.
+  contractorUserId: string | null;
 }
 interface AssemblyRef {
   id: string;
@@ -235,6 +239,15 @@ export default function NewEstimatePage() {
         }
         const p = products.find((x) => x.id === productId);
         if (!p) return l;
+        // Auto-attach the contractor when the picked product is one of
+        // the auto-generated labor mirrors. Pre-fill the trade label from
+        // the contractor's baseline if it wasn't already set on the line.
+        const contractorId = p.contractorUserId ?? l.contractorId;
+        const matchedContractor = p.contractorUserId
+          ? contractors.find((c) => c.id === p.contractorUserId)
+          : null;
+        const displayTrade =
+          l.displayTrade || matchedContractor?.tradeType || (l.displayTrade ?? '');
         return {
           ...l,
           productId: p.id,
@@ -242,6 +255,8 @@ export default function NewEstimatePage() {
           unit: p.unit ?? l.unit,
           unitPriceCents: p.defaultUnitPriceCents,
           category: categoryFromProduct(p),
+          contractorId,
+          displayTrade,
         };
       }),
     );

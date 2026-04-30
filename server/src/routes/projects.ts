@@ -552,10 +552,28 @@ router.get('/:id/contractor-pay', async (req, res, next) => {
       orderBy: [{ contractorId: 'asc' }, { position: 'asc' }],
     });
 
-    // Group by contractor and sum totalCents.
+    // Sum approved + paid bills per sub on this project. Approved = the
+    // pay request was OK'd; paid = the cheque has gone out. Both count
+    // as "allocated" against the budget — once a contractor's request is
+    // approved we treat that money as committed even if it hasn't been
+    // disbursed yet.
+    const billRows = await prisma.subcontractorBill.findMany({
+      where: {
+        projectId: project.id,
+        status: { in: ['APPROVED', 'PAID'] },
+      },
+      select: { subcontractorId: true, amountCents: true, status: true },
+    });
+    const paidBySub = new Map<string, number>();
+    for (const b of billRows) {
+      paidBySub.set(b.subcontractorId, (paidBySub.get(b.subcontractorId) ?? 0) + b.amountCents);
+    }
+
+    // Group by contractor and sum committed totalCents from estimate lines.
     const byContractor = new Map<string, {
       contractor: { id: string; name: string; email: string; tradeType: string | null };
-      totalCents: number;
+      committedCents: number;
+      paidCents: number;
       lines: Array<{
         id: string;
         description: string;
@@ -582,15 +600,33 @@ router.get('/:id/contractor-pay', async (req, res, next) => {
         estimate: l.estimate,
       };
       if (cur) {
-        cur.totalCents += l.totalCents;
+        cur.committedCents += l.totalCents;
         cur.lines.push(summary);
       } else {
         byContractor.set(k, {
           contractor: l.contractor,
-          totalCents: l.totalCents,
+          committedCents: l.totalCents,
+          paidCents: paidBySub.get(k) ?? 0,
           lines: [summary],
         });
       }
+    }
+    // Subs who have paid bills but no estimate-line attribution still
+    // matter — show them too so a PM can see "we paid Bob $800 on this
+    // project even though we didn't pre-attribute him on the estimate".
+    for (const [subId, paidCents] of paidBySub) {
+      if (byContractor.has(subId)) continue;
+      const sub = await prisma.user.findUnique({
+        where: { id: subId },
+        select: { id: true, name: true, email: true, tradeType: true },
+      });
+      if (!sub) continue;
+      byContractor.set(subId, {
+        contractor: sub,
+        committedCents: 0,
+        paidCents,
+        lines: [],
+      });
     }
     res.json({ contractors: Array.from(byContractor.values()) });
   } catch (err) {

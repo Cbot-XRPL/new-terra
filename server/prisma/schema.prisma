@@ -240,6 +240,9 @@ model User {
   estimatesReceived Estimate[]         @relation("EstimatesForCustomer")
   // Estimate lines that route work to this user as the contractor.
   estimateLinesAsContractor EstimateLine[] @relation("EstimateLineContractor")
+  // Auto-managed catalog row that represents this user as a labor product
+  // on the estimator. One Product per user (we ensure-once on changes).
+  catalogProducts           Product[]      @relation("ProductContractor")
 
   // Time tracking
   timeEntries       TimeEntry[]        @relation("TimeEntries")
@@ -1731,6 +1734,13 @@ model Product {
   category        String?
   vendorId        String?
   vendor          Vendor?  @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  // Optional link to a real user account this catalog row represents — set
+  // for the auto-generated labor entries we create per contractor/employee.
+  // Picking this product on an estimate line auto-fills the line's
+  // contractorId so the PM rollup wires up without an extra step. Null for
+  // every "regular" catalog row (materials, generic labor, fees).
+  contractorUserId String?
+  contractorUser   User?    @relation("ProductContractor", fields: [contractorUserId], references: [id], onDelete: SetNull)
   active          Boolean  @default(true)
   notes           String?
   // Inventory tracking — opt-in per product. When true, onHandQty
@@ -1750,6 +1760,7 @@ model Product {
   @@index([category])
   @@index([kind])
   @@index([trackInventory])
+  @@index([contractorUserId])
 }
 
 // Assembly — a named bundle of products (or sub-assemblies) that maps to a
