@@ -49,12 +49,13 @@
   --body-gradient: linear-gradient(180deg, #ffffff 0%, #f7f9fa 100%);
 }
 
-/* "Tech" theme — dev-doc aesthetic. Cool blue-black background with
-   blue-grey surfaces and a softened blue accent. Inspired by GitHub
-   dark / VS Code dark. No body gradient so the background reads as one
-   flat plane. Compared to Dark: cooler tones, slightly more contrast
-   between surface tiers, lower-saturation accent. */
-[data-theme="tech"] {
+/* "Native" theme — default for everyone. Dev-doc aesthetic: cool
+   blue-black background, blue-grey surfaces, and a quietly-muted button
+   treatment so primary actions don't shout. Inspired by GitHub dark /
+   VS Code dark. No body gradient so the background reads as one flat
+   plane. The accent stays a soft blue for link emphasis + active
+   states; buttons themselves are surface-grey via the override below. */
+[data-theme="native"] {
   color-scheme: dark;
   --bg: #0d1117;
   --bg-elevated: #161b22;
@@ -70,6 +71,22 @@
   --error: #f85149;
   --success: #3fb950;
   --body-gradient: #0d1117;
+}
+
+/* Native primary buttons: muted slate background with a 1px border so
+   they read as dev-doc "secondary" buttons. The accent var still drives
+   link / active-state colour, so the page keeps its blue highlights. */
+[data-theme="native"] button {
+  background-color: var(--surface-strong);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+[data-theme="native"] button:hover:not(:disabled) {
+  background-color: var(--surface);
+  border-color: var(--accent);
+}
+[data-theme="native"] button:disabled {
+  opacity: 0.5;
 }
 
 html, body, #root {
@@ -2030,12 +2047,17 @@ input:focus, textarea:focus, select:focus {
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
+    /* No space-between — instead let the brand push the avatar right
+       via margin-left: auto so the hamburger + logo sit as a tight pair
+       on the left. */
+    justify-content: flex-start;
     gap: 0.5rem;
     padding: 0.75rem 1rem;
-    /* Drop the desktop right-border that's awkward in a row layout. */
+    /* Drop the desktop right-border + match body background so no edge
+       line appears between the top bar and main content. */
     border-right: none;
     border-bottom: none;
+    background: transparent;
   }
   /* Hamburger sits to the LEFT of the logo. Bare icon — no bubble, no
      border — pulled flush against the brand on the right via negative
@@ -2057,7 +2079,9 @@ input:focus, textarea:focus, select:focus {
     cursor: pointer;
   }
   .portal-brand { order: 1; flex: 0 1 auto; }
-  .portal-user { order: 2; margin-top: 0; flex-direction: row; align-items: center; gap: 0.5rem; }
+  /* Push the user chip + gear to the right edge so the hamburger and
+     brand stay as a tight group on the left. */
+  .portal-user { order: 2; margin: 0 0 0 auto; flex-direction: row; align-items: center; gap: 0.5rem; }
   /* Drawer card. Hidden by default, revealed when .is-open is set on
      the sidebar. Animated max-height keeps the open/close smooth. */
   .portal-sidebar nav {
@@ -2076,8 +2100,11 @@ input:focus, textarea:focus, select:focus {
     padding: 0;
   }
   .portal-sidebar.is-open nav {
-    max-height: 70vh;
-    overflow-y: auto;
+    /* Tall enough to fit every nav item without inner scrolling. If the
+       drawer is taller than the viewport the page itself scrolls — much
+       nicer than a tiny scrollbar inside a card. */
+    max-height: 200vh;
+    overflow: visible;
     border-color: var(--border);
     margin-top: 0.5rem;
     padding: 0.5rem;

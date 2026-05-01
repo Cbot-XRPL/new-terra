@@ -218,16 +218,14 @@ export default function ProfilePage() {
           Picks the colour scheme for the whole app. <em>System</em> follows your OS preference.
         </p>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
-          {(['light', 'dark', 'tech', 'system'] as ThemeMode[]).map((m) => (
+          {(['native', 'light', 'dark'] as ThemeMode[]).map((m) => (
             <button
               key={m}
               type="button"
               className={themeMode === m ? 'button' : 'button button-ghost'}
               onClick={() => pickTheme(m)}
             >
-              {m === 'light' ? 'Light' :
-               m === 'dark' ? 'Dark' :
-               m === 'tech' ? 'Tech' : 'System'}
+              {m === 'native' ? 'Native' : m === 'light' ? 'Light' : 'Dark'}
             </button>
           ))}
         </div>

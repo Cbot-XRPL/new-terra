@@ -84,7 +84,7 @@ export default function PortalLayout() {
         >
           {navOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
-        <nav>
+        <nav onClick={() => setNavOpen(false)}>
           {user?.role === 'CUSTOMER' && (
             <NavLink to="/portal/customer">
               <LayoutDashboard size={ICON_SIZE} /> <span>Overview</span>

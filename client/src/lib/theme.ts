@@ -2,7 +2,7 @@
 // to <html data-theme="…"> so the CSS in global.css can target each variant.
 // The `system` mode follows the user's OS color preference live.
 
-export type ThemeMode = 'light' | 'dark' | 'system' | 'tech';
+export type ThemeMode = 'native' | 'light' | 'dark';
 export type CookieConsent = 'minimal' | 'all';
 
 const THEME_KEY = 'nt_theme';
@@ -10,7 +10,10 @@ const COOKIE_KEY = 'nt_cookie_consent';
 
 export function getStoredTheme(): ThemeMode {
   const v = localStorage.getItem(THEME_KEY);
-  return v === 'light' || v === 'dark' || v === 'system' || v === 'tech' ? v : 'system';
+  // Existing installs may have 'system' or 'tech' stored — both map to
+  // 'native' going forward. New users default to 'native'.
+  if (v === 'light' || v === 'dark' || v === 'native') return v;
+  return 'native';
 }
 
 export function setStoredTheme(mode: ThemeMode): void {
@@ -18,30 +21,16 @@ export function setStoredTheme(mode: ThemeMode): void {
   applyTheme(mode);
 }
 
-function resolveTheme(mode: ThemeMode): 'light' | 'dark' | 'tech' {
-  if (mode === 'system') {
-    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-  }
-  return mode;
-}
-
 export function applyTheme(mode: ThemeMode): void {
-  document.documentElement.dataset.theme = resolveTheme(mode);
+  document.documentElement.dataset.theme = mode;
 }
 
-// Call once at boot to apply the saved theme + start tracking the OS scheme
-// when the user is on `system`. Returns the cleanup function (unused in app
-// boot but handy if a component ever wants to scope this).
+// Call once at boot to apply the saved theme. Returns a cleanup function
+// (no-op now that we've dropped the OS-tracking system mode, but kept
+// for API stability — callers don't need to change).
 export function initTheme(): () => void {
-  const mode = getStoredTheme();
-  applyTheme(mode);
-
-  const mql = window.matchMedia('(prefers-color-scheme: light)');
-  const onChange = () => {
-    if (getStoredTheme() === 'system') applyTheme('system');
-  };
-  mql.addEventListener('change', onChange);
-  return () => mql.removeEventListener('change', onChange);
+  applyTheme(getStoredTheme());
+  return () => {};
 }
 
 // --- Cookie consent ---------------------------------------------------------

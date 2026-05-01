@@ -4,6 +4,7 @@ import { useAuth } from './auth/AuthContext';
 import { RequireAuth } from './auth/RequireAuth';
 import PublicLayout from './layouts/PublicLayout';
 import PortalLayout from './layouts/PortalLayout';
+import AppErrorBoundary from './components/AppErrorBoundary';
 // Eager: critical paths users hit on first load. Auth + landing + the
 // dashboards that PortalIndex routes into. Everything else is lazy so
 // the initial JS bundle stays under the Vite 500 KB warning threshold.
@@ -84,6 +85,7 @@ function PortalIndex() {
 
 export default function App() {
   return (
+    <AppErrorBoundary>
     <Suspense fallback={
       <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
         Loading…
@@ -421,5 +423,6 @@ export default function App() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </Suspense>
+    </AppErrorBoundary>
   );
 }
