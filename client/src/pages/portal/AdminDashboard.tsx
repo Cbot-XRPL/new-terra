@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import type { Role } from '../../auth/AuthContext';
@@ -55,6 +55,37 @@ export default function AdminDashboard() {
     'Tile', 'Cabinets', 'Countertops', 'Decks', 'Fencing', 'Hardscape',
     'Landscape', 'Excavation', 'Other',
   ];
+
+  // Sortable column state for the user list. Default is by name asc.
+  type UserSortKey = 'name' | 'email' | 'role' | 'status' | 'pay';
+  const [userSort, setUserSort] = useState<UserSortKey>('name');
+  const [userDir, setUserDir] = useState<'asc' | 'desc'>('asc');
+  function toggleUserSort(k: UserSortKey) {
+    if (userSort === k) setUserDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setUserSort(k); setUserDir('asc'); }
+  }
+  function userSortIcon(k: UserSortKey) {
+    return userSort === k ? (userDir === 'asc' ? ' ▲' : ' ▼') : '';
+  }
+  const sortedUsers = useMemo(() => {
+    const dir = userDir === 'asc' ? 1 : -1;
+    const cmp = (a: string, b: string) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    return [...users].sort((a, b) => {
+      switch (userSort) {
+        case 'name':   return dir * cmp(a.name, b.name);
+        case 'email':  return dir * cmp(a.email, b.email);
+        case 'role':   return dir * cmp(a.role, b.role);
+        case 'status': return dir * (Number(b.isActive) - Number(a.isActive));
+        case 'pay': {
+          const ap = a.billingMode === 'DAILY' ? a.dailyRateCents : a.hourlyRateCents;
+          const bp = b.billingMode === 'DAILY' ? b.dailyRateCents : b.hourlyRateCents;
+          return dir * (ap - bp);
+        }
+        default: return 0;
+      }
+    });
+  }, [users, userSort, userDir]);
 
   async function load() {
     try {
@@ -340,21 +371,23 @@ export default function AdminDashboard() {
         <table className="table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Role</th>
+              <th className="sortable" onClick={() => toggleUserSort('name')}>Name{userSortIcon('name')}</th>
+              <th className="sortable" onClick={() => toggleUserSort('email')}>Email{userSortIcon('email')}</th>
+              <th className="sortable" onClick={() => toggleUserSort('role')}>Role{userSortIcon('role')}</th>
               <th>Sales</th>
               <th>PM</th>
               <th>Acct</th>
-              <th>Pay</th>
-              <th>Status</th>
+              <th className="sortable" onClick={() => toggleUserSort('pay')}>Pay{userSortIcon('pay')}</th>
+              <th className="sortable" onClick={() => toggleUserSort('status')}>Status{userSortIcon('status')}</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
+            {sortedUsers.map((u) => (
               <tr key={u.id}>
-                <td>{u.name}</td>
+                <td>
+                  <Link to={`/portal/admin/users/${u.id}`} title="Open detail">{u.name}</Link>
+                </td>
                 <td>{u.email}</td>
                 <td>{u.role.toLowerCase()}</td>
                 <td>

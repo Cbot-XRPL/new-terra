@@ -165,6 +165,47 @@ router.get('/users', async (req, res, next) => {
   }
 });
 
+// Single-user read for the admin user-detail page.
+router.get('/users/:id', async (req, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        role: true,
+        isActive: true,
+        isSales: true,
+        isProjectManager: true,
+        isAccounting: true,
+        billingMode: true,
+        dailyRateCents: true,
+        hourlyRateCents: true,
+        tradeType: true,
+        avatarUrl: true,
+        avatarThumbnailUrl: true,
+        taxId: true,
+        taxIdType: true,
+        legalName: true,
+        taxClassification: true,
+        mailingAddress: true,
+        w9SignedAt: true,
+        driversLicenseUrl: true,
+        contractorLicenseUrl: true,
+        businessLicenseUrl: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ user });
+  } catch (err) {
+    next(err);
+  }
+});
+
 const updateUserSchema = z.object({
   isActive: z.boolean().optional(),
   role: z.nativeEnum(Role).optional(),

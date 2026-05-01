@@ -62,6 +62,49 @@ router.get('/customers', async (req, res, next) => {
   }
 });
 
+// Cross-user profile lookup — backs the universal user-profile page
+// (/portal/users/:id). Anyone authenticated can read a basic profile of
+// any other user (name, role, avatar, email, phone, tradeType for subs).
+// Customers are slightly restricted: they can read staff/contractor
+// profiles tied to a project they're on, but not other customers.
+// Admins see everything (use the admin user-detail endpoint for the
+// full record including rates / W-9 status / licenses).
+router.get('/users/:id', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!me) return res.status(401).json({ error: 'Unauthenticated' });
+    const target = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        avatarUrl: true,
+        avatarThumbnailUrl: true,
+        tradeType: true,
+        isActive: true,
+        isSales: true,
+        isProjectManager: true,
+        isAccounting: true,
+      },
+    });
+    if (!target) return res.status(404).json({ error: 'User not found' });
+
+    // Customers don't get to see other customers — keeps the customer
+    // experience scoped to "you + the company". They CAN see the
+    // company's staff / contractors so they know who's working on
+    // their project.
+    if (me.role === Role.CUSTOMER && target.role === Role.CUSTOMER && me.id !== target.id) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    res.json({ user: target });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Contractor lookup — used by estimate line attribution + project pay
 // rollups. Returns active SUBCONTRACTOR users with their trade type so
 // the sales rep can pre-fill the line label. Admin / sales / PM all read.

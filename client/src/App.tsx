@@ -43,6 +43,8 @@ const BulkImportPage = lazy(() => import('./pages/portal/BulkImportPage'));
 const LeadsPage = lazy(() => import('./pages/portal/LeadsPage'));
 const LeadDetailPage = lazy(() => import('./pages/portal/LeadDetailPage'));
 const ProfilePage = lazy(() => import('./pages/portal/ProfilePage'));
+const UserProfilePage = lazy(() => import('./pages/portal/UserProfilePage'));
+const AdminUserDetailPage = lazy(() => import('./pages/portal/AdminUserDetailPage'));
 const FinanceOverviewPage = lazy(() => import('./pages/portal/FinanceOverviewPage'));
 const ExpensesPage = lazy(() => import('./pages/portal/ExpensesPage'));
 const NewExpensePage = lazy(() => import('./pages/portal/NewExpensePage'));
@@ -315,6 +317,15 @@ export default function App() {
           }
         />
         <Route path="profile" element={<ProfilePage />} />
+        <Route path="users/:id" element={<UserProfilePage />} />
+        <Route
+          path="admin/users/:id"
+          element={
+            <RequireAuth roles={['ADMIN']}>
+              <AdminUserDetailPage />
+            </RequireAuth>
+          }
+        />
         <Route
           path="finance"
           element={
