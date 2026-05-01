@@ -1253,18 +1253,24 @@ input:focus, textarea:focus, select:focus {
   max-width: 100%;
   background: var(--accent);
   color: #202124;
+  border: 0;
   border-radius: 2px;
   /* Ultra-thin pill — title only (time + project + assignee are in the
      tooltip). Tight padding + 1.15 line-height fits 4 events in the
-     same cell that used to hold 3. */
+     same cell that used to hold 3. Reset button defaults so a <button>
+     pill looks identical to the legacy <a> pill. */
   padding: 0 4px;
+  text-align: left;
   text-decoration: none;
+  font: inherit;
   font-size: 0.62rem;
   line-height: 1.15;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   margin-bottom: 1px;
+  cursor: pointer;
+  width: 100%;
 }
 .calendar-event:hover { background: var(--accent-strong); }
 .calendar-event-time { font-weight: 700; margin-right: 3px; }

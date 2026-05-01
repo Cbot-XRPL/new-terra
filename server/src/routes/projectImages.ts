@@ -29,10 +29,29 @@ const upload = multer({
   },
 });
 
+// Project access for the photo/video routes. Customers see only their
+// own projects. Subcontractors and photographers must have a schedule
+// assignment (legacy single FK or join-table) on the project — without
+// that they have no business seeing or uploading photos. Employees and
+// admins see everything.
 async function loadProjectAccessible(projectId: string, userId: string, role: Role) {
   const project = await prisma.project.findUnique({ where: { id: projectId } });
   if (!project) return null;
-  if (role === Role.CUSTOMER && project.customerId !== userId) return null;
+  if (role === Role.CUSTOMER) {
+    return project.customerId === userId ? project : null;
+  }
+  if (role === Role.SUBCONTRACTOR || role === Role.PHOTOGRAPHER) {
+    const assigned = await prisma.schedule.count({
+      where: {
+        projectId: project.id,
+        OR: [
+          { assigneeId: userId },
+          { assignees: { some: { userId } } },
+        ],
+      },
+    });
+    if (assigned === 0) return null;
+  }
   return project;
 }
 
@@ -203,11 +222,12 @@ router.patch(
 
 router.post(
   '/:id/images',
-  requireRole(Role.ADMIN, Role.EMPLOYEE, Role.SUBCONTRACTOR),
+  requireRole(Role.ADMIN, Role.EMPLOYEE, Role.SUBCONTRACTOR, Role.PHOTOGRAPHER),
   upload.array('files', 12),
   async (req, res, next) => {
     try {
-      const project = await prisma.project.findUnique({ where: { id: req.params.id } });
+      // Sub/photographer must be assigned to the project; staff/admin pass.
+      const project = await loadProjectAccessible(req.params.id, req.user!.sub, req.user!.role);
       if (!project) return res.status(404).json({ error: 'Project not found' });
 
       const files = (req.files as Array<Express.Multer.File & { key?: string }>) ?? [];

@@ -10,9 +10,31 @@ import { remindInvoices } from '../lib/reminders.js';
 import { buildReceiptForPayment } from '../lib/receiptPdf.js';
 import { buildInvoicePdf } from '../lib/invoicePdf.js';
 import { sendPaymentReceiptEmail } from '../lib/mailer.js';
+import {
+  hasAccountingAccess,
+  hasProjectManagerCapability,
+  hasSalesAccess,
+} from '../lib/permissions.js';
 
 const router = Router();
 router.use(requireAuth);
+
+// Who can see the invoice ledger (other than CUSTOMER, who is always
+// auto-scoped to their own rows). Subs and photographers don't get a
+// peek at amounts / notes. Plain employees without flags are excluded
+// too; they have no business reading the company-wide invoice list.
+async function canViewInvoices(userId: string): Promise<boolean> {
+  const me = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, isSales: true, isAccounting: true, isProjectManager: true },
+  });
+  if (!me) return false;
+  if (me.role === Role.ADMIN) return true;
+  if (me.role === Role.EMPLOYEE) {
+    return hasAccountingAccess(me) || hasProjectManagerCapability(me) || hasSalesAccess(me);
+  }
+  return false;
+}
 
 const lineItemSchema = z.object({
   description: z.string().min(1),
@@ -59,7 +81,15 @@ async function nextInvoiceNumber(): Promise<string> {
 router.get('/', async (req, res, next) => {
   try {
     const { sub, role } = req.user!;
-    const where = role === Role.CUSTOMER ? { customerId: sub } : {};
+    let where: { customerId?: string } = {};
+    if (role === Role.CUSTOMER) {
+      where = { customerId: sub };
+    } else if (!(await canViewInvoices(sub))) {
+      // Subs / photographers / plain employees don't get the ledger.
+      // Returning an empty list rather than 403 keeps the UI stable
+      // when somebody wanders into a route their role doesn't gate.
+      return res.json({ invoices: [] });
+    }
     const invoices = await prisma.invoice.findMany({
       where,
       orderBy: { issuedAt: 'desc' },
@@ -85,6 +115,10 @@ router.get('/', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const { sub, role } = req.user!;
+    // Gate non-customer viewers up front so we never leak existence.
+    if (role !== Role.CUSTOMER && !(await canViewInvoices(sub))) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
     const invoice = await prisma.invoice.findUnique({
       where: { id: req.params.id },
       include: {

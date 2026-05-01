@@ -132,7 +132,7 @@ export default function App() {
         <Route
           path="staff"
           element={
-            <RequireAuth roles={['EMPLOYEE', 'SUBCONTRACTOR', 'ADMIN']}>
+            <RequireAuth roles={['EMPLOYEE', 'SUBCONTRACTOR', 'ADMIN', 'PHOTOGRAPHER']}>
               <StaffDashboard />
             </RequireAuth>
           }
@@ -184,7 +184,7 @@ export default function App() {
         <Route
           path="subcontractor-bills"
           element={
-            <RequireAuth roles={['ADMIN', 'EMPLOYEE', 'SUBCONTRACTOR']}>
+            <RequireAuth subBillsAccess>
               <SubcontractorBillsPage />
             </RequireAuth>
           }
@@ -240,7 +240,7 @@ export default function App() {
         <Route
           path="finance/mileage"
           element={
-            <RequireAuth roles={['ADMIN', 'EMPLOYEE']}>
+            <RequireAuth accountingAccess>
               <MileagePage />
             </RequireAuth>
           }
@@ -273,7 +273,7 @@ export default function App() {
         <Route
           path="calendar"
           element={
-            <RequireAuth roles={['ADMIN', 'EMPLOYEE', 'SUBCONTRACTOR']}>
+            <RequireAuth roles={['ADMIN', 'EMPLOYEE', 'SUBCONTRACTOR', 'PHOTOGRAPHER']}>
               <CalendarPage />
             </RequireAuth>
           }

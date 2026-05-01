@@ -107,7 +107,11 @@ function staffOnly(role: Role) {
          role === Role.SUBCONTRACTOR || role === Role.PHOTOGRAPHER;
 }
 
-// Single schedule lookup — customers can only see schedules tied to their project.
+// Single schedule lookup — scoped per role:
+//  - CUSTOMER: only schedules on their own project
+//  - SUBCONTRACTOR / PHOTOGRAPHER: only schedules they're personally
+//    assigned to (singular FK or join-table)
+//  - ADMIN / EMPLOYEE: any schedule
 router.get('/:id', async (req, res, next) => {
   try {
     const { sub, role } = req.user!;
@@ -136,6 +140,12 @@ router.get('/:id', async (req, res, next) => {
     if (!schedule) return res.status(404).json({ error: 'Schedule not found' });
     if (role === Role.CUSTOMER && schedule.project.customerId !== sub) {
       return res.status(404).json({ error: 'Schedule not found' });
+    }
+    if (role === Role.SUBCONTRACTOR || role === Role.PHOTOGRAPHER) {
+      const assignedToMe =
+        schedule.assigneeId === sub ||
+        schedule.assignees.some((a) => a.user.id === sub);
+      if (!assignedToMe) return res.status(404).json({ error: 'Schedule not found' });
     }
     res.json({ schedule: withFlatAssignees(schedule) });
   } catch (err) {

@@ -65,7 +65,9 @@ router.post(
   upload.array('files', 8),
   async (req, res, next) => {
     try {
-      const project = await prisma.project.findUnique({ where: { id: req.params.id } });
+      // Subs without an assignment must NOT be able to upload docs to
+      // arbitrary project folders. Mirrors the GET handler's scoping.
+      const project = await loadProjectAccessible(req.params.id, req.user!.sub, req.user!.role);
       if (!project) return res.status(404).json({ error: 'Project not found' });
 
       const files = (req.files as Express.Multer.File[]) ?? [];

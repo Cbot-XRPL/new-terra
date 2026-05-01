@@ -9,10 +9,28 @@ router.use(requireAuth);
 
 const createSchema = z.object({ body: z.string().min(1) });
 
+// Project access for the log-entry routes. Customers see their own
+// projects; subcontractors and photographers must have a schedule
+// assignment on the project (assignee FK or join-table). Without that
+// they shouldn't see or author log entries.
 async function loadProjectFor(projectId: string, userId: string, role: Role) {
   const project = await prisma.project.findUnique({ where: { id: projectId } });
   if (!project) return null;
-  if (role === Role.CUSTOMER && project.customerId !== userId) return null;
+  if (role === Role.CUSTOMER) {
+    return project.customerId === userId ? project : null;
+  }
+  if (role === Role.SUBCONTRACTOR || role === Role.PHOTOGRAPHER) {
+    const assigned = await prisma.schedule.count({
+      where: {
+        projectId: project.id,
+        OR: [
+          { assigneeId: userId },
+          { assignees: { some: { userId } } },
+        ],
+      },
+    });
+    if (assigned === 0) return null;
+  }
   return project;
 }
 
@@ -37,7 +55,8 @@ router.post(
   async (req, res, next) => {
     try {
       const data = createSchema.parse(req.body);
-      const project = await prisma.project.findUnique({ where: { id: req.params.id } });
+      // Sub must be assigned to the project to author log entries.
+      const project = await loadProjectFor(req.params.id, req.user!.sub, req.user!.role);
       if (!project) return res.status(404).json({ error: 'Project not found' });
       const entry = await prisma.logEntry.create({
         data: {

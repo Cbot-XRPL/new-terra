@@ -412,7 +412,7 @@ router.get(
 // --- Employee / Subcontractor ---
 router.get(
   '/staff/overview',
-  requireRole(Role.EMPLOYEE, Role.SUBCONTRACTOR, Role.ADMIN),
+  requireRole(Role.EMPLOYEE, Role.SUBCONTRACTOR, Role.ADMIN, Role.PHOTOGRAPHER),
   async (req, res, next) => {
     try {
       const userId = req.user!.sub;

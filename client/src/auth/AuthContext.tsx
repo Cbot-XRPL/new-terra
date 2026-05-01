@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { api } from '../lib/api';
+import { ApiError, api } from '../lib/api';
 
 export type Role = 'ADMIN' | 'EMPLOYEE' | 'SUBCONTRACTOR' | 'CUSTOMER' | 'PHOTOGRAPHER';
 
@@ -91,7 +91,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     api<{ user: AuthUser }>('/api/auth/me')
       .then((d) => setUser(d.user))
-      .catch(() => clearToken())
+      .catch((err) => {
+        // Only clear the token when the server actually rejects it
+        // (401/403). A transient 5xx or network blip should NOT silently
+        // log the user out — leave the token in place so the next
+        // navigation can retry, and the rest of the UI can show its own
+        // error state.
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          clearToken();
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 

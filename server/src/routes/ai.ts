@@ -56,6 +56,32 @@ interface ToolUser {
   isAccounting: boolean;
 }
 
+// Real employees / admins. Subcontractors hit the AI router but most
+// reads should not let them dump company-wide data; they get a scoped
+// view via projectScopeFor below.
+function isEmployeeOrAdmin(user: ToolUser): boolean {
+  return user.role === Role.ADMIN || user.role === Role.EMPLOYEE;
+}
+
+// Returns a Prisma `where` clause that limits projects to what the
+// caller is allowed to see via the AI surface. Admins / employees see
+// every project. Subcontractors are scoped to projects they have a
+// schedule assignment on (mirrors the rest of the portal's sub scoping).
+function projectScopeFor(user: ToolUser): Record<string, unknown> {
+  if (isEmployeeOrAdmin(user)) return {};
+  if (user.role === Role.SUBCONTRACTOR) {
+    return {
+      OR: [
+        { schedules: { some: { assigneeId: user.id } } },
+        { schedules: { some: { assignees: { some: { userId: user.id } } } } },
+      ],
+    };
+  }
+  // Belt-and-suspenders fallback — should never run since the route
+  // gate excludes other roles.
+  return { id: '__never__' };
+}
+
 // Each tool: a zod schema for inputs, a permission gate, and a runner
 // that gets fully-validated input. Wrapping the run in a structured
 // error lets Claude self-correct when fields are missing.
@@ -108,9 +134,14 @@ const TOOLS: AiTool[] = [
       limit: z.number().int().min(1).max(100).optional(),
     }),
     gate: () => true,
-    async run(input) {
+    async run(input, user) {
+      const scope = projectScopeFor(user);
+      const where = {
+        ...scope,
+        ...(input.status ? { status: input.status as never } : {}),
+      };
       const rows = await prisma.project.findMany({
-        where: input.status ? { status: input.status as never } : undefined,
+        where,
         take: input.limit ?? 20,
         orderBy: { createdAt: 'desc' },
         include: {
@@ -239,7 +270,9 @@ const TOOLS: AiTool[] = [
       role: z.string().optional(),
       nameLike: z.string().optional(),
     }),
-    gate: () => true,
+    // Subcontractors should not be able to dump the user directory or
+    // peek at admin/customer contact info via the assistant.
+    gate: isEmployeeOrAdmin,
     async run(input) {
       return prisma.user.findMany({
         where: {
@@ -265,9 +298,12 @@ const TOOLS: AiTool[] = [
     },
     zod: z.object({ projectId: z.string().min(1) }),
     gate: () => true,
-    async run(input) {
-      const p = await prisma.project.findUnique({
-        where: { id: input.projectId },
+    async run(input, user) {
+      // Apply the same scope as list_projects so a subcontractor can't
+      // get_project on a job they aren't assigned to.
+      const scope = projectScopeFor(user);
+      const p = await prisma.project.findFirst({
+        where: { id: input.projectId, ...scope },
         include: {
           customer: { select: { id: true, name: true, email: true, phone: true } },
           projectManager: { select: { id: true, name: true } },

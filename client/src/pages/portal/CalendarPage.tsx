@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAuth, type Role } from '../../auth/AuthContext';
-import QuickScheduleModal from './QuickScheduleModal';
+import QuickScheduleModal, { type ExistingSchedule } from './QuickScheduleModal';
 
 interface CalendarSchedule {
   id: string;
@@ -48,6 +48,7 @@ export default function CalendarPage() {
   const [error, setError] = useState<string | null>(null);
   const [mineOnly, setMineOnly] = useState(false);
   const [pickedDate, setPickedDate] = useState<Date | null>(null);
+  const [editing, setEditing] = useState<ExistingSchedule | null>(null);
 
   const canSchedule =
     user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && (user.isProjectManager || user.isSales));
@@ -130,9 +131,9 @@ export default function CalendarPage() {
                   sameDay(day, today) ? 'today' : ''
                 } ${canSchedule ? 'clickable' : ''}`}
                 onClick={(e) => {
-                  // Ignore clicks on the inner event Links — those route
-                  // to the project as before.
-                  if ((e.target as HTMLElement).closest('a')) return;
+                  // Ignore clicks on the inner event buttons — those open
+                  // the edit modal instead of triggering "new event".
+                  if ((e.target as HTMLElement).closest('.calendar-event')) return;
                   if (canSchedule) setPickedDate(new Date(day));
                 }}
                 role={canSchedule ? 'button' : undefined}
@@ -140,14 +141,37 @@ export default function CalendarPage() {
               >
                 <div className="calendar-day-num">{day.getDate()}</div>
                 {events.slice(0, 3).map((s) => (
-                  <Link
-                    key={s.id}
-                    to={`/portal/projects/${s.project.id}`}
-                    className="calendar-event"
-                    title={`${new Date(s.startsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ${s.title} — ${s.project.name}${s.assignee ? ` (${s.assignee.name})` : ''}`}
-                  >
-                    {s.title}
-                  </Link>
+                  canSchedule ? (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className="calendar-event"
+                      title={`${new Date(s.startsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ${s.title} — ${s.project.name}${s.assignee ? ` (${s.assignee.name})` : ''} · click to edit`}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        setEditing({
+                          id: s.id,
+                          title: s.title,
+                          notes: s.notes,
+                          startsAt: s.startsAt,
+                          endsAt: s.endsAt,
+                          project: { id: s.project.id, name: s.project.name },
+                          assignee: s.assignee ? { id: s.assignee.id, name: s.assignee.name } : null,
+                        });
+                      }}
+                    >
+                      {s.title}
+                    </button>
+                  ) : (
+                    <Link
+                      key={s.id}
+                      to={`/portal/projects/${s.project.id}`}
+                      className="calendar-event"
+                      title={`${new Date(s.startsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ${s.title} — ${s.project.name}${s.assignee ? ` (${s.assignee.name})` : ''}`}
+                    >
+                      {s.title}
+                    </Link>
+                  )
                 ))}
                 {events.length > 3 && (
                   <div className="calendar-more muted">+{events.length - 3} more</div>
@@ -162,7 +186,14 @@ export default function CalendarPage() {
         <QuickScheduleModal
           defaultDate={pickedDate}
           onClose={() => setPickedDate(null)}
-          onCreated={reload}
+          onChanged={reload}
+        />
+      )}
+      {editing && (
+        <QuickScheduleModal
+          existing={editing}
+          onClose={() => setEditing(null)}
+          onChanged={reload}
         />
       )}
 

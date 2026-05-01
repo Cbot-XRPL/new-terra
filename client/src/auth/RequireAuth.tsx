@@ -16,6 +16,11 @@ export function RequireAuth({
   // PM + accounting + admin can submit expenses (receipt uploads). Used for
   // the new-expense form so PMs in the field aren't blocked.
   submitExpense,
+  // Sub-bill ledger gate — admins, accounting employees, and the
+  // subcontractors themselves (who only see their own bills server-side).
+  // Mirrors the sidebar predicate on this link so a plain employee can't
+  // bookmark the URL into a 403.
+  subBillsAccess,
 }: {
   children: ReactNode;
   roles?: Role[];
@@ -23,6 +28,7 @@ export function RequireAuth({
   pmAccess?: boolean;
   accountingAccess?: boolean;
   submitExpense?: boolean;
+  subBillsAccess?: boolean;
 }) {
   const { user, loading } = useAuth();
   const location = useLocation();
@@ -49,6 +55,16 @@ export function RequireAuth({
     !(
       user.role === 'ADMIN' ||
       (user.role === 'EMPLOYEE' && (user.isAccounting || user.isProjectManager))
+    )
+  ) {
+    return <Navigate to="/portal" replace />;
+  }
+  if (
+    subBillsAccess &&
+    !(
+      user.role === 'ADMIN' ||
+      user.role === 'SUBCONTRACTOR' ||
+      (user.role === 'EMPLOYEE' && user.isAccounting)
     )
   ) {
     return <Navigate to="/portal" replace />;
