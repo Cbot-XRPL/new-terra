@@ -396,6 +396,27 @@ router.post('/', async (req, res, next) => {
         lines: { orderBy: { position: 'asc' } },
       },
     });
+
+    // Carry forward photos from the source lead — sales rep snapped them
+    // at the walk-through, no point making them re-upload on the estimate.
+    if (data.leadId) {
+      const leadPhotos = await prisma.leadAttachment.findMany({
+        where: { leadId: data.leadId },
+      });
+      if (leadPhotos.length > 0) {
+        await prisma.estimateAttachment.createMany({
+          data: leadPhotos.map((a) => ({
+            estimateId: estimate.id,
+            uploadedById: a.uploadedById,
+            filename: a.filename,
+            url: a.url,
+            thumbnailUrl: a.thumbnailUrl,
+            caption: a.caption,
+          })),
+        });
+      }
+    }
+
     res.status(201).json({ estimate });
   } catch (err) {
     next(err);
@@ -795,6 +816,25 @@ router.post('/:id/convert', async (req, res, next) => {
           });
           contractId = c.id;
         }
+      }
+
+      // Carry forward any photos from the estimate (which may already
+      // include lead photos copied at estimate-create time) into the
+      // project's image gallery so the PM has the original visuals.
+      const estimatePhotos = await tx.estimateAttachment.findMany({
+        where: { estimateId: estimate.id },
+      });
+      if (estimatePhotos.length > 0) {
+        await tx.projectImage.createMany({
+          data: estimatePhotos.map((a) => ({
+            projectId: project.id,
+            uploadedById: a.uploadedById,
+            filename: a.filename,
+            url: a.url,
+            thumbnailUrl: a.thumbnailUrl,
+            caption: a.caption,
+          })),
+        });
       }
 
       const updatedEstimate = await tx.estimate.update({

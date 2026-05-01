@@ -232,6 +232,13 @@ const expenseSchema = z.object({
   projectId: z.string().nullable().optional(),
   // Trade tag — optional in general, but the PM job-receipt UI requires it.
   tradeType: z.string().max(60).nullable().optional(),
+  // Payment source — drives the bank-tx matching workflow.
+  //   'cash'    = paid in cash, no bank-tx to reconcile
+  //   'account' = paid from a tracked BankAccount (set paidFromAccountId)
+  //   'other'   = custom label (Zelle to spouse, hardware-store store credit, etc.)
+  paymentSource: z.enum(['cash', 'account', 'other']).nullable().optional(),
+  paymentSourceLabel: z.string().max(80).nullable().optional(),
+  paidFromAccountId: z.string().nullable().optional(),
   paidByUserId: z.string().nullable().optional(),
   amountCents: z.number().int().nonnegative(),
   date: z.string().datetime(),
@@ -269,6 +276,7 @@ const expenseInclude = {
   project: { select: { id: true, name: true } },
   paidBy: { select: { id: true, name: true } },
   submittedBy: { select: { id: true, name: true } },
+  paidFromAccount: { select: { id: true, name: true, last4: true } },
 } as const;
 
 router.get('/expenses', async (req, res, next) => {
@@ -1321,6 +1329,9 @@ router.post('/expenses', upload.single('receipt'), async (req, res, next) => {
       categoryId: body.categoryId || undefined,
       projectId: body.projectId || undefined,
       tradeType: body.tradeType || undefined,
+      paymentSource: body.paymentSource || undefined,
+      paymentSourceLabel: body.paymentSourceLabel || undefined,
+      paidFromAccountId: body.paidFromAccountId || undefined,
       paidByUserId: body.paidByUserId || me.id,
       amountCents: Number(body.amountCents),
       date: body.date,
@@ -1366,6 +1377,9 @@ router.post('/expenses', upload.single('receipt'), async (req, res, next) => {
         categoryId: parsed.categoryId ?? null,
         projectId: parsed.projectId ?? null,
         tradeType: parsed.tradeType ?? null,
+        paymentSource: parsed.paymentSource ?? null,
+        paymentSourceLabel: parsed.paymentSourceLabel ?? null,
+        paidFromAccountId: parsed.paidFromAccountId ?? null,
         paidByUserId: parsed.paidByUserId ?? null,
         submittedById: me.id,
         amountCents: parsed.amountCents,
@@ -1423,6 +1437,9 @@ router.patch('/expenses/:id', async (req, res, next) => {
         categoryId: data.categoryId === null ? null : data.categoryId,
         projectId: data.projectId === null ? null : data.projectId,
         tradeType: data.tradeType === null ? null : data.tradeType,
+        paymentSource: data.paymentSource === null ? null : data.paymentSource,
+        paymentSourceLabel: data.paymentSourceLabel === null ? null : data.paymentSourceLabel,
+        paidFromAccountId: data.paidFromAccountId === null ? null : data.paidFromAccountId,
         paidByUserId: data.paidByUserId === null ? null : data.paidByUserId,
         amountCents: data.amountCents,
         date: data.date ? new Date(data.date) : undefined,

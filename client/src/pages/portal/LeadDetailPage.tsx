@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { formatCents, formatDateTime } from '../../lib/format';
+import PhotoAttachments from '../../components/PhotoAttachments';
 
 type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'QUOTE_SENT' | 'WON' | 'LOST' | 'ON_HOLD';
 type LeadSource =
@@ -292,6 +293,13 @@ export default function LeadDetailPage() {
           </dl>
         </section>
       )}
+
+      <PhotoAttachments
+        parent="leads"
+        parentId={lead.id}
+        canEdit={user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && !!user.isSales)}
+        emptyText="No photos yet — snap a shot at the walk-through to carry it forward into estimates and the project."
+      />
 
       <section className="card">
         <h2>Convert to customer</h2>

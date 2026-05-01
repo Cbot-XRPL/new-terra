@@ -15,6 +15,12 @@ interface ExpenseCategoryOption {
   name: string;
 }
 
+interface BankAccountOption {
+  id: string;
+  name: string;
+  last4: string | null;
+}
+
 interface ExpenseRow {
   id: string;
   amountCents: number;
@@ -56,6 +62,7 @@ export default function JobReceiptsPage() {
   const { user } = useAuth();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [categories, setCategories] = useState<ExpenseCategoryOption[]>([]);
+  const [accounts, setAccounts] = useState<BankAccountOption[]>([]);
   const [recent, setRecent] = useState<ExpenseRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -68,6 +75,11 @@ export default function JobReceiptsPage() {
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [file, setFile] = useState<File | null>(null);
+  // Payment source: 'cash' | account-id | '__other__'. '__other__' opens
+  // a free-text label so the user can record one-off payment methods
+  // (Zelle, store credit, etc.) without polluting the bank-account list.
+  const [paymentChoice, setPaymentChoice] = useState<string>('cash');
+  const [paymentLabel, setPaymentLabel] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -83,13 +95,17 @@ export default function JobReceiptsPage() {
 
   async function load() {
     try {
-      const [p, c, r] = await Promise.all([
+      const [p, c, r, a] = await Promise.all([
         api<{ projects: ProjectOption[] }>('/api/projects'),
         api<{ categories: ExpenseCategoryOption[] }>('/api/finance/categories'),
         api<{ expenses: ExpenseRow[] }>('/api/finance/expenses?pageSize=25&mine=true'),
+        api<{ accounts: BankAccountOption[] }>('/api/banking/accounts').catch(
+          () => ({ accounts: [] as BankAccountOption[] }),
+        ),
       ]);
       setProjects(p.projects);
       setCategories(c.categories);
+      setAccounts(a.accounts.filter((acc) => !!acc));
       // Filter to receipt-bearing rows on the client — the API doesn't
       // have a hasReceipt filter and adding one is a separate change.
       setRecent(r.expenses.filter((e) => !!e.receiptUrl));
@@ -140,6 +156,23 @@ export default function JobReceiptsPage() {
       form.append('amountCents', String(amountCents));
       form.append('date', new Date(date).toISOString());
 
+      // Payment source mapping for the bank-tx reconciliation flow.
+      if (paymentChoice === 'cash') {
+        form.append('paymentSource', 'cash');
+      } else if (paymentChoice === '__other__') {
+        if (!paymentLabel.trim()) {
+          setError('Add a label for the custom payment method.');
+          setSubmitting(false);
+          return;
+        }
+        form.append('paymentSource', 'other');
+        form.append('paymentSourceLabel', paymentLabel.trim());
+      } else {
+        // It's a bank-account id.
+        form.append('paymentSource', 'account');
+        form.append('paidFromAccountId', paymentChoice);
+      }
+
       const token = sessionStorage.getItem('nt_token') ?? localStorage.getItem('nt_token');
       const res = await fetch(`${API_BASE}/api/finance/expenses`, {
         method: 'POST',
@@ -183,11 +216,6 @@ export default function JobReceiptsPage() {
 
       <section className="card">
         <h2>New receipt</h2>
-        <p className="muted" style={{ fontSize: '0.85rem' }}>
-          For contractor pay, use <strong>Sub bills</strong> instead — approving
-          a bill auto-creates its own expense, so logging it again here would
-          double-count.
-        </p>
         <form onSubmit={submit}>
           <label>Photo of the receipt *</label>
           <input
@@ -281,6 +309,38 @@ export default function JobReceiptsPage() {
                 onChange={(e) => setDate(e.target.value)}
                 required
               />
+            </div>
+            <div>
+              <label htmlFor="r-pay">Paid with *</label>
+              <select
+                id="r-pay"
+                value={paymentChoice}
+                onChange={(e) => setPaymentChoice(e.target.value)}
+                required
+              >
+                <option value="cash">Cash</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}{a.last4 ? ` ··${a.last4}` : ''}
+                  </option>
+                ))}
+                <option value="__other__">Other (custom)…</option>
+              </select>
+              {paymentChoice === '__other__' && (
+                <input
+                  type="text"
+                  value={paymentLabel}
+                  onChange={(e) => setPaymentLabel(e.target.value)}
+                  placeholder="e.g. Zelle to vendor, store credit"
+                  style={{ marginTop: '0.25rem' }}
+                />
+              )}
+              {paymentChoice !== 'cash' && paymentChoice !== '__other__' && (
+                <p className="muted" style={{ fontSize: '0.75rem', margin: '0.25rem 0 0' }}>
+                  This receipt will show up as a match suggestion when reconciling
+                  this account on the Banking page.
+                </p>
+              )}
             </div>
           </div>
 

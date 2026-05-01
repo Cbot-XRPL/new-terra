@@ -220,6 +220,100 @@ router.delete('/transactions/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ----- Match suggestions -----
+//
+// Given a bank transaction, find existing expenses / payments / sub-bills
+// that probably represent the same dollar event so the admin can attach
+// them in one tap instead of scrolling. Suggestions are scored by:
+//
+//   - Amount match (exact = strongest, ±$1 next, otherwise dropped).
+//   - Date proximity (±7 days from the bank-tx date).
+//   - Same paidFromAccountId on the Expense (a hint we lock in when the
+//     PM uploads a receipt — "Chase ··1234" → only show Chase ··1234
+//     transactions).
+//   - Description hint — substring match against the bank-tx description.
+//
+// We return at most 8 candidates total so the UI doesn't drown the
+// admin in choices. Already-matched bank-tx rows return an empty list.
+router.get('/transactions/:id/suggestions', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const tx = await prisma.bankTransaction.findUnique({
+      where: { id: req.params.id },
+      include: { account: { select: { id: true, name: true, last4: true } } },
+    });
+    if (!tx) return res.status(404).json({ error: 'Transaction not found' });
+    if (tx.matchedExpenseId || tx.matchedPaymentId || tx.matchedSubBillId) {
+      return res.json({ suggestions: [] });
+    }
+
+    // The tx amount we're trying to match against. Bank exports use
+    // signed cents (negative = outflow); expenses are stored positive.
+    const target = Math.abs(tx.amountCents);
+    const minDate = new Date(tx.date.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const maxDate = new Date(tx.date.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    // Expenses: prefer same account if expense has paidFromAccountId, but
+    // fall back to all expenses in the date window when accountless.
+    const candidates = await prisma.expense.findMany({
+      where: {
+        amountCents: { gte: target - 100, lte: target + 100 }, // ±$1
+        date: { gte: minDate, lte: maxDate },
+        bankTransactions: { none: {} }, // not already matched
+        OR: [
+          { paidFromAccountId: tx.accountId },
+          { paidFromAccountId: null },
+        ],
+      },
+      include: {
+        vendor: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true } },
+        project: { select: { id: true, name: true } },
+        paidFromAccount: { select: { id: true, name: true, last4: true } },
+      },
+      take: 25,
+    });
+
+    const lcDesc = tx.description.toLowerCase();
+    const scored = candidates.map((e) => {
+      let score = 0;
+      // Same-account match — strongest hint when set.
+      if (e.paidFromAccountId === tx.accountId) score += 50;
+      // Exact-cents match beats off-by-a-rounding-cent.
+      if (e.amountCents === target) score += 40;
+      else score += Math.max(0, 30 - Math.abs(e.amountCents - target));
+      // Date proximity — closer = better.
+      const days = Math.abs((e.date.getTime() - tx.date.getTime()) / 86_400_000);
+      score += Math.max(0, 20 - days * 3);
+      // Vendor name appears in bank description.
+      if (e.vendor && lcDesc.includes(e.vendor.name.toLowerCase())) score += 30;
+      // Description match (e.g. "Home Depot" in both).
+      if (e.description && lcDesc.includes(e.description.toLowerCase().slice(0, 12))) {
+        score += 15;
+      }
+      return { kind: 'expense' as const, score, expense: e };
+    });
+    scored.sort((a, b) => b.score - a.score);
+
+    res.json({
+      suggestions: scored.slice(0, 8).map((s) => ({
+        kind: s.kind,
+        score: s.score,
+        expense: {
+          id: s.expense.id,
+          date: s.expense.date,
+          amountCents: s.expense.amountCents,
+          description: s.expense.description,
+          vendor: s.expense.vendor,
+          category: s.expense.category,
+          project: s.expense.project,
+          paidFromAccount: s.expense.paidFromAccount,
+        },
+      })),
+    });
+  } catch (err) { next(err); }
+});
+
 // ----- CSV import -----
 //
 // Most US banks export CSVs that look like:

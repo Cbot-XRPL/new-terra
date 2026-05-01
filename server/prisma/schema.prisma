@@ -247,6 +247,9 @@ model User {
   estimatesReceived Estimate[]         @relation("EstimatesForCustomer")
   // Estimate lines that route work to this user as the contractor.
   estimateLinesAsContractor EstimateLine[] @relation("EstimateLineContractor")
+  // Lead/estimate photo uploads — back-relations for the FK uploader links.
+  leadAttachments       LeadAttachment[]     @relation("LeadAttachmentUploader")
+  estimateAttachments   EstimateAttachment[] @relation("EstimateAttachmentUploader")
   // Auto-managed catalog row that represents this user as a labor product
   // on the estimator. One Product per user (we ensure-once on changes).
   catalogProducts           Product[]      @relation("ProductContractor")
@@ -712,6 +715,10 @@ model BankAccount {
 
   transactions        BankTransaction[]
   rules               BankCategorizationRule[]
+  // Expenses that were paid out of this account — drives the bank-tx
+  // matching suggestion list (find the right BankTransaction to attach
+  // an Expense to during reconciliation).
+  expensesPaidFrom    Expense[] @relation("ExpensePaidFrom")
 }
 
 enum BankAccountKind {
@@ -873,6 +880,44 @@ model Membership {
   startedAt    DateTime       @default(now())
   renewsAt     DateTime?
   active       Boolean        @default(true)
+}
+
+// Lead-scoped photo / file attachment. Sales rep snaps a site photo at
+// the initial walk-through; it carries forward when the lead converts to
+// an estimate and again when the estimate converts to a project, so the
+// PM has the original visuals without re-uploads.
+model LeadAttachment {
+  id           String   @id @default(cuid())
+  leadId       String
+  lead         Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy   User     @relation("LeadAttachmentUploader", fields: [uploadedById], references: [id])
+  filename     String
+  url          String
+  thumbnailUrl String?
+  caption      String?
+  createdAt    DateTime @default(now())
+
+  @@index([leadId])
+}
+
+// Estimate-scoped photo / file attachment. Same lifecycle as a lead
+// attachment — created either directly on the estimate or copied
+// forward from the source lead. Copied to ProjectImage when the
+// estimate converts to a project.
+model EstimateAttachment {
+  id           String   @id @default(cuid())
+  estimateId   String
+  estimate     Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy   User     @relation("EstimateAttachmentUploader", fields: [uploadedById], references: [id])
+  filename     String
+  url          String
+  thumbnailUrl String?
+  caption      String?
+  createdAt    DateTime @default(now())
+
+  @@index([estimateId])
 }
 
 model ProjectImage {
@@ -1335,6 +1380,7 @@ model Lead {
 
   activities    LeadActivity[]
   estimates     Estimate[]
+  attachments   LeadAttachment[]
 
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
@@ -1462,6 +1508,16 @@ model Expense {
   // the trade taxonomy used on the user record + estimate-line picker.
   tradeType  String?
 
+  // How this was paid for. 'cash' / 'account' / 'other' (custom label in
+  // paymentSourceLabel). When 'account', paidFromAccountId points at the
+  // BankAccount the money came from — this is what powers the bank-tx
+  // matching workflow. paymentSourceLabel holds either the custom label
+  // (for 'other') or null otherwise.
+  paymentSource       String?  // 'cash' | 'account' | 'other'
+  paymentSourceLabel  String?
+  paidFromAccountId   String?
+  paidFromAccount     BankAccount? @relation("ExpensePaidFrom", fields: [paidFromAccountId], references: [id], onDelete: SetNull)
+
   // Integration: tracks whether this expense has been pushed to an external
   // accounting system. Always populated; default LOCAL_ONLY so the app works
   // identically with or without a QB connection.
@@ -1483,6 +1539,7 @@ model Expense {
   @@index([vendorId])
   @@index([paidByUserId])
   @@index([syncStatus])
+  @@index([paidFromAccountId, date])
 }
 
 // One row per category-level budget on a project. Optional categoryId so
@@ -1693,6 +1750,7 @@ model Estimate {
   convertedContract   Contract? @relation("ContractFromEstimate", fields: [convertedContractId], references: [id], onDelete: SetNull)
 
   lines       EstimateLine[]
+  attachments EstimateAttachment[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

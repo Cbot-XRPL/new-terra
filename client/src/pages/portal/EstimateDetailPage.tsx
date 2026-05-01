@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { formatCents, formatDate, formatDateTime } from '../../lib/format';
+import PhotoAttachments from '../../components/PhotoAttachments';
 
 type EstimateStatus = 'DRAFT' | 'SENT' | 'VIEWED' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED' | 'CONVERTED' | 'VOID';
 
@@ -371,6 +372,13 @@ export default function EstimateDetailPage() {
           )}
         </section>
       )}
+
+      <PhotoAttachments
+        parent="estimates"
+        parentId={estimate.id}
+        canEdit={!!isStaff}
+        emptyText="No photos yet — upload site shots so the customer + the eventual PM see what you saw."
+      />
 
       {/* Staff actions */}
       {isStaff && (

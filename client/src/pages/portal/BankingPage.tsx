@@ -52,6 +52,21 @@ function isLiability(a: BankAccount): boolean {
   return a.isLiability || LIABILITY_KINDS.has(a.kind);
 }
 
+interface MatchSuggestion {
+  kind: 'expense';
+  score: number;
+  expense: {
+    id: string;
+    date: string;
+    amountCents: number;
+    description: string | null;
+    vendor: { id: string; name: string } | null;
+    category: { id: string; name: string } | null;
+    project: { id: string; name: string } | null;
+    paidFromAccount: { id: string; name: string; last4: string | null } | null;
+  };
+}
+
 export default function BankingPage() {
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -59,6 +74,45 @@ export default function BankingPage() {
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  // Open suggestions panel by tx id. null = none open.
+  const [openSuggestId, setOpenSuggestId] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<MatchSuggestion[]>([]);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+
+  async function loadSuggestions(txId: string) {
+    if (openSuggestId === txId) {
+      setOpenSuggestId(null);
+      setSuggestions([]);
+      return;
+    }
+    setSuggestLoading(true);
+    setOpenSuggestId(txId);
+    try {
+      const r = await api<{ suggestions: MatchSuggestion[] }>(
+        `/api/banking/transactions/${txId}/suggestions`,
+      );
+      setSuggestions(r.suggestions);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load suggestions');
+      setSuggestions([]);
+    } finally {
+      setSuggestLoading(false);
+    }
+  }
+
+  async function applyMatch(tx: BankTransaction, expenseId: string) {
+    try {
+      await api(`/api/banking/transactions/${tx.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ matchedExpenseId: expenseId, reconciled: true }),
+      });
+      setOpenSuggestId(null);
+      setSuggestions([]);
+      if (active) await loadTransactions(active);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Match failed');
+    }
+  }
 
   // Filters
   const [filterUncat, setFilterUncat] = useState(false);
@@ -494,7 +548,7 @@ export default function BankingPage() {
                 </tr>
               </thead>
               <tbody>
-                {transactions.map((t) => (
+                {transactions.flatMap((t) => [
                   <tr key={t.id}>
                     <td>{formatDate(t.date)}</td>
                     <td style={{ maxWidth: 300 }}>{t.description}</td>
@@ -530,6 +584,17 @@ export default function BankingPage() {
                       />
                     </td>
                     <td>
+                      {!t.matchedExpense && !t.matchedPayment && !t.matchedSubBill && (
+                        <button
+                          type="button"
+                          className="button-small"
+                          onClick={() => loadSuggestions(t.id)}
+                          style={{ marginRight: '0.25rem' }}
+                          title="Suggest expense matches for this transaction"
+                        >
+                          {openSuggestId === t.id ? 'Hide' : 'Match'}
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="button-ghost button-small"
@@ -538,8 +603,72 @@ export default function BankingPage() {
                         Delete
                       </button>
                     </td>
-                  </tr>
-                ))}
+                  </tr>,
+                  openSuggestId === t.id ? (
+                    <tr key={`${t.id}-suggest`}>
+                      <td colSpan={9} style={{ background: 'var(--surface)' }}>
+                        {suggestLoading ? (
+                          <p className="muted">Looking for matches…</p>
+                        ) : suggestions.length === 0 ? (
+                          <p className="muted">
+                            No matching expenses found. Add the expense via Job receipts or
+                            the Expenses page first, then come back here.
+                          </p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            <strong>Suggested matches</strong>
+                            {suggestions.map((s) => (
+                              <div
+                                key={s.expense.id}
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  padding: '0.5rem 0.75rem',
+                                  background: 'var(--bg-elevated)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: 8,
+                                  gap: '0.5rem',
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                <div style={{ flex: 1, minWidth: 200 }}>
+                                  <strong>{formatCents(s.expense.amountCents)}</strong>
+                                  {' · '}
+                                  {new Date(s.expense.date).toLocaleDateString()}
+                                  {s.expense.vendor && (
+                                    <>{' · '}{s.expense.vendor.name}</>
+                                  )}
+                                  {s.expense.project && (
+                                    <>{' · '}{s.expense.project.name}</>
+                                  )}
+                                  {s.expense.description && (
+                                    <div className="muted" style={{ fontSize: '0.8rem' }}>
+                                      {s.expense.description}
+                                    </div>
+                                  )}
+                                  {s.expense.paidFromAccount && (
+                                    <div className="muted" style={{ fontSize: '0.75rem' }}>
+                                      Paid from {s.expense.paidFromAccount.name}
+                                      {s.expense.paidFromAccount.last4 && ` ··${s.expense.paidFromAccount.last4}`}
+                                    </div>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  className="button-small"
+                                  onClick={() => applyMatch(t, s.expense.id)}
+                                >
+                                  Match
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ) : null,
+                ].filter(Boolean) as React.ReactNode[])}
               </tbody>
             </table>
           ) : (
