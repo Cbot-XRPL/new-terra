@@ -52,11 +52,16 @@ function withFlatAssignees<T extends {
 
 // Company-wide calendar view for staff. Customers must keep using the
 // per-project schedule list — they shouldn't see other customers' projects.
-router.get('/', requireRole(Role.ADMIN, Role.EMPLOYEE, Role.SUBCONTRACTOR), async (req, res, next) => {
+router.get('/', requireRole(Role.ADMIN, Role.EMPLOYEE, Role.SUBCONTRACTOR, Role.PHOTOGRAPHER), async (req, res, next) => {
   try {
     const { from, to, mine } = calendarQuery.parse(req.query);
     const meId = req.user!.sub;
-    const meScoped = req.user!.role === Role.SUBCONTRACTOR || mine === 'true';
+    // Subs + photographers are always scoped to their own schedules.
+    // The mine=true flag on staff/admin lets them filter the same way.
+    const meScoped =
+      req.user!.role === Role.SUBCONTRACTOR ||
+      req.user!.role === Role.PHOTOGRAPHER ||
+      mine === 'true';
 
     const where = meScoped
       ? {
@@ -96,7 +101,10 @@ const updateScheduleSchema = z.object({
 });
 
 function staffOnly(role: Role) {
-  return role === Role.ADMIN || role === Role.EMPLOYEE || role === Role.SUBCONTRACTOR;
+  // Photographers can be assigned to a schedule (need to know when to
+  // show up to shoot) but they don't get the create/edit endpoints.
+  return role === Role.ADMIN || role === Role.EMPLOYEE ||
+         role === Role.SUBCONTRACTOR || role === Role.PHOTOGRAPHER;
 }
 
 // Single schedule lookup — customers can only see schedules tied to their project.

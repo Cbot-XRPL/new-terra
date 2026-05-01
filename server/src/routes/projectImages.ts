@@ -17,10 +17,13 @@ const storage = createStorage();
 
 const upload = multer({
   storage: storage.engine,
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB cap
+  // 100 MB cap covers a 30-second 4K phone clip; raises from 15 MB to
+  // accommodate the photographer role's video uploads. Sharp resize
+  // / thumbnail generation runs only on images; videos store raw.
+  limits: { fileSize: 100 * 1024 * 1024 },
   fileFilter(_req, file, cb) {
-    if (!file.mimetype.startsWith('image/')) {
-      return cb(new Error('Only image uploads are allowed'));
+    if (!file.mimetype.startsWith('image/') && !file.mimetype.startsWith('video/')) {
+      return cb(new Error('Only image or video uploads are allowed'));
     }
     cb(null, true);
   },
@@ -235,10 +238,13 @@ router.post(
 
         let thumbnailUrl: string | null = null;
         let mediumUrl: string | null = null;
+        // Skip sharp pipeline for video uploads — sharp can't decode
+        // mp4/mov, the raw URL is what plays back.
+        const isImage = f.mimetype.startsWith('image/');
         try {
-          const source = (f as Express.Multer.File).path
+          const source = isImage && ((f as Express.Multer.File).path
             ? await fs.readFile((f as Express.Multer.File).path)
-            : (f.buffer as Buffer | undefined);
+            : (f.buffer as Buffer | undefined));
           if (source) {
             // 480px thumb for grid views and the customer portal.
             const thumb = await sharp(source)

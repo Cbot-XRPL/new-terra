@@ -32,7 +32,7 @@ interface Invitation {
   createdAt: string;
 }
 
-const ROLES: Role[] = ['ADMIN', 'EMPLOYEE', 'SUBCONTRACTOR', 'CUSTOMER'];
+const ROLES: Role[] = ['ADMIN', 'EMPLOYEE', 'SUBCONTRACTOR', 'PHOTOGRAPHER', 'CUSTOMER'];
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState<AdminUser[]>([]);

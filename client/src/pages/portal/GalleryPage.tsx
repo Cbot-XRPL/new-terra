@@ -38,6 +38,12 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+// Detect a video upload by file extension on the URL since we don't
+// store mime type. Covers everything iOS / Android camera apps spit out.
+function isVideo(url: string): boolean {
+  return /\.(mp4|mov|m4v|webm|avi|mkv)(\?|$)/i.test(url);
+}
+
 // Cross-project gallery page. Shows every photo the caller can see,
 // grouped under each photo's project label. Click a thumbnail to open
 // a lightbox; staff get an Upload button at the top that picks a
@@ -131,7 +137,7 @@ export default function GalleryPage() {
             <input
               ref={fileRef}
               type="file"
-              accept="image/*"
+              accept="image/*,video/*"
               multiple
               capture="environment"
               style={{ display: 'none' }}
@@ -185,27 +191,47 @@ export default function GalleryPage() {
               gap: '0.5rem',
             }}
           >
-            {data.images.map((img) => (
-              <button
-                key={img.id}
-                type="button"
-                className="gallery-tile"
-                onClick={() => setLightbox(img)}
-                title={img.caption ?? `${img.project.name} · ${formatDate(img.takenAt ?? img.createdAt)}`}
-              >
-                <img
-                  src={img.thumbnailUrl ?? img.mediumUrl ?? img.url}
-                  alt={img.caption ?? img.project.name}
-                  loading="lazy"
-                />
-                <div className="gallery-tile-overlay">
-                  <div className="gallery-tile-project">{img.project.name}</div>
-                  <div className="gallery-tile-date muted">
-                    {formatDate(img.takenAt ?? img.createdAt)}
+            {data.images.map((img) => {
+              const video = isVideo(img.url);
+              return (
+                <button
+                  key={img.id}
+                  type="button"
+                  className="gallery-tile"
+                  onClick={() => setLightbox(img)}
+                  title={img.caption ?? `${img.project.name} · ${formatDate(img.takenAt ?? img.createdAt)}`}
+                >
+                  {video ? (
+                    // Native <video> renders the first frame as the
+                    // poster automatically; preload="metadata" pulls
+                    // just enough header bytes to show that frame
+                    // without streaming the whole file.
+                    <video
+                      src={img.url}
+                      preload="metadata"
+                      muted
+                      playsInline
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+                  ) : (
+                    <img
+                      src={img.thumbnailUrl ?? img.mediumUrl ?? img.url}
+                      alt={img.caption ?? img.project.name}
+                      loading="lazy"
+                    />
+                  )}
+                  {video && (
+                    <span className="gallery-tile-badge" aria-hidden="true">▶</span>
+                  )}
+                  <div className="gallery-tile-overlay">
+                    <div className="gallery-tile-project">{img.project.name}</div>
+                    <div className="gallery-tile-date muted">
+                      {formatDate(img.takenAt ?? img.createdAt)}
+                    </div>
                   </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         )}
       </section>
@@ -250,11 +276,26 @@ export default function GalleryPage() {
           >
             ×
           </button>
-          <img
-            src={lightbox.mediumUrl ?? lightbox.url}
-            alt={lightbox.caption ?? lightbox.project.name}
-            onClick={(e) => e.stopPropagation()}
-          />
+          {isVideo(lightbox.url) ? (
+            <video
+              src={lightbox.url}
+              controls
+              autoPlay
+              playsInline
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                maxWidth: '100%',
+                maxHeight: 'calc(100vh - 8rem)',
+                borderRadius: 6,
+              }}
+            />
+          ) : (
+            <img
+              src={lightbox.mediumUrl ?? lightbox.url}
+              alt={lightbox.caption ?? lightbox.project.name}
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
           <div
             className="gallery-lightbox-meta"
             onClick={(e) => e.stopPropagation()}

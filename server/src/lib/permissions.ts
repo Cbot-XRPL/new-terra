@@ -4,7 +4,15 @@
 import type { Project, Role, User } from '@prisma/client';
 
 export function isStaffRole(role: Role): boolean {
-  return role === 'ADMIN' || role === 'EMPLOYEE' || role === 'SUBCONTRACTOR';
+  // Photographers count as staff for read-style access (calendar, DMs,
+  // gallery, request pay) but cannot create / modify business records.
+  return role === 'ADMIN' || role === 'EMPLOYEE' || role === 'SUBCONTRACTOR' || role === 'PHOTOGRAPHER';
+}
+
+// Read-only company calendar viewers — photographers see when they're
+// scheduled but can't add or modify schedule rows.
+export function canReadCalendar(role: Role): boolean {
+  return isStaffRole(role);
 }
 
 export function hasSalesAccess(user: Pick<User, 'role' | 'isSales'>): boolean {

@@ -21,6 +21,10 @@ enum Role {
   EMPLOYEE
   SUBCONTRACTOR
   CUSTOMER
+  // Tightly-scoped role for site-photo / video shooters. Calendar (read
+  // only) + DMs + request pay + gallery upload. No leads, no estimates,
+  // no projects, no money. Treated as a paid worker for time/pay.
+  PHOTOGRAPHER
 }
 
 enum InvoiceStatus {

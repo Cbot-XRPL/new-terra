@@ -88,6 +88,29 @@ export default function PortalLayout() {
           {navOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
         <nav onClick={() => setNavOpen(false)}>
+          {/* Photographer — ultra-narrow nav. Early-return so the
+              normal cascade below doesn't double-render Messages /
+              Gallery / Calendar. */}
+          {user?.role === 'PHOTOGRAPHER' ? (
+            <>
+              <NavLink to="/portal/staff">
+                <LayoutDashboard size={ICON_SIZE} /> <span>Overview</span>
+              </NavLink>
+              <NavLink to="/portal/calendar">
+                <Calendar size={ICON_SIZE} /> <span>Calendar</span>
+              </NavLink>
+              <NavLink to="/portal/messages">
+                <MessageSquare size={ICON_SIZE} /> <span>Messages</span>
+                {unread > 0 && <span className="unread-dot" style={{ marginLeft: 8 }}>{unread}</span>}
+              </NavLink>
+              <NavLink to="/portal/time">
+                <HandCoins size={ICON_SIZE} /> <span>Request pay</span>
+              </NavLink>
+              <NavLink to="/portal/gallery">
+                <ImageIcon size={ICON_SIZE} /> <span>Gallery</span>
+              </NavLink>
+            </>
+          ) : (<>
           {user?.role === 'CUSTOMER' && (
             <NavLink to="/portal/customer">
               <LayoutDashboard size={ICON_SIZE} /> <span>Overview</span>
@@ -212,6 +235,7 @@ export default function PortalLayout() {
               <Shield size={ICON_SIZE} /> <span>Admin</span>
             </NavLink>
           )}
+          </>)}
         </nav>
         <div className="portal-user">
           <div className="user-chip-row" style={{ marginBottom: '0.5rem' }}>
