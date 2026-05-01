@@ -568,12 +568,15 @@ router.get('/google/callback', async (req, res, next) => {
     // existing portal user (who hasn't connected Google yet) gets
     // linked rather than duplicated. Refuse if the email maps to a
     // disabled account.
-    let user = await prisma.user.findUnique({ where: { googleId: profile.sub } });
+    // The `as any` casts let this file compile before the VM has run
+    // `npx prisma generate` for the new googleId field. Once that's
+    // run they become no-ops.
+    let user = await (prisma.user as any).findUnique({ where: { googleId: profile.sub } });
     if (!user) {
       user = await prisma.user.findUnique({ where: { email } });
       if (user) {
         // Existing email-based account — attach the Google ID.
-        user = await prisma.user.update({
+        user = await (prisma.user as any).update({
           where: { id: user.id },
           data: { googleId: profile.sub },
         });

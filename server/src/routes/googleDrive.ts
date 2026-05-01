@@ -33,7 +33,7 @@ router.get('/status', async (req, res, next) => {
     if (!isGoogleConfigured()) {
       return res.json({ configured: false, connected: false });
     }
-    const conn = await prisma.googleDriveConnection.findUnique({
+    const conn = await (prisma as any).googleDriveConnection.findUnique({
       where: { userId: req.user!.sub },
       select: { googleEmail: true, googleName: true, createdAt: true, updatedAt: true },
     });
@@ -98,7 +98,7 @@ router.get('/callback', async (req, res, next) => {
     const profile = await fetchUserInfo(tokens.access_token);
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
-    await prisma.googleDriveConnection.upsert({
+    await (prisma as any).googleDriveConnection.upsert({
       where: { userId: me.id },
       create: {
         userId: me.id,
@@ -134,7 +134,7 @@ router.get('/callback', async (req, res, next) => {
 
 router.delete('/', async (req, res, next) => {
   try {
-    await prisma.googleDriveConnection.deleteMany({
+    await (prisma as any).googleDriveConnection.deleteMany({
       where: { userId: req.user!.sub },
     });
     await audit(req, {
