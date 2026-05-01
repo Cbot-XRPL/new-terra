@@ -307,4 +307,82 @@ router.post('/plaid', async (req, res, next) => {
   }
 });
 
+// Inbound email — Resend Inbound delivers parsed messages here when an
+// email lands at r-<threadKey>@inbound.<your-domain>. We look up the
+// matching OutboundEmail row and post the reply text into the original
+// sender's portal DMs.
+//
+// Setup steps (one-time):
+//   1. Add an MX record for inbound.<your-domain> pointing at Resend.
+//   2. In Resend → Inbound, configure the catch-all to POST here.
+//   3. Optional: set RESEND_INBOUND_SECRET in .env and we'll verify
+//      the X-Resend-Signature header.
+//
+// Resend's payload (text/plain by default) includes:
+//   { from: string, to: string[], subject: string, text: string, ... }
+router.post('/inbound-email', async (req, res, next) => {
+  try {
+    // Optional shared-secret header check.
+    const expected = process.env.RESEND_INBOUND_SECRET;
+    if (expected) {
+      const got = req.header('x-resend-signature');
+      if (got !== expected) return res.status(401).json({ error: 'Bad signature' });
+    }
+    const text = req.body instanceof Buffer ? req.body.toString('utf8') : '';
+    let evt: {
+      from?: string;
+      to?: string[] | string;
+      subject?: string;
+      text?: string;
+      html?: string;
+    } = {};
+    try {
+      evt = JSON.parse(text);
+    } catch {
+      return res.status(400).json({ error: 'Invalid JSON' });
+    }
+    const toList = Array.isArray(evt.to) ? evt.to : evt.to ? [evt.to] : [];
+    // Pull the threadKey out of any r-<key>@inbound.<...> address.
+    const re = /r-([a-f0-9]{20,})@/i;
+    let threadKey: string | null = null;
+    for (const addr of toList) {
+      const m = re.exec(addr);
+      if (m) { threadKey = m[1]!; break; }
+    }
+    if (!threadKey) {
+      return res.status(200).json({ ignored: true, reason: 'no threadKey on To' });
+    }
+    const out = await prisma.outboundEmail.findUnique({ where: { threadKey } });
+    if (!out) {
+      return res.status(200).json({ ignored: true, reason: 'thread not found' });
+    }
+    const replyText = (evt.text ?? evt.html ?? '').slice(0, 8000).trim();
+    if (!replyText) {
+      return res.status(200).json({ ignored: true, reason: 'empty body' });
+    }
+    // Drop a system DM into the original sender's inbox. The "from" is
+    // the original sender themselves so the message appears as a thread
+    // they own. Header line includes the recipient's email + subject so
+    // the user knows what this is.
+    const header = `↩️ Reply from ${evt.from ?? out.toEmail} on "${out.subject}":`;
+    await prisma.message.create({
+      data: {
+        fromUserId: out.fromUserId,
+        toUserId: out.fromUserId,
+        body: `${header}\n\n${replyText}`,
+      },
+    });
+    await prisma.outboundEmail.update({
+      where: { id: out.id },
+      data: {
+        firstReplyAt: out.firstReplyAt ?? new Date(),
+        lastReplyAt: new Date(),
+      },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

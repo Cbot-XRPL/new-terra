@@ -79,14 +79,31 @@ router.get('/alerts', async (req, res, next) => {
     const alerts: Alert[] = [];
 
     // Universal alerts — apply to every role.
-    const unread = await prisma.message.count({
-      where: { toUserId: me.id, readAt: null },
-    });
+    // Anything created after this watermark counts as a "new" alert
+    // for the dashboard. Tapping Clear advances it to now.
+    const since = me.alertsLastClearedAt ?? new Date(0);
+    const [unread, newBoardPosts] = await Promise.all([
+      prisma.message.count({
+        where: { toUserId: me.id, readAt: null, createdAt: { gt: since } },
+      }),
+      // Board posts include both DM-channel + company-wide messages —
+      // we want any post the user hasn't already cleared past.
+      me.role === Role.CUSTOMER
+        ? Promise.resolve(0)
+        : prisma.messageBoardPost.count({ where: { createdAt: { gt: since } } }),
+    ]);
     if (unread > 0) {
       alerts.push({
         level: 'info',
-        message: `${unread} unread message${unread === 1 ? '' : 's'}`,
+        message: `${unread} unread DM${unread === 1 ? '' : 's'}`,
         href: '/portal/messages',
+      });
+    }
+    if (newBoardPosts > 0) {
+      alerts.push({
+        level: 'info',
+        message: `${newBoardPosts} new company post${newBoardPosts === 1 ? '' : 's'} on the message board`,
+        href: '/portal/board',
       });
     }
     if (!me.driversLicenseUrl) {
@@ -182,6 +199,22 @@ router.get('/alerts', async (req, res, next) => {
     }
 
     res.json({ alerts });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Clear the dashboard alerts panel — advances the user's
+// alertsLastClearedAt to "now" so DMs + board posts older than this
+// no longer surface as alerts. Doesn't mark anything read or change
+// the underlying records.
+router.post('/alerts/clear', async (req, res, next) => {
+  try {
+    await prisma.user.update({
+      where: { id: req.user!.sub },
+      data: { alertsLastClearedAt: new Date() },
+    });
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

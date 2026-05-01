@@ -24,6 +24,8 @@ import {
   hasProjectManagerCapability,
   hasAccountingAccess,
 } from '../lib/permissions.js';
+import { Resend } from 'resend';
+import crypto from 'node:crypto';
 
 const router = Router();
 router.use(requireAuth);
@@ -33,6 +35,18 @@ const MAX_TOOL_HOPS = 8;
 const MAX_HISTORY_TURNS = 40; // keep prompt size sane on long chats
 
 const anthropic = env.anthropic.apiKey ? new Anthropic({ apiKey: env.anthropic.apiKey }) : null;
+const resend = env.resend.apiKey ? new Resend(env.resend.apiKey) : null;
+
+// The hostname we route inbound replies through. Customize via
+// AI_INBOUND_DOMAIN in the env (defaults to "inbound.<from-domain>").
+// Replies addressed to r-<threadKey>@<this domain> are matched back to
+// the OutboundEmail row by the inbound webhook.
+function inboundDomain(): string {
+  if (process.env.AI_INBOUND_DOMAIN) return process.env.AI_INBOUND_DOMAIN;
+  // Derive from the configured RESEND_FROM, e.g. "no-reply@x.com" → "inbound.x.com"
+  const m = env.resend.from.match(/@([^>\s]+)/);
+  return m ? `inbound.${m[1]}` : 'inbound.example.com';
+}
 
 interface ToolUser {
   id: string;
@@ -403,6 +417,73 @@ const TOOLS: AiTool[] = [
         data: { fromUserId: user.id, toUserId: target.id, body: input.body },
       });
       return { id: msg.id, deliveredTo: target.name };
+    },
+  }),
+  tool({
+    name: 'send_email',
+    description: 'Send an email on behalf of the calling user. Use this for outbound contact with leads, customers, vendors, etc. The recipient\'s reply is funneled back into the user\'s portal DMs. REQUIRED: to (email), subject, body. Always confirm the body with the user before sending.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        to: { type: 'string', description: 'Recipient email address' },
+        toName: { type: 'string', description: 'Optional recipient display name' },
+        subject: { type: 'string' },
+        body: { type: 'string', description: 'Plain-text email body. Sign off as the company; the user\'s name is included automatically in the From line.' },
+      },
+      required: ['to', 'subject', 'body'],
+    },
+    zod: z.object({
+      to: z.string().email('to must be a valid email address'),
+      toName: z.string().optional(),
+      subject: z.string().min(1, 'subject is required').max(200),
+      body: z.string().min(1, 'body is required').max(10_000),
+    }),
+    gate: () => true,
+    async run(input, user) {
+      if (!resend) {
+        return { error: 'Email is not configured. Set RESEND_API_KEY in the server env.' };
+      }
+      const me = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { name: true, email: true },
+      });
+      if (!me) return { error: 'Sender lookup failed' };
+      // Random token in the reply-to so we can match an inbound bounce
+      // back to this row. 24 hex chars → ~96 bits of entropy, plenty.
+      const threadKey = crypto.randomBytes(12).toString('hex');
+      const replyTo = `r-${threadKey}@${inboundDomain()}`;
+      const fromName = me.name;
+      const fromAddr = env.resend.from.match(/<([^>]+)>/)?.[1] ?? env.resend.from;
+      const fromHeader = `${fromName} via New Terra Construction <${fromAddr}>`;
+
+      const { error } = await resend.emails.send({
+        from: fromHeader,
+        to: input.to,
+        replyTo,
+        subject: input.subject,
+        text: `${input.body}\n\n— ${me.name}\nNew Terra Construction\n(Replies to this email come back as a portal DM.)`,
+      });
+      if (error) {
+        return { error: `Resend send failed: ${error.message ?? 'unknown'}` };
+      }
+
+      const stored = await prisma.outboundEmail.create({
+        data: {
+          fromUserId: user.id,
+          toEmail: input.to.toLowerCase(),
+          toName: input.toName ?? null,
+          subject: input.subject,
+          body: input.body,
+          threadKey,
+        },
+        select: { id: true, sentAt: true },
+      });
+      return {
+        id: stored.id,
+        sentAt: stored.sentAt,
+        replyTo,
+        note: 'Sent. Replies come back as DMs to you in the portal.',
+      };
     },
   }),
   tool({

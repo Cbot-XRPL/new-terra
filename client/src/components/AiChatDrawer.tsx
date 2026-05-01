@@ -44,8 +44,10 @@ interface ChatMessage {
 // distraction during typing.
 const EXAMPLES = [
   'list leads stuck in QUOTE_SENT',
+  'email Cody to confirm Wednesday\'s walk-through',
   'create a project for Cody Ricketts at 2211 Doc Hughes',
   'DM Matt the foundation pour is moved to Wednesday',
+  'email the Hughes lead a quick follow-up',
 ];
 const STATIC_PLACEHOLDER = 'Ask the assistant…';
 const TYPE_MS = 55;

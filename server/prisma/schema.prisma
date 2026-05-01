@@ -251,6 +251,13 @@ model User {
   scheduleAssignments     ScheduleAssignee[] @relation("ScheduleAssignees")
   // AI assistant conversations belonging to this user.
   aiConversations         AiConversation[]   @relation("AiConversations")
+  // Emails sent on behalf of this user via the AI assistant. Replies
+  // back from the recipient land as portal DMs to this user.
+  outboundEmails          OutboundEmail[]    @relation("OutboundEmailSender")
+  // Timestamp of the last "Clear" tap on the dashboard alerts card.
+  // Board-post + DM counts only show items newer than this so the
+  // user can dismiss the noise once they've eyeballed it.
+  alertsLastClearedAt     DateTime?
   // Lead/estimate photo uploads — back-relations for the FK uploader links.
   leadAttachments       LeadAttachment[]     @relation("LeadAttachmentUploader")
   estimateAttachments   EstimateAttachment[] @relation("EstimateAttachmentUploader")
@@ -911,6 +918,31 @@ model Membership {
   startedAt    DateTime       @default(now())
   renewsAt     DateTime?
   active       Boolean        @default(true)
+}
+
+// Email the AI sent on behalf of a user. threadKey is a random token
+// embedded in the Reply-To header so an inbound reply can be matched
+// back to this row and posted to the originating user's DMs. Set up:
+// configure inbound mail at inbound.<your-domain> via Resend, point a
+// webhook at /api/webhooks/inbound-email, and replies thread back
+// automatically. Without inbound configured, outbound still works —
+// replies just go to the configured Reply-To inbox instead.
+model OutboundEmail {
+  id           String    @id @default(cuid())
+  fromUserId   String
+  fromUser     User      @relation("OutboundEmailSender", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toEmail      String
+  toName       String?
+  subject      String
+  body         String    @db.Text
+  threadKey    String    @unique
+  sentAt       DateTime  @default(now())
+  // First time a reply landed on this thread + most recent reply.
+  // Both null when no replies have come in yet.
+  firstReplyAt DateTime?
+  lastReplyAt  DateTime?
+
+  @@index([fromUserId, sentAt])
 }
 
 // AI assistant conversation thread. One row per chat the user starts.

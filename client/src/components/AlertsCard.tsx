@@ -44,11 +44,37 @@ export default function AlertsCard() {
     };
   }, []);
 
+  async function clearAll() {
+    try {
+      await api('/api/portal/alerts/clear', { method: 'POST' });
+      setAlerts([]);
+    } catch (err) {
+      console.warn('[alerts] clear failed', err);
+    }
+  }
+
   if (!alerts || alerts.length === 0) return null;
 
   return (
     <section className="card">
-      <h2 style={{ marginTop: 0 }}>Needs your attention</h2>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          marginBottom: '0.5rem',
+        }}
+      >
+        <h2 style={{ margin: 0 }}>Needs your attention</h2>
+        <button
+          type="button"
+          className="button-ghost button-small"
+          onClick={clearAll}
+          title="Mark these alerts as cleared (doesn't mark messages as read)"
+        >
+          Clear
+        </button>
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
         {alerts.map((a, i) => {
           const styles = LEVEL_STYLES[a.level];
