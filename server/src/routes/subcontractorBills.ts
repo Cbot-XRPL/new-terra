@@ -124,7 +124,10 @@ router.get('/pay-requests', async (req, res, next) => {
       key: string;
       userId: string;
       userName: string;
-      role: 'EMPLOYEE' | 'SUBCONTRACTOR' | 'ADMIN' | 'CUSTOMER';
+      // Mirror the Prisma Role enum so adding a new role here doesn't
+      // require a manual sync. Photographers go through the same
+      // weekly-bundle pay flow as other workers.
+      role: Role;
       billingMode: 'HOURLY' | 'DAILY';
       weekStart: string;
       weekEnd: string;
