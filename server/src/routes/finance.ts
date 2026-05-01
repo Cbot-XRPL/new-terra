@@ -40,6 +40,16 @@ const upload = multer({
 // receipt and returns the extraction so admin can update fields by hand.
 router.post('/expenses/_ocr/scan', upload.single('receipt'), async (req, res, next) => {
   try {
+    // OCR is expensive (Tesseract spawn + 10 MB image). Only users
+    // who can actually file an expense should be able to invoke it —
+    // otherwise it's a free DOS vector for anyone with a token.
+    const me = await prisma.user.findUnique({
+      where: { id: req.user!.sub },
+      select: { role: true, isAccounting: true, isProjectManager: true },
+    });
+    if (!me || !canSubmitExpense(me)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
     if (!req.file) return res.status(400).json({ error: 'No receipt uploaded' });
     // Tesseract.js wants a file path (or Buffer); we drop the upload to a
     // tmpfile so we can hand it the path. The tmpdir is per-OS so this
@@ -57,8 +67,23 @@ router.post('/expenses/_ocr/scan', upload.single('receipt'), async (req, res, ne
 
 router.post('/expenses/:id/rescan', async (req, res, next) => {
   try {
+    const me = await prisma.user.findUnique({
+      where: { id: req.user!.sub },
+      select: { id: true, role: true, isAccounting: true, isProjectManager: true },
+    });
+    if (!me || !canSubmitExpense(me)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
     const expense = await prisma.expense.findUnique({ where: { id: req.params.id } });
     if (!expense) return res.status(404).json({ error: 'Expense not found' });
+    // Submitter can rescan their own; accounting + admin can rescan
+    // any. Plain PMs can only rescan their own receipts to avoid a
+    // poke-around vector on every receipt in the system.
+    const isPrivileged = me.role === Role.ADMIN || hasAccountingAccess(me);
+    const isOwn = expense.submittedById === me.id || expense.paidByUserId === me.id;
+    if (!isPrivileged && !isOwn) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
     if (!expense.receiptUrl) return res.status(409).json({ error: 'Expense has no receipt to scan' });
     const filePath = resolvePublicUrl(expense.receiptUrl);
     const extraction = await extractReceipt(filePath);

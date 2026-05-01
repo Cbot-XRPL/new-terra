@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import Avatar from '../components/Avatar';
@@ -57,7 +58,15 @@ export default function PublicLayout() {
         </ul>
       </nav>
       <main>
-        <Outlet />
+        <Suspense
+          fallback={
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+              Loading…
+            </div>
+          }
+        >
+          <Outlet />
+        </Suspense>
       </main>
       {/* Phone-only sticky CTA — keeps "free estimate" + a tap-to-call link
           one thumb away on small screens. Hidden on desktop and for users

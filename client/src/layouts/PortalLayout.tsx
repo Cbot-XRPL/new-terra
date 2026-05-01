@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -265,7 +265,18 @@ export default function PortalLayout() {
         </div>
       </aside>
       <main className="portal-main">
-        <Outlet />
+        {/* Scoped Suspense — keeps the sidebar mounted while the next
+            lazy route chunk loads. The fallback only fills the content
+            pane so the user doesn't see a black-screen flash. */}
+        <Suspense
+          fallback={
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+              Loading…
+            </div>
+          }
+        >
+          <Outlet />
+        </Suspense>
       </main>
       <GlobalSearch />
       <AiChatDrawer />

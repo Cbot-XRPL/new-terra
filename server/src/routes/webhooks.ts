@@ -268,10 +268,20 @@ router.post('/stripe', async (req, res, next) => {
 // Plaid webhook receiver — fires for SYNC_UPDATES_AVAILABLE (new
 // transactions ready) plus item-level events (login required, error).
 // We just trigger a sync; the helper handles cursor advancement +
-// dedupe. Sandbox webhooks aren't signed; production ones are JWT-
-// signed but we don't verify yet (keys live behind env config).
+// dedupe.
+//
+// Authentication: Plaid signs production webhooks with a JWT we'd need
+// their key endpoint to verify. Until that's wired, we require a
+// shared-secret header (PLAID_WEBHOOK_SECRET) when configured — this
+// matches /inbound-email's pattern and at least keeps random callers
+// from triggering syncPlaidConnection on known item_ids.
 router.post('/plaid', async (req, res, next) => {
   try {
+    const expected = process.env.PLAID_WEBHOOK_SECRET;
+    if (expected) {
+      const got = req.header('x-plaid-webhook-secret');
+      if (got !== expected) return res.status(401).json({ error: 'Bad signature' });
+    }
     const text = req.body instanceof Buffer ? req.body.toString('utf8') : '';
     let evt: { webhook_type?: string; webhook_code?: string; item_id?: string } = {};
     try {

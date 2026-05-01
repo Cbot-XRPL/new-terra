@@ -28,7 +28,25 @@ const staffUpdateSchema = z.object({
 async function loadProjectFor(projectId: string, userId: string, role: Role) {
   const project = await prisma.project.findUnique({ where: { id: projectId } });
   if (!project) return null;
-  if (role === Role.CUSTOMER && project.customerId !== userId) return null;
+  if (role === Role.CUSTOMER) {
+    return project.customerId === userId ? project : null;
+  }
+  // Subs / photographers shouldn't see customer finish selections on
+  // jobs they aren't assigned to. Photographer in particular has no
+  // business reading these — keep parity with the other project-scoped
+  // routes by requiring a schedule assignment.
+  if (role === Role.SUBCONTRACTOR || role === Role.PHOTOGRAPHER) {
+    const assigned = await prisma.schedule.count({
+      where: {
+        projectId: project.id,
+        OR: [
+          { assigneeId: userId },
+          { assignees: { some: { userId } } },
+        ],
+      },
+    });
+    if (assigned === 0) return null;
+  }
   return project;
 }
 

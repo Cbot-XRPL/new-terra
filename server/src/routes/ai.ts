@@ -370,7 +370,18 @@ const TOOLS: AiTool[] = [
       status: z.enum(['NEW', 'CONTACTED', 'QUALIFIED', 'QUOTE_SENT', 'WON', 'LOST', 'ON_HOLD']),
     }),
     gate: hasSalesAccess,
-    async run(input) {
+    async run(input, user) {
+      // Non-admin sales reps may only mutate leads they own. Admins
+      // can re-stage anyone's lead. Mirrors what /api/leads/:id should
+      // be doing on the REST side.
+      const lead = await prisma.lead.findUnique({
+        where: { id: input.leadId },
+        select: { id: true, ownerId: true },
+      });
+      if (!lead) return { error: 'Lead not found' };
+      if (user.role !== Role.ADMIN && lead.ownerId !== user.id) {
+        return { error: 'Lead is owned by another rep — only an admin can change its status.' };
+      }
       const updated = await prisma.lead.update({
         where: { id: input.leadId },
         data: { status: input.status },
@@ -546,7 +557,38 @@ const TOOLS: AiTool[] = [
       assigneeIds: z.array(z.string()).optional(),
     }),
     gate: (u) => u.role === Role.ADMIN || (u.role === Role.EMPLOYEE && (u.isSales || u.isProjectManager)),
-    async run(input) {
+    async run(input, user) {
+      // Non-admin PMs may only schedule on projects they manage.
+      // Sales reps follow the same rule via the project they own;
+      // admin bypasses this scope check.
+      if (user.role !== Role.ADMIN) {
+        const project = await prisma.project.findUnique({
+          where: { id: input.projectId },
+          select: { projectManagerId: true },
+        });
+        if (!project) return { error: 'Project not found' };
+        if (project.projectManagerId !== user.id) {
+          return {
+            error: 'You can only schedule on projects you manage. Ask the assigned PM or an admin.',
+          };
+        }
+      }
+      // Validate any provided assignees are real staff users — keeps
+      // the join-table from accepting random ids.
+      if (input.assigneeIds && input.assigneeIds.length > 0) {
+        const users = await prisma.user.findMany({
+          where: { id: { in: input.assigneeIds } },
+          select: { id: true, role: true },
+        });
+        if (users.length !== input.assigneeIds.length) {
+          return { error: 'One or more assigneeIds do not exist.' };
+        }
+        const allStaff = users.every(
+          (u) => u.role === Role.ADMIN || u.role === Role.EMPLOYEE ||
+                 u.role === Role.SUBCONTRACTOR || u.role === Role.PHOTOGRAPHER,
+        );
+        if (!allStaff) return { error: 'assigneeIds must reference staff users (no customers).' };
+      }
       const sched = await prisma.schedule.create({
         data: {
           projectId: input.projectId,

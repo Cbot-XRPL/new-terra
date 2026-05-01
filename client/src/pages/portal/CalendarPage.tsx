@@ -72,12 +72,30 @@ export default function CalendarPage() {
 
   useEffect(reload, [grid, mineOnly]);
 
+  // Bucket each schedule into every day it spans, not just its start
+  // day. Multi-day jobs (e.g. "Frame walls — Mon → Wed") now show up
+  // on every covered cell so the user can see continuity at a glance.
+  // Cap the loop at 31 days so a malformed multi-year row can't
+  // explode the map.
   const byDay = useMemo(() => {
     const map = new Map<string, CalendarSchedule[]>();
+    const startOfDay = (d: Date) => {
+      const x = new Date(d);
+      x.setHours(0, 0, 0, 0);
+      return x;
+    };
     for (const s of schedules) {
-      const key = new Date(s.startsAt).toDateString();
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(s);
+      const start = startOfDay(new Date(s.startsAt));
+      const end = startOfDay(new Date(s.endsAt));
+      const cursor = new Date(start);
+      let safety = 0;
+      while (cursor.getTime() <= end.getTime() && safety < 31) {
+        const key = cursor.toDateString();
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(s);
+        cursor.setDate(cursor.getDate() + 1);
+        safety++;
+      }
     }
     return map;
   }, [schedules]);
@@ -140,12 +158,16 @@ export default function CalendarPage() {
                 title={canSchedule ? 'Click to add an event on this day' : undefined}
               >
                 <div className="calendar-day-num">{day.getDate()}</div>
-                {events.slice(0, 3).map((s) => (
-                  canSchedule ? (
+                {events.slice(0, 3).map((s) => {
+                  // Mark continuation days for multi-day events so
+                  // the user can tell "Mon" from "Tue (still Mon's job)".
+                  const isStart = sameDay(new Date(s.startsAt), day);
+                  const label = isStart ? s.title : `↪ ${s.title}`;
+                  return canSchedule ? (
                     <button
-                      key={s.id}
+                      key={`${s.id}-${day.toDateString()}`}
                       type="button"
-                      className="calendar-event"
+                      className={`calendar-event${isStart ? '' : ' is-continuation'}`}
                       title={`${new Date(s.startsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ${s.title} — ${s.project.name}${s.assignee ? ` (${s.assignee.name})` : ''} · click to edit`}
                       onClick={(ev) => {
                         ev.stopPropagation();
@@ -160,19 +182,19 @@ export default function CalendarPage() {
                         });
                       }}
                     >
-                      {s.title}
+                      {label}
                     </button>
                   ) : (
                     <Link
-                      key={s.id}
+                      key={`${s.id}-${day.toDateString()}`}
                       to={`/portal/projects/${s.project.id}`}
-                      className="calendar-event"
+                      className={`calendar-event${isStart ? '' : ' is-continuation'}`}
                       title={`${new Date(s.startsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ${s.title} — ${s.project.name}${s.assignee ? ` (${s.assignee.name})` : ''}`}
                     >
-                      {s.title}
+                      {label}
                     </Link>
-                  )
-                ))}
+                  );
+                })}
                 {events.length > 3 && (
                   <div className="calendar-more muted">+{events.length - 3} more</div>
                 )}

@@ -391,8 +391,32 @@ router.get('/payroll.csv', async (req, res, next) => {
 
 router.get('/project/:projectId/summary', async (req, res, next) => {
   try {
-    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    const me = await prisma.user.findUnique({
+      where: { id: req.user!.sub },
+      select: { id: true, role: true, isAccounting: true, isProjectManager: true },
+    });
     if (!me || me.role === Role.CUSTOMER) return res.status(403).json({ error: 'Forbidden' });
+
+    // Per-user labor totals are sensitive (compensation signal). Only
+    // admins, accounting employees, and the assigned PM may see them.
+    // Plain employees / subs / photographers can hit /my-summary for
+    // their own numbers but shouldn't read the full project breakdown.
+    const isPrivilegedStaff =
+      me.role === Role.ADMIN ||
+      (me.role === Role.EMPLOYEE && (me.isAccounting || me.isProjectManager));
+    if (!isPrivilegedStaff) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    if (me.role === Role.EMPLOYEE && !me.isAccounting && me.isProjectManager) {
+      // PM scope = projects they manage. Accounting + admin pass through.
+      const project = await prisma.project.findUnique({
+        where: { id: req.params.projectId },
+        select: { projectManagerId: true },
+      });
+      if (!project || project.projectManagerId !== me.id) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+    }
 
     const grouped = await prisma.timeEntry.groupBy({
       by: ['userId', 'billable'],

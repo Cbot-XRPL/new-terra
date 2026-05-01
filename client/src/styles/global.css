@@ -1273,6 +1273,10 @@ input:focus, textarea:focus, select:focus {
   width: 100%;
 }
 .calendar-event:hover { background: var(--accent-strong); }
+/* Continuation pill — same color but a hair more transparent so the
+   eye registers it as a "carry-over" of an earlier multi-day event
+   rather than a fresh row starting today. */
+.calendar-event.is-continuation { opacity: 0.72; }
 .calendar-event-time { font-weight: 700; margin-right: 3px; }
 .calendar-more { font-size: 0.65rem; line-height: 1.2; }
 @media (max-width: 700px) {

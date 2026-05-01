@@ -78,6 +78,11 @@ export default function AiAssistantPage() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [animatedPlaceholder, setAnimatedPlaceholder] = useState('');
   const [lureStopped, setLureStopped] = useState(false);
+  // True only when the typewriter has run its full cycle budget. Until
+  // then we render the in-progress (possibly empty) animated value
+  // verbatim — falling back to the static placeholder between examples
+  // would flash "Ask the assistant…" every ~250ms.
+  const [lureFinished, setLureFinished] = useState(false);
 
   async function pickImages(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -107,6 +112,7 @@ export default function AiAssistantPage() {
     // Restart the typewriter lure on every chat switch so a freshly
     // opened empty thread shows the same animated hint as a cold load.
     setLureStopped(false);
+    setLureFinished(false);
   }, [routeId]);
 
   async function loadConversations() {
@@ -149,7 +155,7 @@ export default function AiAssistantPage() {
   // hasn't engaged the composer. Matches the corner drawer so both
   // empty states feel like the same product.
   useEffect(() => {
-    if (lureStopped || input.length > 0 || messages.length > 0) {
+    if (lureStopped || lureFinished || input.length > 0 || messages.length > 0) {
       return;
     }
     let cancelled = false;
@@ -182,6 +188,7 @@ export default function AiAssistantPage() {
           cycle++;
           if (cycle >= MAX_CYCLES) {
             setAnimatedPlaceholder('');
+            setLureFinished(true);
             return;
           }
           exampleIdx = (exampleIdx + 1) % EXAMPLES.length;
@@ -195,7 +202,7 @@ export default function AiAssistantPage() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [lureStopped, input.length, messages.length]);
+  }, [lureStopped, lureFinished, input.length, messages.length]);
 
   async function newChat() {
     try {
@@ -406,9 +413,9 @@ export default function AiAssistantPage() {
             }}
             onFocus={() => setLureStopped(true)}
             placeholder={
-              lureStopped || messages.length > 0 || input.length > 0
+              lureStopped || lureFinished || messages.length > 0 || input.length > 0
                 ? STATIC_PLACEHOLDER
-                : animatedPlaceholder || STATIC_PLACEHOLDER
+                : animatedPlaceholder
             }
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {

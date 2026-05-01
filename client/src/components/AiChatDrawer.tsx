@@ -72,6 +72,11 @@ export default function AiChatDrawer() {
   // engages (focuses, types, or sends a message).
   const [animatedPlaceholder, setAnimatedPlaceholder] = useState('');
   const [lureStopped, setLureStopped] = useState(false);
+  // True only when the typewriter has run its full cycle budget and
+  // settled. Until then we render the in-progress (possibly empty)
+  // animated value verbatim — falling back to STATIC_PLACEHOLDER between
+  // examples would flash the static text every ~250ms.
+  const [lureFinished, setLureFinished] = useState(false);
 
   // Customer-facing portal users don't get the assistant. Also hide
   // it on the dedicated /portal/ai page — the floating FAB would just
@@ -90,8 +95,17 @@ export default function AiChatDrawer() {
   // play. Cycles through ~MAX_CYCLES examples then settles on the
   // static placeholder. Cancellation flag + cleared timeout in the
   // cleanup so closing/re-opening the drawer resets cleanly.
+  // Reset finished/stopped flags when the drawer closes so the next
+  // open starts the typewriter fresh.
   useEffect(() => {
-    if (!open || lureStopped || input.length > 0 || messages.length > 0) {
+    if (!open) {
+      setLureFinished(false);
+      setLureStopped(false);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || lureStopped || lureFinished || input.length > 0 || messages.length > 0) {
       return;
     }
     let cancelled = false;
@@ -126,6 +140,7 @@ export default function AiChatDrawer() {
           cycle++;
           if (cycle >= MAX_CYCLES) {
             setAnimatedPlaceholder('');
+            setLureFinished(true);
             return;
           }
           exampleIdx = (exampleIdx + 1) % EXAMPLES.length;
@@ -139,7 +154,7 @@ export default function AiChatDrawer() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [open, lureStopped, input.length, messages.length]);
+  }, [open, lureStopped, lureFinished, input.length, messages.length]);
 
   if (!visible) return null;
 
@@ -283,9 +298,9 @@ export default function AiChatDrawer() {
               }}
               onFocus={() => setLureStopped(true)}
               placeholder={
-                lureStopped || messages.length > 0 || input.length > 0
+                lureStopped || lureFinished || messages.length > 0 || input.length > 0
                   ? STATIC_PLACEHOLDER
-                  : animatedPlaceholder || STATIC_PLACEHOLDER
+                  : animatedPlaceholder
               }
               onKeyDown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {

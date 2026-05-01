@@ -14,6 +14,7 @@ import JobCostingSection from './JobCostingSection';
 import ChangeOrdersSection from './ChangeOrdersSection';
 import ContractorPayCard from '../../components/ContractorPayCard';
 import DrawSchedule from './DrawSchedule';
+import QuickScheduleModal, { type ExistingSchedule } from './QuickScheduleModal';
 import ProjectSourceEstimate from './ProjectSourceEstimate';
 
 type ProjectStatus = 'PLANNING' | 'AWAITING_CONTRACT' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETE' | 'CANCELLED';
@@ -109,6 +110,7 @@ export default function ProjectDetailPage() {
 
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [editingSchedule, setEditingSchedule] = useState<ExistingSchedule | null>(null);
   const [staff, setStaff] = useState<StaffOption[]>([]);
   const [contracts, setContracts] = useState<ProjectContract[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -441,13 +443,35 @@ export default function ProjectDetailPage() {
                     {s.notes && <p>{s.notes}</p>}
                   </div>
                   {canAddSchedule && (
-                    <button
-                      type="button"
-                      className="button button-ghost button-small"
-                      onClick={() => deleteSchedule(s.id)}
-                    >
-                      Delete
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                      <button
+                        type="button"
+                        className="button button-ghost button-small"
+                        onClick={() => {
+                          if (!project) return;
+                          setEditingSchedule({
+                            id: s.id,
+                            title: s.title,
+                            notes: s.notes,
+                            startsAt: s.startsAt,
+                            endsAt: s.endsAt,
+                            project: { id: project.id, name: project.name },
+                            assignee: s.assignee
+                              ? { id: s.assignee.id, name: s.assignee.name }
+                              : null,
+                          });
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="button button-ghost button-small"
+                        onClick={() => deleteSchedule(s.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   )}
                 </div>
               </li>
@@ -635,6 +659,14 @@ export default function ProjectDetailPage() {
       )}
 
       <LogEntriesSection projectId={project.id} />
+
+      {editingSchedule && (
+        <QuickScheduleModal
+          existing={editingSchedule}
+          onClose={() => setEditingSchedule(null)}
+          onChanged={load}
+        />
+      )}
     </div>
   );
 }

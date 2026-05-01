@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { RequireAuth } from './auth/RequireAuth';
@@ -21,6 +21,7 @@ import AdminDashboard from './pages/portal/AdminDashboard';
 // Lazy: every other page. Vite splits these into their own chunks. The
 // Suspense boundary at the bottom catches them all with one shared
 // loading fallback.
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 const ContactPage = lazy(() => import('./pages/public/ContactPage'));
 const PublicGalleryPage = lazy(() => import('./pages/public/PublicGalleryPage'));
 const SurveyPage = lazy(() => import('./pages/public/SurveyPage'));
@@ -86,13 +87,13 @@ function PortalIndex() {
 }
 
 export default function App() {
+  // No top-level Suspense fallback — that would unmount the entire
+  // layout (including sidebar) every time the user navigates between
+  // lazy-loaded portal routes, causing a full-screen "Loading…" flash.
+  // Each layout (PortalLayout / PublicLayout) wraps its <Outlet /> in
+  // its own Suspense so transitions only flash the content pane.
   return (
     <AppErrorBoundary>
-    <Suspense fallback={
-      <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-        Loading…
-      </div>
-    }>
     <Routes>
       <Route element={<PublicLayout />}>
         <Route path="/" element={<HomePage />} />
@@ -425,9 +426,8 @@ export default function App() {
         />
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
-    </Suspense>
     </AppErrorBoundary>
   );
 }
