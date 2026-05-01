@@ -5,6 +5,7 @@ import { useAuth, type Role } from '../../auth/AuthContext';
 import ProjectImageCarousel from './ProjectImageCarousel';
 import QuickScheduleModal from './QuickScheduleModal';
 import AlertsCard from '../../components/AlertsCard';
+import { Hammer, Camera, HandCoins } from 'lucide-react';
 
 interface Schedule {
   id: string;
@@ -117,6 +118,22 @@ export default function StaffDashboard() {
         <h1>Hello, {user?.name.split(' ')[0]}</h1>
         <p className="muted">Schedule, message board, and project tools.</p>
       </header>
+
+      {/* Mobile-only quick actions. Three high-traffic links surfaced
+          above the alerts so a PM in the field can reach them in one
+          tap without opening the drawer. Hidden on desktop where the
+          sidebar is already inline. */}
+      <div className="mobile-quick-actions">
+        <Link to="/portal/projects" className="mobile-quick-action">
+          <Hammer size={20} /> <span>Projects</span>
+        </Link>
+        <Link to="/portal/job-receipts" className="mobile-quick-action">
+          <Camera size={20} /> <span>Upload receipt</span>
+        </Link>
+        <Link to="/portal/time" className="mobile-quick-action">
+          <HandCoins size={20} /> <span>Request pay</span>
+        </Link>
+      </div>
 
       <AlertsCard />
 

@@ -1427,6 +1427,40 @@ input:focus, textarea:focus, select:focus {
 /* Hamburger toggle is mobile-only — hidden by default and re-shown
    inside the @media (max-width: 900px) block below. */
 .portal-nav-toggle { display: none; }
+
+/* Mobile-only quick-action row on the home dashboard. Three high-traffic
+   links (Projects / Upload receipt / Request pay) shown above the alerts
+   card so a PM in the field can hit them with one tap. Hidden on
+   desktop where the inline sidebar is already at hand. */
+.mobile-quick-actions { display: none; }
+@media (max-width: 900px) {
+  .mobile-quick-actions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+  .mobile-quick-action {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.85rem 0.5rem;
+    background: var(--bg-elevated);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    text-decoration: none;
+    font-size: 0.85rem;
+    text-align: center;
+    line-height: 1.2;
+  }
+  .mobile-quick-action:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+}
 .portal-brand {
   display: flex;
   align-items: center;
