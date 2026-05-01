@@ -462,7 +462,22 @@ export default function NewEstimatePage() {
       }
       navigate(`/portal/estimates/${created.estimate.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to save estimate');
+      // Server-side zod failures arrive as `{ error: 'ValidationError',
+      // issues: [{ path, message }] }`. Surface the field-level details
+      // so the user sees "title is required" instead of "ValidationError".
+      if (err instanceof ApiError) {
+        const issues = (err.data as { issues?: Array<{ path: (string | number)[]; message: string }> } | undefined)?.issues;
+        if (issues && issues.length > 0) {
+          const lines = issues
+            .map((i) => `${i.path.join('.') || '(field)'}: ${i.message}`)
+            .join(' · ');
+          setError(`${err.message} — ${lines}`);
+        } else {
+          setError(err.message);
+        }
+      } else {
+        setError('Failed to save estimate');
+      }
     } finally {
       setSubmitting(false);
     }
