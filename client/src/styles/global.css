@@ -2011,48 +2011,55 @@ input:focus, textarea:focus, select:focus {
     gap: 0.5rem;
     padding: 0.75rem 1rem;
   }
-  .portal-brand { order: 0; flex: 0 1 auto; }
-  .portal-nav-toggle {
-    order: 1;
-    display: inline-flex;
+  /* Hamburger sits to the LEFT of the logo. The drawer expands as a
+     rounded card below the top bar and pushes the rest of the page
+     down (it lives inside the sidebar, which is the first row of the
+     grid, so the main content reflows naturally). */
+  .portal-sidebar .portal-nav-toggle {
+    order: 0;
+    display: inline-flex !important;
     align-items: center;
     justify-content: center;
-    background: var(--bg-elevated);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    width: 40px;
-    height: 40px;
+    background: var(--bg-elevated) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    width: 40px !important;
+    height: 40px !important;
+    padding: 0 !important;
+    font-weight: normal !important;
     cursor: pointer;
   }
+  .portal-brand { order: 1; flex: 0 1 auto; }
   .portal-user { order: 2; margin-top: 0; flex-direction: row; align-items: center; gap: 0.5rem; }
-  /* Mobile drawer: hidden by default, revealed when .is-open is set on
-     the sidebar. Using a height transition keeps the open/close smooth
-     without reflowing the page. */
+  /* Drawer card. Hidden by default, revealed when .is-open is set on
+     the sidebar. Animated max-height keeps the open/close smooth. */
   .portal-sidebar nav {
     order: 3;
     flex-basis: 100%;
     width: 100%;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 0;
     max-height: 0;
     overflow: hidden;
-    transition: max-height 0.25s ease;
-    /* Keep tap targets large + add a top divider when expanded so the
-       drawer reads as separate from the top bar. */
-    border-top: 1px solid transparent;
-    padding-top: 0;
+    transition: max-height 0.25s ease, margin-top 0.25s ease, padding 0.25s ease;
+    background: var(--bg-elevated);
+    border-radius: 12px;
+    border: 1px solid transparent;
+    margin-top: 0;
+    padding: 0;
   }
   .portal-sidebar.is-open nav {
     max-height: 70vh;
     overflow-y: auto;
-    border-top-color: var(--border);
-    padding-top: 0.5rem;
+    border-color: var(--border);
     margin-top: 0.5rem;
+    padding: 0.5rem;
   }
   .portal-sidebar nav a {
     /* Bigger tap targets in the mobile drawer. */
-    padding: 0.75rem 0.75rem;
+    padding: 0.85rem 0.75rem;
+    border-radius: 8px;
   }
   /* Drop the user name/role + sign-out to keep the top bar tight; the
      avatar links to the profile page where sign-out also lives. */
