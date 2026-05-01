@@ -6,6 +6,7 @@ import ProjectImageCarousel from './ProjectImageCarousel';
 import QuickScheduleModal from './QuickScheduleModal';
 import AlertsCard from '../../components/AlertsCard';
 import { Hammer, Camera, HandCoins } from 'lucide-react';
+import { welcomeMessage } from '../../lib/welcomeMessage';
 
 interface Schedule {
   id: string;
@@ -111,12 +112,16 @@ export default function StaffDashboard() {
   }, [calSchedules]);
 
   const today = new Date();
+  // Pick the welcome subtitle once per mount (per page load) so it
+  // doesn't re-roll on every state change while the user is on the
+  // dashboard. Holiday-aware → falls back to a random fun message.
+  const subtitle = useMemo(() => welcomeMessage(), []);
 
   return (
     <div className="dashboard dashboard-paneled">
       <header>
         <h1>Hello, {user?.name.split(' ')[0]}</h1>
-        <p className="muted">Schedule, message board, and project tools.</p>
+        <p className="muted">{subtitle}</p>
       </header>
 
       {/* Mobile-only quick actions. Three high-traffic links surfaced
