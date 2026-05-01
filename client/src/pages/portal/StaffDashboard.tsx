@@ -4,6 +4,7 @@ import { ApiError, api } from '../../lib/api';
 import { useAuth, type Role } from '../../auth/AuthContext';
 import ProjectImageCarousel from './ProjectImageCarousel';
 import QuickScheduleModal from './QuickScheduleModal';
+import AlertsCard from '../../components/AlertsCard';
 
 interface Schedule {
   id: string;
@@ -116,6 +117,8 @@ export default function StaffDashboard() {
         <h1>Hello, {user?.name.split(' ')[0]}</h1>
         <p className="muted">Schedule, message board, and project tools.</p>
       </header>
+
+      <AlertsCard />
 
       {error && <div className="form-error">{error}</div>}
 

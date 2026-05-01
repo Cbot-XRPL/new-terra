@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
+import AlertsCard from '../../components/AlertsCard';
 
 interface Project { id: string; name: string; address?: string | null; }
 interface Invoice { id: string; number: string; amountCents: number; status: string; issuedAt: string; dueAt?: string | null; }
@@ -36,6 +37,8 @@ export default function CustomerDashboard() {
         <h1>Welcome, {user?.name.split(' ')[0]}</h1>
         <p className="muted">Your projects, invoices, selections, and membership.</p>
       </header>
+
+      <AlertsCard />
 
       {error && <div className="form-error">{error}</div>}
 

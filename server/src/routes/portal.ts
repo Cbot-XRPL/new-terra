@@ -62,6 +62,131 @@ router.get('/customers', async (req, res, next) => {
   }
 });
 
+// Dashboard alerts — surfaces a small list of "things that need your
+// attention" right under the greeting on the home page. Role-aware so
+// the customer doesn't see internal compliance items, and so each
+// staff role only sees what they can act on. Each alert has:
+//   level: 'info' | 'warning' | 'urgent'
+//   message: short one-liner
+//   href: optional in-app link
+// The UI renders them as a list with a colour cue per level.
+router.get('/alerts', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!me) return res.status(401).json({ error: 'Unauthenticated' });
+
+    type Alert = { level: 'info' | 'warning' | 'urgent'; message: string; href?: string };
+    const alerts: Alert[] = [];
+
+    // Universal alerts — apply to every role.
+    const unread = await prisma.message.count({
+      where: { toUserId: me.id, readAt: null },
+    });
+    if (unread > 0) {
+      alerts.push({
+        level: 'info',
+        message: `${unread} unread message${unread === 1 ? '' : 's'}`,
+        href: '/portal/messages',
+      });
+    }
+    if (!me.driversLicenseUrl) {
+      alerts.push({
+        level: 'urgent',
+        message: 'Driver\'s licence missing — please upload one.',
+        href: '/portal/profile#documents',
+      });
+    }
+
+    // Staff (employee + subcontractor) compliance items.
+    if (me.role === Role.EMPLOYEE || me.role === Role.SUBCONTRACTOR) {
+      if (!me.w9SignedAt) {
+        alerts.push({
+          level: 'warning',
+          message: 'W-9 not on file — submit before your next pay request.',
+          href: '/portal/time',
+        });
+      }
+    }
+
+    // Admin / accounting — approval queues.
+    const isAccountingPath =
+      me.role === Role.ADMIN || (me.role === Role.EMPLOYEE && me.isAccounting);
+    if (isAccountingPath) {
+      const [pendingPay, pendingBills] = await Promise.all([
+        // Pending pay request entries — neither approved nor rejected,
+        // and the entry is "closed" (endedAt set, so it's a recorded
+        // shift the worker is asking to be paid for).
+        prisma.timeEntry.count({
+          where: { approvedAt: null, rejectedAt: null, endedAt: { not: null } },
+        }),
+        prisma.subcontractorBill.count({ where: { status: 'PENDING' } }),
+      ]);
+      if (pendingPay > 0) {
+        alerts.push({
+          level: 'warning',
+          message: `${pendingPay} pay request${pendingPay === 1 ? '' : 's'} awaiting approval`,
+          href: '/portal/time',
+        });
+      }
+      if (pendingBills > 0) {
+        alerts.push({
+          level: 'warning',
+          message: `${pendingBills} sub bill${pendingBills === 1 ? '' : 's'} awaiting review`,
+          href: '/portal/subcontractor-bills',
+        });
+      }
+    }
+
+    // Sales — stale leads + invitations not yet accepted.
+    if (me.role === Role.ADMIN || (me.role === Role.EMPLOYEE && me.isSales)) {
+      const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+      const staleLeads = await prisma.lead.count({
+        where: {
+          status: { in: ['NEW', 'CONTACTED', 'QUALIFIED', 'QUOTE_SENT'] },
+          updatedAt: { lt: fourteenDaysAgo },
+        },
+      });
+      if (staleLeads > 0) {
+        alerts.push({
+          level: 'info',
+          message: `${staleLeads} lead${staleLeads === 1 ? '' : 's'} idle 14+ days`,
+          href: '/portal/leads',
+        });
+      }
+    }
+
+    // Customer-side nudges — pending estimates / unpaid invoices.
+    if (me.role === Role.CUSTOMER) {
+      const [pendingEstimates, openInvoices] = await Promise.all([
+        prisma.estimate.count({
+          where: { customerId: me.id, status: { in: ['SENT', 'VIEWED'] } },
+        }),
+        prisma.invoice.count({
+          where: { customerId: me.id, status: { in: ['SENT', 'OVERDUE'] } },
+        }),
+      ]);
+      if (pendingEstimates > 0) {
+        alerts.push({
+          level: 'info',
+          message: `${pendingEstimates} estimate${pendingEstimates === 1 ? '' : 's'} waiting on your review`,
+          href: '/portal/estimates',
+        });
+      }
+      if (openInvoices > 0) {
+        alerts.push({
+          level: 'warning',
+          message: `${openInvoices} invoice${openInvoices === 1 ? '' : 's'} due`,
+          href: '/portal/invoices',
+        });
+      }
+    }
+
+    res.json({ alerts });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Cross-user profile lookup — backs the universal user-profile page
 // (/portal/users/:id). Anyone authenticated can read a basic profile of
 // any other user (name, role, avatar, email, phone, tradeType for subs).
