@@ -31,6 +31,7 @@ import financeRouter from './routes/finance.js';
 import quickbooksRouter from './routes/quickbooks.js';
 import googleDriveRouter from './routes/googleDrive.js';
 import estimateSketchRouter from './routes/estimateSketch.js';
+import estimateRoofSketchRouter from './routes/estimateRoofSketch.js';
 import imageGenRouter from './routes/imageGen.js';
 import estimateTemplatesRouter from './routes/estimateTemplates.js';
 import estimatesRouter from './routes/estimates.js';
@@ -53,6 +54,7 @@ import channelsRouter from './routes/channels.js';
 import plaidRouter from './routes/plaid.js';
 import attachmentsRouter from './routes/attachments.js';
 import aiRouter from './routes/ai.js';
+import regionalPricingRouter from './routes/regionalPricing.js';
 
 // Builds an express app without binding to a port. The listen() call lives
 // in index.ts so the test suite can import this factory and hand the app to
@@ -123,9 +125,11 @@ export function createApp(): Express {
   app.use('/api/integrations/quickbooks', quickbooksRouter);
   app.use('/api/integrations/google-drive', googleDriveRouter);
   app.use('/api/integrations/image-gen', imageGenRouter);
+  app.use('/api/integrations/regional-pricing', regionalPricingRouter);
   app.use('/api/estimate-templates', estimateTemplatesRouter);
   app.use('/api/estimates', estimatesRouter);
   app.use('/api/estimates/:estimateId/sketch', estimateSketchRouter);
+  app.use('/api/estimates/:estimateId/roof-sketch', estimateRoofSketchRouter);
   // Lead + estimate attachment endpoints — mounted at /api so the
   // routes use /api/leads/:id/attachments + /api/estimates/:id/attachments.
   app.use('/api', attachmentsRouter);

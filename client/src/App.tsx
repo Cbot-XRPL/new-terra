@@ -23,6 +23,9 @@ import AdminDashboard from './pages/portal/AdminDashboard';
 // loading fallback.
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 const EstimateSketchPage = lazy(() => import('./pages/portal/EstimateSketchPage'));
+const EstimateRoofSketchPage = lazy(() => import('./pages/portal/EstimateRoofSketchPage'));
+const SketcherHubPage = lazy(() => import('./pages/portal/SketcherHubPage'));
+const AdminPricingPage = lazy(() => import('./pages/portal/AdminPricingPage'));
 const ContactPage = lazy(() => import('./pages/public/ContactPage'));
 const PublicGalleryPage = lazy(() => import('./pages/public/PublicGalleryPage'));
 const SurveyPage = lazy(() => import('./pages/public/SurveyPage'));
@@ -398,6 +401,30 @@ export default function App() {
           element={
             <RequireAuth salesAccess>
               <EstimateSketchPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="estimates/:id/roof-sketch"
+          element={
+            <RequireAuth salesAccess>
+              <EstimateRoofSketchPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="sketcher"
+          element={
+            <RequireAuth salesAccess>
+              <SketcherHubPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="admin/pricing"
+          element={
+            <RequireAuth roles={['ADMIN']}>
+              <AdminPricingPage />
             </RequireAuth>
           }
         />

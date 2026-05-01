@@ -1896,6 +1896,7 @@ model Estimate {
   lines       EstimateLine[]
   attachments EstimateAttachment[]
   sketch      EstimateSketch?
+  roofSketch  EstimateRoofSketch?
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -1946,6 +1947,33 @@ model EstimateSketch {
   updatedAt   DateTime @updatedAt
 }
 
+// EstimateRoofSketch — Xactimate-style roof. Each facet is a polygon
+// in plan view + a pitch (rise per 12" run). Adjacent edges between
+// facets get classified at compute time (ridge / hip / valley) by
+// looking at the two facets' pitches. Solo edges become rake or eave.
+//
+// Data shape:
+//   { version: 1, facets: [{ id, name, pitchOver12, points: [{x,y}] }] }
+//
+// All measurements are in inches (plan view). The math lib converts to
+// feet on rollup.
+model EstimateRoofSketch {
+  id            String   @id @default(cuid())
+  estimateId    String   @unique
+  estimate      Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  data          Json
+  // Pitch-corrected true surface area of every facet, summed.
+  surfaceSqft   Int @default(0)
+  ridgeFeet     Int @default(0)
+  hipFeet       Int @default(0)
+  valleyFeet    Int @default(0)
+  rakeFeet      Int @default(0)
+  eaveFeet      Int @default(0)
+  facetCount    Int @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
 model EstimateLine {
   id          String   @id @default(cuid())
   estimateId  String
@@ -1978,10 +2006,17 @@ model EstimateLine {
   // migration to add another variant. Null means "unspecified" — the
   // line is just whatever its description says.
   action       String?
+  // Optional link to a catalog Product. When set, we can look up
+  // per-ZIP material price samples to seed the unit price instead of
+  // using the catalog default. Set by the line builder when the user
+  // picks a product; freeform/typed lines leave it null. Cleared (not
+  // cascaded) on product delete so historical estimates keep their data.
+  productId    String?
 
   images       EstimateLineImage[]
 
   @@index([contractorId])
+  @@index([productId])
 }
 
 // Photos tied to a specific estimate line — adjuster-style "this is the
@@ -2051,6 +2086,10 @@ model Product {
   assemblyLines   AssemblyLine[]
   inventoryAdjustments InventoryAdjustment[]
   priceHistory    ProductPriceHistory[]
+  // Per-ZIP regional price samples — populated by manual CSV imports
+  // (and future BLS/Home Depot ingest jobs) so the estimator can pull
+  // location-aware unit prices instead of always using the catalog default.
+  materialSamples MaterialPriceSample[]
 
   @@index([category])
   @@index([kind])
@@ -2169,4 +2208,37 @@ model TimeEntry {
   @@index([userId])
   @@index([projectId])
   @@index([startedAt])
+}
+
+// LaborWageRegion — per-ZIP-prefix mean hourly wage for a BLS occupation
+// (SOC) code. Sources include the BLS OEWS download (auto-ingest is
+// deferred) and ad-hoc CSV uploads. The "national baseline" is stored as
+// a row with `zipPrefix = '000'` so the wage-multiplier helper can divide
+// regional × national without a separate table.
+model LaborWageRegion {
+  id              String   @id @default(cuid())
+  zipPrefix       String   // first 3 digits of ZIP, "000" for national avg
+  socCode         String   // BLS occupation code, e.g. "47-2031"
+  meanHourlyCents Int
+  metroName       String?
+  source          String   // 'BLS-OEWS-2025', 'manual-csv', etc.
+  fetchedAt       DateTime @default(now())
+
+  @@unique([zipPrefix, socCode, source])
+  @@index([zipPrefix])
+}
+
+// MaterialPriceSample — observed per-ZIP unit price for a catalog Product.
+// History matters (the estimator picks the freshest), so this is
+// append-only; importers insert new rows rather than upserting.
+model MaterialPriceSample {
+  id             String   @id @default(cuid())
+  productId      String
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  zipPrefix      String
+  unitPriceCents Int
+  source         String   // 'home-depot-api' | 'manual-csv' | 'rsmeans-csv' | …
+  fetchedAt      DateTime @default(now())
+
+  @@index([productId, zipPrefix])
 }

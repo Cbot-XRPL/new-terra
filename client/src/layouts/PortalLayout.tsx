@@ -25,6 +25,7 @@ import {
   X,
   Sparkles,
   Image as ImageIcon,
+  Pencil,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
@@ -226,6 +227,11 @@ export default function PortalLayout() {
           {(user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isSales)) && (
             <NavLink to="/portal/estimator/visual">
               <Box size={ICON_SIZE} /> <span>Visual estimator</span>
+            </NavLink>
+          )}
+          {(user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isSales)) && (
+            <NavLink to="/portal/sketcher">
+              <Pencil size={ICON_SIZE} /> <span>Sketcher</span>
             </NavLink>
           )}
           {(user?.role === 'EMPLOYEE' ||

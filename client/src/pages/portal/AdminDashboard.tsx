@@ -275,6 +275,9 @@ export default function AdminDashboard() {
           <Link to="/portal/admin/portfolio" className="button button-ghost">
             Public portfolio…
           </Link>
+          <Link to="/portal/admin/pricing" className="button button-ghost">
+            Pricing data…
+          </Link>
           <Link to="/portal/bulk-import" className="button button-ghost">
             Bulk import…
           </Link>

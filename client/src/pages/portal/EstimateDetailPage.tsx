@@ -440,6 +440,14 @@ export default function EstimateDetailPage() {
                 ✏️ Open sketch
               </Link>
             )}
+            {estimate.status === 'DRAFT' && (
+              <Link
+                to={`/portal/estimates/${estimate.id}/roof-sketch`}
+                className="button-ghost"
+              >
+                🏠 Open roof sketch
+              </Link>
+            )}
             {estimate.status === 'DRAFT' && estimate.customer && (
               <button onClick={send}>Send to customer</button>
             )}

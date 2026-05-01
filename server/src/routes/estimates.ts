@@ -17,6 +17,7 @@ import { hasSalesAccess } from '../lib/permissions.js';
 import { audit } from '../lib/audit.js';
 import { sendContractInviteEmail } from '../lib/mailer.js';
 import { expandAssembly } from '../lib/assemblies.js';
+import { latestMaterialPrice, zipPrefixOf } from '../lib/regionalPricing.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -31,6 +32,52 @@ function recalcLineTotal(quantity: number, unitPriceCents: number): number {
   // Round to integer cents — fractional cents would silently round on the
   // QB push and break customer-facing totals.
   return Math.round(quantity * unitPriceCents);
+}
+
+// Customers store their address as freeform text (User.mailingAddress is
+// multi-line, Lead.address is single-line) so we extract the ZIP with a
+// regex rather than expecting a structured field. Returns "" when nothing
+// looks like a 5-digit ZIP — the regional-pricing helpers treat empty as
+// "no ZIP, fall back to defaults".
+function extractZip(text: string | null | undefined): string {
+  if (!text) return '';
+  const m = text.match(/\b(\d{5})(?:-\d{4})?\b/);
+  return m ? m[1] : '';
+}
+
+// Resolve the seed unit price for a line. Order of preference:
+//   1. Per-ZIP MaterialPriceSample for productId         ← regional override
+//   2. Caller-supplied unitPriceCents (kept as-is)       ← explicit user intent
+//   3. Catalog product.defaultMaterialCents              ← material baseline
+//   4. Catalog product.defaultUnitPriceCents             ← legacy lump price
+// Always defensive: any lookup error returns the caller's value untouched.
+async function resolveLineUnitPrice(
+  productId: string | null | undefined,
+  fallbackCents: number,
+  zip: string,
+): Promise<number> {
+  if (!productId) return fallbackCents;
+  try {
+    if (zip) {
+      const regional = await latestMaterialPrice(productId, zip);
+      if (regional !== null && regional > 0) return regional;
+    }
+    // Caller already supplied a non-zero unit price → trust them.
+    if (fallbackCents > 0) return fallbackCents;
+    // Cast through `any` because defaultMaterialCents is part of the
+    // Product model but the deploy script regenerates the Prisma client
+    // — this code has to type-check before that happens.
+    const product = (await (prisma as any).product.findUnique({
+      where: { id: productId },
+      select: { defaultMaterialCents: true, defaultUnitPriceCents: true },
+    })) as { defaultMaterialCents?: number; defaultUnitPriceCents?: number } | null;
+    if (!product) return fallbackCents;
+    if ((product.defaultMaterialCents ?? 0) > 0) return product.defaultMaterialCents!;
+    if ((product.defaultUnitPriceCents ?? 0) > 0) return product.defaultUnitPriceCents!;
+    return fallbackCents;
+  } catch {
+    return fallbackCents;
+  }
 }
 
 function recalcTotals(
@@ -189,6 +236,10 @@ const lineInputSchema = z.object({
   // Xactimate-style action variant: REPLACE / RR / DR / CLEAN. Free-form
   // so we don't have to ship a migration to add another variant.
   action: z.string().max(20).nullable().optional(),
+  // Optional catalog product id this line is sourced from. When set we
+  // try to seed the unit price from regional pricing samples before
+  // falling back to the catalog default — see resolveLineUnitPrice().
+  productId: z.string().nullable().optional(),
 });
 
 const createSchema = z.object({
@@ -405,7 +456,41 @@ router.post('/', async (req, res, next) => {
       }
     }
 
-    const linesWithTotals = lines.map((l, idx) => ({
+    // Look up the customer/lead's ZIP once so per-line product price
+    // resolution stays cheap. Customer.mailingAddress (multi-line freeform)
+    // wins over Lead.address (single-line) when both are available.
+    let projectZip = '';
+    if (data.customerId) {
+      const cust = await prisma.user.findUnique({
+        where: { id: data.customerId },
+        select: { mailingAddress: true },
+      });
+      projectZip = extractZip(cust?.mailingAddress);
+    }
+    if (!projectZip && data.leadId) {
+      const lead = await prisma.lead.findUnique({
+        where: { id: data.leadId },
+        select: { address: true },
+      });
+      projectZip = extractZip(lead?.address);
+    }
+    // Resolve every line's seed unit price BEFORE computing totals so the
+    // estimate header math agrees with the persisted line rows. The helper
+    // is defensive: missing samples / lookup errors fall through to the
+    // caller's value, so this never breaks estimate creation.
+    const resolvedLines = await Promise.all(
+      lines.map(async (l, idx) => {
+        const productId = (l as { productId?: string | null }).productId ?? null;
+        const unitPriceCents = await resolveLineUnitPrice(
+          productId,
+          l.unitPriceCents,
+          projectZip,
+        );
+        return { ...l, productId, unitPriceCents, position: l.position ?? idx };
+      }),
+    );
+
+    const linesWithTotals = resolvedLines.map((l, idx) => ({
       ...l,
       position: l.position ?? idx,
       totalCents: recalcLineTotal(l.quantity, l.unitPriceCents),
@@ -451,7 +536,12 @@ router.post('/', async (req, res, next) => {
             contractorId: l.contractorId ?? null,
             displayTrade: l.displayTrade ?? null,
             action: l.action ?? null,
-          })),
+            // Cast — productId column lands with this change; the deploy
+            // script regenerates the Prisma client before the build runs.
+            ...((l as { productId?: string | null }).productId
+              ? { productId: (l as { productId?: string | null }).productId }
+              : {}),
+          })) as never,
         },
       },
       include: {
