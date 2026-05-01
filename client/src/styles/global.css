@@ -49,27 +49,27 @@
   --body-gradient: linear-gradient(180deg, #ffffff 0%, #f7f9fa 100%);
 }
 
-/* "Tech" theme — flat black dev-doc aesthetic. Pure black background,
-   minimal surface elevation, amber accent. Inspired by modern doc sites
-   (GitBook, Mintlify) where the chrome stays out of the way and the
-   content carries the page. No gradient on the body so the background
-   reads as one solid plane. */
+/* "Tech" theme — dev-doc aesthetic. Cool blue-black background with
+   blue-grey surfaces and a softened blue accent. Inspired by GitHub
+   dark / VS Code dark. No body gradient so the background reads as one
+   flat plane. Compared to Dark: cooler tones, slightly more contrast
+   between surface tiers, lower-saturation accent. */
 [data-theme="tech"] {
   color-scheme: dark;
-  --bg: #000000;
-  --bg-elevated: #0a0a0a;
-  --bg-soft: #050505;
-  --surface: #141414;
-  --surface-strong: #1c1c1c;
-  --text: #f0f0f0;
-  --text-muted: #8a8a8a;
-  --border: #1f1f1f;
-  --accent: #f59e0b;
-  --accent-strong: #d97706;
-  --shadow: rgba(0, 0, 0, 0.8);
-  --error: #ef4444;
-  --success: #10b981;
-  --body-gradient: #000000;
+  --bg: #0d1117;
+  --bg-elevated: #161b22;
+  --bg-soft: #010409;
+  --surface: #21262d;
+  --surface-strong: #30363d;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --border: #30363d;
+  --accent: #58a6ff;
+  --accent-strong: #1f6feb;
+  --shadow: rgba(0, 0, 0, 0.6);
+  --error: #f85149;
+  --success: #3fb950;
+  --body-gradient: #0d1117;
 }
 
 html, body, #root {
