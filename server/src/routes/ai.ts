@@ -45,17 +45,34 @@ interface ToolUser {
 // Each tool: a zod schema for inputs, a permission gate, and a runner
 // that gets fully-validated input. Wrapping the run in a structured
 // error lets Claude self-correct when fields are missing.
-interface AiTool<S extends z.ZodTypeAny = z.ZodTypeAny> {
+//
+// The runner is typed as accepting `any` from the zod parse output so
+// every tool's specific schema can be inferred at the call site without
+// forcing a generic onto AiTool itself (which collides with putting
+// heterogeneous tools in a single array — TS can't unify the generic
+// across rows).
+interface AiTool {
   name: string;
   description: string;
-  inputSchema: Anthropic.Messages.Tool.InputSchema; // for Claude
-  zod: S;                                            // for runtime validation
+  inputSchema: Anthropic.Messages.Tool.InputSchema;
+  zod: z.ZodTypeAny;
   gate: (user: ToolUser) => boolean;
-  run: (input: z.infer<S>, user: ToolUser) => Promise<unknown>;
+  run: (input: any, user: ToolUser) => Promise<unknown>;
 }
 
-function tool<S extends z.ZodTypeAny>(t: AiTool<S>): AiTool<S> {
-  return t;
+// `tool()` is an identity helper that lets us define each tool with
+// inferred zod-input types in the local closure (input is statically
+// typed inside `run`) while still returning the array-friendly
+// AiTool shape.
+function tool<S extends z.ZodTypeAny>(t: {
+  name: string;
+  description: string;
+  inputSchema: Anthropic.Messages.Tool.InputSchema;
+  zod: S;
+  gate: (user: ToolUser) => boolean;
+  run: (input: z.infer<S>, user: ToolUser) => Promise<unknown>;
+}): AiTool {
+  return t as AiTool;
 }
 
 // ─── Tool registry ────────────────────────────────────────────────────
