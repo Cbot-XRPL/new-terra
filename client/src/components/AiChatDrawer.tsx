@@ -42,18 +42,34 @@ interface ChatMessage {
 // to suggest what the assistant can do. Stops after a couple cycles or
 // the moment the user clicks in — so it feels like a hint, not a
 // distraction during typing.
+// Kept short on purpose — drawer is ~380px wide, so >35 chars wraps to
+// two lines and the lure looks broken. Mix of reads, writes, emails,
+// DMs, and recaps so the user sees the breadth of what's possible.
 const EXAMPLES = [
-  'list leads stuck in QUOTE_SENT',
-  'email Cody to confirm Wednesday\'s walk-through',
-  'create a project for Cody Ricketts at 2211 Doc Hughes',
-  'DM Matt the foundation pour is moved to Wednesday',
-  'email the Hughes lead a quick follow-up',
+  'list active projects',
+  'show overdue invoices',
+  'what leads went stale?',
+  'draft an email to Cody',
+  'DM Matt about Wednesday',
+  'create a project for Cody',
+  'recap the Hughes project',
+  'show pending pay requests',
+  'list this week\'s schedule',
+  'add a lead named Sam',
+  'email the Hughes follow-up',
+  'who\'s on the deck job?',
+  'show subs without W-9s',
+  'invoices over $5k?',
+  'mark lead 12 as won',
+  'draft a thanks to a customer',
+  'pending sub bills?',
+  'what\'s in my inbox?',
 ];
 const STATIC_PLACEHOLDER = 'Ask the assistant…';
-const TYPE_MS = 55;
-const DELETE_MS = 28;
-const HOLD_MS = 1400;
-const MAX_CYCLES = 2;
+const TYPE_MS = 50;
+const DELETE_MS = 25;
+const HOLD_MS = 1300;
+const MAX_CYCLES = 6;
 
 // Tiny floating-button chat drawer wired to /api/ai/chat. The server
 // runs the tool loop (lookup users, create leads, etc.); this UI is
@@ -97,7 +113,9 @@ export default function AiChatDrawer() {
     }
     let cancelled = false;
     let cycle = 0;
-    let exampleIdx = 0;
+    // Randomize the starting example each open so the user sees a
+    // different sequence on every visit instead of the same opener.
+    let exampleIdx = Math.floor(Math.random() * EXAMPLES.length);
     let charIdx = 0;
     let phase: 'typing' | 'pausing' | 'deleting' = 'typing';
     let timer: ReturnType<typeof setTimeout> | null = null;

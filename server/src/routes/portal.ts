@@ -75,7 +75,19 @@ router.get('/alerts', async (req, res, next) => {
     const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
     if (!me) return res.status(401).json({ error: 'Unauthenticated' });
 
-    type Alert = { level: 'info' | 'warning' | 'urgent'; message: string; href?: string };
+    // dismissable=true: soft alerts that auto-clear when the user
+    //   taps "open" or hits Clear (DMs, board posts, stale leads,
+    //   pending queues — they're "fyi" items, not blockers).
+    // dismissable=false: hard alerts that stay until the underlying
+    //   data changes (driver's licence missing, W-9 not on file,
+    //   customer-side overdue invoices, etc.). Tapping these dismisses
+    //   nothing; the only way to clear them is to fix the situation.
+    type Alert = {
+      level: 'info' | 'warning' | 'urgent';
+      message: string;
+      href?: string;
+      dismissable: boolean;
+    };
     const alerts: Alert[] = [];
 
     // Universal alerts — apply to every role.
@@ -97,6 +109,7 @@ router.get('/alerts', async (req, res, next) => {
         level: 'info',
         message: `${unread} unread DM${unread === 1 ? '' : 's'}`,
         href: '/portal/messages',
+        dismissable: true,
       });
     }
     if (newBoardPosts > 0) {
@@ -104,6 +117,7 @@ router.get('/alerts', async (req, res, next) => {
         level: 'info',
         message: `${newBoardPosts} new company post${newBoardPosts === 1 ? '' : 's'} on the message board`,
         href: '/portal/board',
+        dismissable: true,
       });
     }
     if (!me.driversLicenseUrl) {
@@ -111,6 +125,7 @@ router.get('/alerts', async (req, res, next) => {
         level: 'urgent',
         message: 'Driver\'s licence missing — please upload one.',
         href: '/portal/profile#documents',
+        dismissable: false,
       });
     }
 
@@ -121,6 +136,7 @@ router.get('/alerts', async (req, res, next) => {
           level: 'warning',
           message: 'W-9 not on file — submit before your next pay request.',
           href: '/portal/time',
+          dismissable: false,
         });
       }
     }
@@ -143,6 +159,7 @@ router.get('/alerts', async (req, res, next) => {
           level: 'warning',
           message: `${pendingPay} pay request${pendingPay === 1 ? '' : 's'} awaiting approval`,
           href: '/portal/time',
+          dismissable: true,
         });
       }
       if (pendingBills > 0) {
@@ -150,6 +167,7 @@ router.get('/alerts', async (req, res, next) => {
           level: 'warning',
           message: `${pendingBills} sub bill${pendingBills === 1 ? '' : 's'} awaiting review`,
           href: '/portal/subcontractor-bills',
+          dismissable: true,
         });
       }
     }
@@ -168,11 +186,13 @@ router.get('/alerts', async (req, res, next) => {
           level: 'info',
           message: `${staleLeads} lead${staleLeads === 1 ? '' : 's'} idle 14+ days`,
           href: '/portal/leads',
+          dismissable: true,
         });
       }
     }
 
     // Customer-side nudges — pending estimates / unpaid invoices.
+    // These stay until resolved (paid / reviewed) — no dismiss.
     if (me.role === Role.CUSTOMER) {
       const [pendingEstimates, openInvoices] = await Promise.all([
         prisma.estimate.count({
@@ -187,6 +207,7 @@ router.get('/alerts', async (req, res, next) => {
           level: 'info',
           message: `${pendingEstimates} estimate${pendingEstimates === 1 ? '' : 's'} waiting on your review`,
           href: '/portal/estimates',
+          dismissable: false,
         });
       }
       if (openInvoices > 0) {
@@ -194,6 +215,7 @@ router.get('/alerts', async (req, res, next) => {
           level: 'warning',
           message: `${openInvoices} invoice${openInvoices === 1 ? '' : 's'} due`,
           href: '/portal/invoices',
+          dismissable: false,
         });
       }
     }

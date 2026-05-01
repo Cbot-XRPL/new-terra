@@ -7,6 +7,7 @@ interface DashboardAlert {
   level: 'info' | 'warning' | 'urgent';
   message: string;
   href?: string;
+  dismissable: boolean;
 }
 
 const LEVEL_STYLES: Record<DashboardAlert['level'], { bg: string; color: string }> = {
@@ -44,16 +45,33 @@ export default function AlertsCard() {
     };
   }, []);
 
-  async function clearAll() {
+  async function clearSoftAlerts() {
+    // Advances the user's alertsLastClearedAt — only the watermark-
+    // based (soft / dismissable) alerts disappear. Doc + customer
+    // alerts are data-driven and stay until the underlying state
+    // changes.
     try {
       await api('/api/portal/alerts/clear', { method: 'POST' });
-      setAlerts([]);
+      setAlerts((prev) => (prev ? prev.filter((a) => !a.dismissable) : prev));
     } catch (err) {
       console.warn('[alerts] clear failed', err);
     }
   }
 
+  // Click handler for soft alert links: dismiss the watermark before
+  // navigating so the alert disappears the next time the dashboard
+  // loads. Doc / customer alerts skip this and just navigate normally.
+  async function dismissAndGo(alert: DashboardAlert, e: React.MouseEvent) {
+    if (!alert.dismissable) return;
+    // Don't preventDefault — let React Router handle the navigation
+    // after we fire the dismiss off in the background.
+    void clearSoftAlerts();
+    void e; // intentionally unused; keep parity with handler signature
+  }
+
   if (!alerts || alerts.length === 0) return null;
+
+  const hasDismissable = alerts.some((a) => a.dismissable);
 
   return (
     <section className="card">
@@ -66,14 +84,16 @@ export default function AlertsCard() {
         }}
       >
         <h2 style={{ margin: 0 }}>Needs your attention</h2>
-        <button
-          type="button"
-          className="button-ghost button-small"
-          onClick={clearAll}
-          title="Mark these alerts as cleared (doesn't mark messages as read)"
-        >
-          Clear
-        </button>
+        {hasDismissable && (
+          <button
+            type="button"
+            className="button-ghost button-small"
+            onClick={clearSoftAlerts}
+            title="Dismiss the soft alerts. Doc + critical alerts stay until resolved."
+          >
+            Clear
+          </button>
+        )}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
         {alerts.map((a, i) => {
@@ -98,7 +118,14 @@ export default function AlertsCard() {
             textDecoration: 'none',
           } as const;
           return a.href ? (
-            <Link key={i} to={a.href} style={rowStyle}>{inner}</Link>
+            <Link
+              key={i}
+              to={a.href}
+              style={rowStyle}
+              onClick={(e) => dismissAndGo(a, e)}
+            >
+              {inner}
+            </Link>
           ) : (
             <div key={i} style={rowStyle}>{inner}</div>
           );
