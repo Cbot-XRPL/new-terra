@@ -48,6 +48,11 @@ interface AuthContextValue {
     role?: 'CUSTOMER' | 'SUBCONTRACTOR';
     tradeType?: string;
   }) => Promise<AuthUser>;
+  // Accept a pre-minted JWT (from a federated sign-in like Google
+   // OAuth) and load the matching user. Mirrors `login` but skips the
+   // email + password roundtrip since the token already came from a
+   // trusted server flow.
+  loginWithToken: (token: string) => Promise<AuthUser>;
   logout: () => void;
   // Profile + avatar updates call this so the cached user (and derived UI like
   // the nav avatar) updates without a full page reload.
@@ -136,6 +141,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data.user;
   }, []);
 
+  const loginWithToken = useCallback<AuthContextValue['loginWithToken']>(async (token) => {
+    // Federated sign-ins (Google) default to "remember" — the user
+    // wouldn't have completed the OAuth round-trip if they didn't
+    // want to be signed in next time.
+    saveToken(token, true);
+    const data = await api<{ user: AuthUser }>('/api/auth/me');
+    setUser(data.user);
+    return data.user;
+  }, []);
+
   const logout = useCallback(() => {
     clearToken();
     setUser(null);
@@ -155,8 +170,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, loading, login, acceptInvite, register, logout, refreshUser }),
-    [user, loading, login, acceptInvite, register, logout, refreshUser],
+    () => ({ user, loading, login, loginWithToken, acceptInvite, register, logout, refreshUser }),
+    [user, loading, login, loginWithToken, acceptInvite, register, logout, refreshUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -16,6 +16,16 @@ import { env } from '../env.js';
 import { linkPreviousLeadDataToCustomer } from '../lib/leadLinking.js';
 import { ensureContractorCatalogItem } from '../lib/contractorCatalog.js';
 import { Role } from '@prisma/client';
+import {
+  SIGN_IN_SCOPES,
+  buildAuthorizeUrl,
+  exchangeCode,
+  fetchUserInfo,
+  isConfigured as isGoogleConfigured,
+  loginRedirectUri,
+  signState,
+  verifyState,
+} from '../lib/googleOauth.js';
 
 const router = Router();
 
@@ -502,6 +512,101 @@ router.get('/reset-token/:token', async (req, res, next) => {
       return res.status(404).json({ error: 'Reset link is invalid or expired' });
     }
     res.json({ email: record.user.email, name: record.user.name });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Sign in with Google ────────────────────────────────────────────
+//
+// Two endpoints:
+//   GET /api/auth/google/start    → returns the Google authorize URL
+//                                   (client follows it as a top-level
+//                                   navigation; we don't redirect from
+//                                   the API so CORS stays clean).
+//   GET /api/auth/google/callback → Google redirects here with `code`
+//                                   + `state`. We exchange, find/create
+//                                   the user, mint our JWT, and bounce
+//                                   back to the SPA at /login?google_token=...
+//                                   so the client can pluck the token,
+//                                   stash it, and route into /portal.
+
+router.get('/google/start', (req, res) => {
+  if (!isGoogleConfigured()) {
+    return res.status(503).json({ error: 'Google sign-in is not configured.' });
+  }
+  const state = signState({ kind: 'login' });
+  const url = buildAuthorizeUrl({
+    redirectUri: loginRedirectUri(),
+    scope: SIGN_IN_SCOPES,
+    state,
+  });
+  res.json({ url });
+});
+
+router.get('/google/callback', async (req, res, next) => {
+  try {
+    const code = typeof req.query.code === 'string' ? req.query.code : null;
+    const state = typeof req.query.state === 'string' ? req.query.state : null;
+    if (!code || !state) {
+      return res.redirect(`${env.appUrl}/login?google_error=missing_params`);
+    }
+    try {
+      verifyState(state, 'login');
+    } catch {
+      return res.redirect(`${env.appUrl}/login?google_error=bad_state`);
+    }
+    const tokens = await exchangeCode({ code, redirectUri: loginRedirectUri() });
+    const profile = await fetchUserInfo(tokens.access_token);
+
+    if (!profile.email_verified) {
+      return res.redirect(`${env.appUrl}/login?google_error=email_unverified`);
+    }
+    const email = profile.email.toLowerCase();
+
+    // Match by stable Google sub first, then fall back to email so an
+    // existing portal user (who hasn't connected Google yet) gets
+    // linked rather than duplicated. Refuse if the email maps to a
+    // disabled account.
+    let user = await prisma.user.findUnique({ where: { googleId: profile.sub } });
+    if (!user) {
+      user = await prisma.user.findUnique({ where: { email } });
+      if (user) {
+        // Existing email-based account — attach the Google ID.
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { googleId: profile.sub },
+        });
+      }
+    }
+
+    // Don't auto-create accounts on Google sign-in. The portal is
+    // invite-only; if the email isn't already provisioned we send the
+    // user back to login with a friendly hint instead of silently
+    // creating a Customer-role record.
+    if (!user) {
+      return res.redirect(`${env.appUrl}/login?google_error=no_account`);
+    }
+    if (!user.isActive) {
+      return res.redirect(`${env.appUrl}/login?google_error=account_disabled`);
+    }
+
+    const token = signJwt({
+      sub: user.id,
+      role: user.role,
+      email: user.email,
+      tv: user.tokenVersion,
+    });
+    await audit(req, {
+      action: 'auth.google.login',
+      resourceType: 'User',
+      resourceId: user.id,
+    });
+    // Bounce back to the SPA's /login route — it has the logic to
+    // pluck google_token from the URL, save it, and navigate to
+    // /portal. Using a fragment instead of a query keeps the token
+    // out of the server access logs.
+    return res.redirect(`${env.appUrl}/login#google_token=${encodeURIComponent(token)}`);
   } catch (err) {
     next(err);
   }

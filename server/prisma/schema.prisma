@@ -108,6 +108,11 @@ enum ExpenseSyncStatus {
 model User {
   id            String   @id @default(cuid())
   email         String   @unique
+  // Google OAuth identifier — `sub` claim from the ID token. Set when
+  // a user signs in with Google for the first time. Lets us link a
+  // returning Google login to the existing account by stable ID rather
+  // than relying on the email matching forever.
+  googleId      String?  @unique
   passwordHash  String?
   name          String
   phone         String?
@@ -240,6 +245,11 @@ model User {
   // can survive the user's deletion via SetNull).
   qbConnectionsConnected QbConnection[] @relation("QbConnectionsConnected")
   plaidConnectionsConnected PlaidConnection[] @relation("PlaidConnectionsConnected")
+
+  // Google Drive — admin connects their personal Drive once so the AI
+  // tools can browse / pull files. One connection per user; if the user
+  // is deleted, the connection cascades.
+  googleDriveConnection GoogleDriveConnection?
 
   // Auth + audit
   passwordResets    PasswordResetToken[] @relation("PasswordResets")
@@ -1700,6 +1710,31 @@ model PlaidConnection {
   connectedBy     User?    @relation("PlaidConnectionsConnected", fields: [connectedById], references: [id], onDelete: SetNull)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+// Per-user Google Drive OAuth connection. Created when an admin clicks
+// "Connect Google Drive" in settings and approves the consent screen.
+// Stores the long-lived refresh token; the access token is short-lived
+// and we mint fresh ones on demand from the refresh token.
+model GoogleDriveConnection {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Google account email + display name — surfaced in admin so the
+  // owner remembers which Drive account is connected.
+  googleEmail   String?
+  googleName    String?
+  // OAuth tokens. accessToken is short-lived (~1h). refreshToken is
+  // long-lived; encrypted at rest in production. expiresAt tracks the
+  // access token's expiry so we know when to refresh.
+  accessToken   String
+  refreshToken  String
+  expiresAt     DateTime
+  // Granted scope string from Google's response so we can detect when
+  // the user revoked / re-granted with different scopes.
+  scope         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 // Single-use password reset token. Mirrors Invitation: only the SHA-256

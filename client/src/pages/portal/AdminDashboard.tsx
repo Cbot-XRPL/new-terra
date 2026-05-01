@@ -4,6 +4,7 @@ import { ApiError, api } from '../../lib/api';
 import type { Role } from '../../auth/AuthContext';
 import MembershipsAdmin from './MembershipsAdmin';
 import SalesFlow from './SalesFlow';
+import GoogleDriveCard from '../../components/GoogleDriveCard';
 
 interface AdminUser {
   id: string;
@@ -282,6 +283,8 @@ export default function AdminDashboard() {
 
       {error && <div className="form-error">{error}</div>}
       {feedback && <div className="form-success">{feedback}</div>}
+
+      <GoogleDriveCard />
 
       <section className="card">
         <h2>Invite a user</h2>

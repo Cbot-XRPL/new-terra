@@ -68,6 +68,14 @@ export const env = {
     password: process.env.SEED_ADMIN_PASSWORD ?? 'changeMe!2026',
     name: process.env.SEED_ADMIN_NAME ?? 'Site Admin',
   },
+  google: {
+    // console.cloud.google.com → APIs & Services → Credentials → OAuth
+    // 2.0 Client IDs (Web application). Authorized redirect URIs must
+    // include both /api/auth/google/callback and /api/integrations/
+    // google-drive/callback under your APP_URL.
+    clientId: process.env.GOOGLE_CLIENT_ID ?? '',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+  },
   anthropic: {
     // console.anthropic.com → API Keys → create. Set a monthly budget
     // cap on the key so a runaway loop can't blow the bill up.

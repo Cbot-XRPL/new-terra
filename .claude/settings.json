@@ -46,7 +46,8 @@
       "Bash(npm --prefix server install --package-lock-only)",
       "Bash(npm --prefix client install --package-lock-only)",
       "WebSearch",
-      "WebFetch(domain:www.homedepot.com)"
+      "WebFetch(domain:www.homedepot.com)",
+      "Bash(awk -F: '/^[0-9]+:}/')"
     ]
   }
 }
