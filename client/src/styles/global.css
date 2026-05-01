@@ -1604,9 +1604,15 @@ input:focus, textarea:focus, select:focus {
   color: var(--text);
   border-radius: 8px;
   padding: 8px 10px;
+  /* Kill the global `textarea { margin-bottom: 1rem }` rule that
+     pushed this element up inside the grid row, which made the
+     send button look low and unaligned. */
+  margin: 0;
   font-family: inherit;
   font-size: 0.9rem;
   line-height: 1.4;
+  vertical-align: middle;
+  box-sizing: border-box;
 }
 .ai-send {
   display: inline-flex !important;
@@ -1872,9 +1878,14 @@ input:focus, textarea:focus, select:focus {
   color: var(--text);
   border-radius: 10px;
   padding: 9px 12px;
+  /* Override the global `textarea { margin-bottom: 1rem }` so the
+     send button on this row stays vertically aligned with the bar. */
+  margin: 0;
   font-family: inherit;
   font-size: 0.95rem;
   line-height: 1.4;
+  vertical-align: middle;
+  box-sizing: border-box;
 }
 @media (max-width: 800px) {
   .ai-page {
