@@ -242,6 +242,58 @@ router.post('/alerts/clear', async (req, res, next) => {
   }
 });
 
+// Cross-project gallery — every project image visible to the caller in
+// one feed. Customers see only their own projects' photos; staff see
+// every project. Paginated by createdAt desc with a sane upper bound
+// so a thousand-photo company doesn't pull the whole table at once.
+router.get('/gallery', async (req, res, next) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!me) return res.status(401).json({ error: 'Unauthenticated' });
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 60));
+    const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+
+    // Customer scope — only photos on their own projects.
+    const projectFilter = me.role === Role.CUSTOMER
+      ? { customerId: me.id }
+      : undefined;
+
+    const where = {
+      ...(projectId ? { projectId } : {}),
+      ...(projectFilter ? { project: projectFilter } : {}),
+    };
+
+    const [images, total] = await Promise.all([
+      prisma.projectImage.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: pageSize,
+        skip: (page - 1) * pageSize,
+        include: {
+          project: { select: { id: true, name: true, address: true } },
+          uploadedBy: { select: { id: true, name: true } },
+        },
+      }),
+      prisma.projectImage.count({ where }),
+    ]);
+
+    // Lightweight project list for the filter dropdown — only the
+    // projects the caller can actually see photos on.
+    const projects = await prisma.project.findMany({
+      where: projectFilter,
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      select: { id: true, name: true, _count: { select: { images: true } } },
+    });
+
+    res.json({ images, total, page, pageSize, projects });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Cross-user profile lookup — backs the universal user-profile page
 // (/portal/users/:id). Anyone authenticated can read a basic profile of
 // any other user (name, role, avatar, email, phone, tradeType for subs).

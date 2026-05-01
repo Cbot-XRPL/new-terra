@@ -1611,6 +1611,88 @@ input:focus, textarea:focus, select:focus {
 }
 .ai-send:disabled { background: var(--surface-strong); color: var(--text-muted); cursor: not-allowed; }
 
+/* ─── Cross-project gallery ──────────────────────────────────────── */
+.gallery-tile {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  padding: 0;
+  cursor: zoom-in;
+}
+.gallery-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.gallery-tile-overlay {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  padding: 0.4rem 0.5rem;
+  background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0));
+  color: #fff;
+  text-align: left;
+  font-size: 0.75rem;
+  pointer-events: none;
+}
+.gallery-tile-project {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gallery-tile-date { font-size: 0.7rem; color: rgba(255, 255, 255, 0.7) !important; }
+.gallery-tile:hover { border-color: var(--accent); }
+
+.gallery-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.92);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  cursor: zoom-out;
+}
+.gallery-lightbox img {
+  max-width: 100%;
+  max-height: calc(100vh - 8rem);
+  object-fit: contain;
+  border-radius: 6px;
+  cursor: default;
+}
+.gallery-lightbox-meta {
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-top: 0.75rem;
+  max-width: min(800px, 100%);
+  cursor: default;
+}
+.gallery-lightbox-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.gallery-lightbox-close:hover { background: rgba(255, 255, 255, 0.25); }
+
 /* ─── AI assistant — full page ─────────────────────────────────────── */
 .ai-page {
   display: grid;

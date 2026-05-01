@@ -47,6 +47,7 @@ const ProfilePage = lazy(() => import('./pages/portal/ProfilePage'));
 const UserProfilePage = lazy(() => import('./pages/portal/UserProfilePage'));
 const AdminUserDetailPage = lazy(() => import('./pages/portal/AdminUserDetailPage'));
 const AiAssistantPage = lazy(() => import('./pages/portal/AiAssistantPage'));
+const GalleryPage = lazy(() => import('./pages/portal/GalleryPage'));
 const FinanceOverviewPage = lazy(() => import('./pages/portal/FinanceOverviewPage'));
 const ExpensesPage = lazy(() => import('./pages/portal/ExpensesPage'));
 const NewExpensePage = lazy(() => import('./pages/portal/NewExpensePage'));
@@ -323,6 +324,7 @@ export default function App() {
         <Route path="users/:id" element={<UserProfilePage />} />
         <Route path="ai" element={<AiAssistantPage />} />
         <Route path="ai/:id" element={<AiAssistantPage />} />
+        <Route path="gallery" element={<GalleryPage />} />
         <Route
           path="admin/users/:id"
           element={
