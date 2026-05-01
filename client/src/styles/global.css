@@ -1577,13 +1577,17 @@ input:focus, textarea:focus, select:focus {
   font-size: 0.9rem;
 }
 .ai-send {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   width: 36px;
   height: 36px;
   flex-shrink: 0;
-  align-self: center;
+  /* Both `align-self` (flex parent) and `place-self` (grid parent) so
+     either layout puts the button dead-center. !important guards
+     against any leftover stale rule with `flex-end`. */
+  align-self: center !important;
+  place-self: center !important;
   padding: 0;
   border-radius: 50%;
   background: var(--accent);

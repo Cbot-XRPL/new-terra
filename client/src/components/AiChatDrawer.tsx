@@ -224,15 +224,17 @@ export default function AiChatDrawer() {
               <Maximize2 size={12} />
             </Link>
           </div>
-          <div className="ai-drawer-stream" ref={streamRef}>
-            {messages.map((m, i) => (
-              <div key={i} className={`ai-bubble ${m.role}`}>
-                {m.content}
-              </div>
-            ))}
-            {busy && <div className="ai-bubble assistant ai-thinking">Thinking…</div>}
-            {error && <div className="form-error" style={{ marginTop: '0.5rem' }}>{error}</div>}
-          </div>
+          {(messages.length > 0 || busy || error) && (
+            <div className="ai-drawer-stream" ref={streamRef}>
+              {messages.map((m, i) => (
+                <div key={i} className={`ai-bubble ${m.role}`}>
+                  {m.content}
+                </div>
+              ))}
+              {busy && <div className="ai-bubble assistant ai-thinking">Thinking…</div>}
+              {error && <div className="form-error" style={{ marginTop: '0.5rem' }}>{error}</div>}
+            </div>
+          )}
           {images.length > 0 && (
             <div className="ai-drawer-attachments">
               {images.map((img, i) => (
