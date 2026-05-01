@@ -1428,6 +1428,115 @@ input:focus, textarea:focus, select:focus {
    inside the @media (max-width: 900px) block below. */
 .portal-nav-toggle { display: none; }
 
+/* ─── AI assistant — floating chat ──────────────────────────────────
+   Always-visible button bottom-right, opens a small chat drawer that
+   talks to /api/ai/chat. Internal-only — customers never see it. */
+.ai-fab {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 80;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  box-shadow: 0 6px 18px var(--shadow);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.ai-fab:hover { background: var(--accent-strong); }
+.ai-drawer {
+  position: fixed;
+  right: 1rem;
+  bottom: 4.5rem;
+  z-index: 80;
+  width: min(380px, calc(100vw - 2rem));
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 12px 40px var(--shadow);
+  overflow: hidden;
+}
+.ai-drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+.ai-drawer-stream {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+.ai-bubble {
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  max-width: 100%;
+}
+.ai-bubble.user {
+  background: var(--accent);
+  color: #fff;
+  align-self: flex-end;
+}
+.ai-bubble.assistant {
+  background: var(--surface);
+  color: var(--text);
+  align-self: flex-start;
+}
+.ai-thinking { opacity: 0.7; font-style: italic; }
+.ai-drawer-composer {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+.ai-drawer-composer textarea {
+  flex: 1;
+  min-height: 2.5rem;
+  max-height: 8rem;
+  resize: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.5rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+.ai-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  align-self: flex-end;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+.ai-send:disabled { background: var(--surface-strong); color: var(--text-muted); cursor: not-allowed; }
+
 /* Mobile-only quick-action row on the home dashboard. Three high-traffic
    links (Projects / Upload receipt / Request pay) shown above the alerts
    card so a PM in the field can hit them with one tap. Hidden on

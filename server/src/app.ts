@@ -49,6 +49,7 @@ import drawsRouter from './routes/draws.js';
 import channelsRouter from './routes/channels.js';
 import plaidRouter from './routes/plaid.js';
 import attachmentsRouter from './routes/attachments.js';
+import aiRouter from './routes/ai.js';
 
 // Builds an express app without binding to a port. The listen() call lives
 // in index.ts so the test suite can import this factory and hand the app to
@@ -122,6 +123,7 @@ export function createApp(): Express {
   // Lead + estimate attachment endpoints — mounted at /api so the
   // routes use /api/leads/:id/attachments + /api/estimates/:id/attachments.
   app.use('/api', attachmentsRouter);
+  app.use('/api/ai', aiRouter);
   app.use('/api/catalog', catalogRouter);
   app.use('/api/time', timeRouter);
   app.use('/api/settings', settingsRouter);

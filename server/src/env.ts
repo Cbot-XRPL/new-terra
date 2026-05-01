@@ -68,4 +68,13 @@ export const env = {
     password: process.env.SEED_ADMIN_PASSWORD ?? 'changeMe!2026',
     name: process.env.SEED_ADMIN_NAME ?? 'Site Admin',
   },
+  anthropic: {
+    // console.anthropic.com → API Keys → create. Set a monthly budget
+    // cap on the key so a runaway loop can't blow the bill up.
+    apiKey: process.env.ANTHROPIC_API_KEY ?? '',
+    // Default to Haiku 4.5 — cheap + fast for chat. Override to
+    // claude-sonnet-4-6 or claude-opus-4-7 if you want more horsepower
+    // on specific routes.
+    model: process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001',
+  },
 };

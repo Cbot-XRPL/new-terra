@@ -28,6 +28,7 @@ import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import Avatar from '../components/Avatar';
 import GlobalSearch from '../components/GlobalSearch';
+import AiChatDrawer from '../components/AiChatDrawer';
 
 const ICON_SIZE = 18;
 
@@ -233,6 +234,7 @@ export default function PortalLayout() {
         <Outlet />
       </main>
       <GlobalSearch />
+      <AiChatDrawer />
     </div>
   );
 }
