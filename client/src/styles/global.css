@@ -2083,7 +2083,9 @@ input:focus, textarea:focus, select:focus {
      brand stay as a tight group on the left. */
   .portal-user { order: 2; margin: 0 0 0 auto; flex-direction: row; align-items: center; gap: 0.5rem; }
   /* Drawer card. Hidden by default, revealed when .is-open is set on
-     the sidebar. Animated max-height keeps the open/close smooth. */
+     the sidebar. Closed state: zero height + zero border + transparent
+     background so absolutely nothing paints. Open state takes care of
+     the card visuals. */
   .portal-sidebar nav {
     order: 3;
     flex-basis: 100%;
@@ -2093,9 +2095,9 @@ input:focus, textarea:focus, select:focus {
     max-height: 0;
     overflow: hidden;
     transition: max-height 0.25s ease, margin-top 0.25s ease, padding 0.25s ease;
-    background: var(--bg-elevated);
+    background: transparent;
+    border: none;
     border-radius: 12px;
-    border: 1px solid transparent;
     margin-top: 0;
     padding: 0;
   }
@@ -2105,7 +2107,8 @@ input:focus, textarea:focus, select:focus {
        nicer than a tiny scrollbar inside a card. */
     max-height: 200vh;
     overflow: visible;
-    border-color: var(--border);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
     margin-top: 0.5rem;
     padding: 0.5rem;
   }
@@ -2186,13 +2189,16 @@ input:focus, textarea:focus, select:focus {
   .header-actions > * { width: 100%; }
   /* Tighter input padding so the on-screen keyboard has more room. */
   input, textarea, select { padding: 8px 10px; }
+  /* Phone-width sidebar: stays sticky at the top of the viewport so the
+     hamburger is always reachable, but the inner scrollbar / max-height
+     are gone — the drawer is its own card now and expands fully. */
   .portal-sidebar {
     position: sticky;
     top: 0;
     z-index: 10;
     background: var(--bg);
-    max-height: 50vh;
-    overflow-y: auto;
+    max-height: none;
+    overflow: visible;
   }
   /* Action buttons (Approve / Sign / Delete) on phone-width tables stack
      vertically so they don't overflow the right edge. */
