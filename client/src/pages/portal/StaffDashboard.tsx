@@ -125,13 +125,13 @@ export default function StaffDashboard() {
           sidebar is already inline. */}
       <div className="mobile-quick-actions">
         <Link to="/portal/projects" className="mobile-quick-action">
-          <Hammer size={20} /> <span>Projects</span>
+          <Hammer size={16} /> <span>Projects</span>
         </Link>
         <Link to="/portal/job-receipts" className="mobile-quick-action">
-          <Camera size={20} /> <span>Upload receipt</span>
+          <Camera size={16} /> <span>Receipt</span>
         </Link>
         <Link to="/portal/time" className="mobile-quick-action">
-          <HandCoins size={20} /> <span>Request pay</span>
+          <HandCoins size={16} /> <span>Pay</span>
         </Link>
       </div>
 

@@ -1437,29 +1437,35 @@ input:focus, textarea:focus, select:focus {
   .mobile-quick-actions {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 0.5rem;
+    gap: 0.4rem;
     margin-bottom: 1rem;
   }
   .mobile-quick-action {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
     justify-content: center;
-    gap: 0.35rem;
-    padding: 0.85rem 0.5rem;
+    gap: 0.4rem;
+    padding: 0.5rem 0.6rem;
     background: var(--bg-elevated);
     color: var(--text);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 8px;
     text-decoration: none;
-    font-size: 0.85rem;
-    text-align: center;
+    font-size: 0.8rem;
     line-height: 1.2;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .mobile-quick-action > svg {
+    flex-shrink: 0;
+    color: var(--text-muted);
   }
   .mobile-quick-action:hover {
     border-color: var(--accent);
     color: var(--accent);
   }
+  .mobile-quick-action:hover > svg { color: var(--accent); }
 }
 .portal-brand {
   display: flex;
