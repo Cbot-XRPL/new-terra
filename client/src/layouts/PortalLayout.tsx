@@ -100,6 +100,11 @@ export default function PortalLayout() {
               <LayoutDashboard size={ICON_SIZE} /> <span>Overview</span>
             </NavLink>
           )}
+          {user?.role !== 'CUSTOMER' && (
+            <NavLink to="/portal/ai">
+              <Sparkles size={ICON_SIZE} /> <span>AI assistant</span>
+            </NavLink>
+          )}
           {(user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isSales)) && (
             <NavLink to="/portal/leads">
               <Target size={ICON_SIZE} /> <span>Leads</span>
@@ -168,11 +173,6 @@ export default function PortalLayout() {
           <NavLink to="/portal/gallery">
             <ImageIcon size={ICON_SIZE} /> <span>Gallery</span>
           </NavLink>
-          {user?.role !== 'CUSTOMER' && (
-            <NavLink to="/portal/ai">
-              <Sparkles size={ICON_SIZE} /> <span>AI assistant</span>
-            </NavLink>
-          )}
           {(user?.role === 'ADMIN' ||
             (user?.role === 'EMPLOYEE' && user.isAccounting)) && (
             <NavLink to="/portal/banking">
