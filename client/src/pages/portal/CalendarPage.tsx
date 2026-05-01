@@ -144,11 +144,8 @@ export default function CalendarPage() {
                     key={s.id}
                     to={`/portal/projects/${s.project.id}`}
                     className="calendar-event"
-                    title={`${s.title} — ${s.project.name}${s.assignee ? ` (${s.assignee.name})` : ''}`}
+                    title={`${new Date(s.startsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ${s.title} — ${s.project.name}${s.assignee ? ` (${s.assignee.name})` : ''}`}
                   >
-                    <span className="calendar-event-time">
-                      {new Date(s.startsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                    </span>{' '}
                     {s.title}
                   </Link>
                 ))}
