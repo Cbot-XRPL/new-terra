@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
+import { AI_EXAMPLES } from '../../lib/aiExamples';
 import { Plus, Trash2, Send, Pencil, Paperclip } from 'lucide-react';
 
 interface AttachedImage {
@@ -45,33 +46,18 @@ interface ConversationDetail {
   messages: Array<{ id: string; role: string; content: string; createdAt: string }>;
 }
 
-// Typewriter "lure" examples — same set the corner drawer uses so the
-// empty-state vibe is consistent across both surfaces.
-const EXAMPLES = [
-  'list active projects',
-  'show overdue invoices',
-  'what leads went stale?',
-  'draft an email to Cody',
-  'DM Matt about Wednesday',
-  'create a project for Cody',
-  'recap the Hughes project',
-  'show pending pay requests',
-  'list this week\'s schedule',
-  'add a lead named Sam',
-  'email the Hughes follow-up',
-  'who\'s on the deck job?',
-  'show subs without W-9s',
-  'invoices over $5k?',
-  'mark lead 12 as won',
-  'draft a thanks to a customer',
-  'pending sub bills?',
-  'what\'s in my inbox?',
-];
-const STATIC_PLACEHOLDER = 'Ask the assistant…  (Cmd/Ctrl+Enter to send)';
-const TYPE_MS = 50;
-const DELETE_MS = 25;
-const HOLD_MS = 1300;
-const MAX_CYCLES = 6;
+// Typewriter "lure" — shared example pool with the corner drawer.
+const EXAMPLES = AI_EXAMPLES;
+// Kept short so it doesn't wrap inside the single-row textarea and
+// flash mid-animation. The Cmd+Enter shortcut hint moves to the
+// header copy / aria attributes instead.
+const STATIC_PLACEHOLDER = 'Ask the assistant…';
+const TYPE_MS = 45;
+const DELETE_MS = 22;
+const HOLD_MS = 1100;
+// Long-running on the dedicated page — user is more likely to sit on
+// it for a moment, so we keep cycling through suggestions.
+const MAX_CYCLES = 60;
 
 // Full-page Claude-style assistant. Left rail = past conversations, right
 // pane = active thread. Conversations persist server-side so the user

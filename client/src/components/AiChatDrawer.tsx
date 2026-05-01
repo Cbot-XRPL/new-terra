@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ApiError, api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
+import { AI_EXAMPLES } from '../lib/aiExamples';
 import { Sparkles, X, Send, Maximize2, Paperclip } from 'lucide-react';
 
 interface AttachedImage {
@@ -38,38 +39,16 @@ interface ChatMessage {
   content: string;
 }
 
-// Typewriter "lure" examples that scroll through the empty composer
-// to suggest what the assistant can do. Stops after a couple cycles or
-// the moment the user clicks in — so it feels like a hint, not a
-// distraction during typing.
-// Kept short on purpose — drawer is ~380px wide, so >35 chars wraps to
-// two lines and the lure looks broken. Mix of reads, writes, emails,
-// DMs, and recaps so the user sees the breadth of what's possible.
-const EXAMPLES = [
-  'list active projects',
-  'show overdue invoices',
-  'what leads went stale?',
-  'draft an email to Cody',
-  'DM Matt about Wednesday',
-  'create a project for Cody',
-  'recap the Hughes project',
-  'show pending pay requests',
-  'list this week\'s schedule',
-  'add a lead named Sam',
-  'email the Hughes follow-up',
-  'who\'s on the deck job?',
-  'show subs without W-9s',
-  'invoices over $5k?',
-  'mark lead 12 as won',
-  'draft a thanks to a customer',
-  'pending sub bills?',
-  'what\'s in my inbox?',
-];
+// Typewriter "lure" — the example pool lives in lib/aiExamples so the
+// corner drawer and the full /portal/ai page share the same set.
+const EXAMPLES = AI_EXAMPLES;
 const STATIC_PLACEHOLDER = 'Ask the assistant…';
-const TYPE_MS = 50;
-const DELETE_MS = 25;
-const HOLD_MS = 1300;
-const MAX_CYCLES = 6;
+const TYPE_MS = 45;
+const DELETE_MS = 22;
+const HOLD_MS = 1100;
+// Many cycles per load — the drawer stays open while the user reads,
+// so a long-running lure keeps suggesting things until they click in.
+const MAX_CYCLES = 30;
 
 // Tiny floating-button chat drawer wired to /api/ai/chat. The server
 // runs the tool loop (lookup users, create leads, etc.); this UI is
