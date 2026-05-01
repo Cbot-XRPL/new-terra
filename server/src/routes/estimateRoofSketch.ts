@@ -34,7 +34,7 @@ router.get('/', async (req, res, next) => {
   try {
     const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
     if (!me || !hasSalesAccess(me)) return res.status(403).json({ error: 'Forbidden' });
-    const est = await prisma.estimate.findUnique({ where: { id: req.params.estimateId } });
+    const est = await prisma.estimate.findUnique({ where: { id: (req.params as { estimateId: string }).estimateId } });
     if (!est) return res.status(404).json({ error: 'Estimate not found' });
     if (me.role !== Role.ADMIN && est.createdById !== me.id) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -52,7 +52,7 @@ router.put('/', async (req, res, next) => {
   try {
     const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
     if (!me || !hasSalesAccess(me)) return res.status(403).json({ error: 'Forbidden' });
-    const est = await loadEditable(req.params.estimateId, me.id, me.role === Role.ADMIN);
+    const est = await loadEditable((req.params as { estimateId: string }).estimateId, me.id, me.role === Role.ADMIN);
     if (!est) return res.status(404).json({ error: 'Estimate not found or locked' });
 
     let parsed;
@@ -86,7 +86,7 @@ router.delete('/', async (req, res, next) => {
   try {
     const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
     if (!me || !hasSalesAccess(me)) return res.status(403).json({ error: 'Forbidden' });
-    const est = await loadEditable(req.params.estimateId, me.id, me.role === Role.ADMIN);
+    const est = await loadEditable((req.params as { estimateId: string }).estimateId, me.id, me.role === Role.ADMIN);
     if (!est) return res.status(404).json({ error: 'Estimate not found or locked' });
     await (prisma as any).estimateRoofSketch.deleteMany({ where: { estimateId: est.id } });
     res.status(204).end();
@@ -104,7 +104,7 @@ router.post('/push-to-estimate', async (req, res, next) => {
   try {
     const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
     if (!me || !hasSalesAccess(me)) return res.status(403).json({ error: 'Forbidden' });
-    const est = await loadEditable(req.params.estimateId, me.id, me.role === Role.ADMIN);
+    const est = await loadEditable((req.params as { estimateId: string }).estimateId, me.id, me.role === Role.ADMIN);
     if (!est) return res.status(404).json({ error: 'Estimate not found or locked' });
 
     const sketch = await (prisma as any).estimateRoofSketch.findUnique({
