@@ -1502,7 +1502,11 @@ input:focus, textarea:focus, select:focus {
 }
 .ai-thinking { opacity: 0.7; font-style: italic; }
 .ai-drawer-composer {
-  display: flex;
+  /* Grid for bulletproof three-column layout: paperclip | textarea | send.
+     align-items: center centers all three vertically regardless of how
+     tall the textarea grows (1 row vs. multi-line typing). */
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 0.4rem;
   padding: 0.5rem;
@@ -1712,7 +1716,9 @@ input:focus, textarea:focus, select:focus {
   align-self: flex-start;
 }
 .ai-page-composer {
-  display: flex;
+  /* Same three-column grid as the drawer composer. */
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem;

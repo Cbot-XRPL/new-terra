@@ -318,15 +318,15 @@ export default function AiAssistantPage() {
             ))}
           </div>
         )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          multiple
+          style={{ position: 'absolute', width: 0, height: 0, opacity: 0, pointerEvents: 'none' }}
+          onChange={(e) => pickImages(e.target.files)}
+        />
         <form className="ai-page-composer" onSubmit={send}>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            multiple
-            style={{ display: 'none' }}
-            onChange={(e) => pickImages(e.target.files)}
-          />
           <button
             type="button"
             className="ai-attach"
@@ -338,7 +338,7 @@ export default function AiAssistantPage() {
             <Paperclip size={18} />
           </button>
           <textarea
-            rows={2}
+            rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask the assistant…  (Cmd/Ctrl+Enter to send)"
