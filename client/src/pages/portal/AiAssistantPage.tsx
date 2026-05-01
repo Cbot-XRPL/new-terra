@@ -402,7 +402,7 @@ export default function AiAssistantPage() {
             title="Attach images"
             aria-label="Attach images"
           >
-            <Paperclip size={18} />
+            <Paperclip size={14} />
           </button>
           <textarea
             rows={1}

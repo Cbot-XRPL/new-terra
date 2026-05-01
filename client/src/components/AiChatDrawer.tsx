@@ -287,7 +287,7 @@ export default function AiChatDrawer() {
               title="Attach images"
               aria-label="Attach images"
             >
-              <Paperclip size={16} />
+              <Paperclip size={13} />
             </button>
             <textarea
               rows={1}

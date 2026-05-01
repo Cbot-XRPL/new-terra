@@ -1574,41 +1574,49 @@ input:focus, textarea:focus, select:focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  /* Smaller than the send button on purpose — paperclip is a quiet
+     secondary action; the send arrow is the primary CTA. */
+  width: 22px;
+  height: 22px;
   flex-shrink: 0;
   padding: 0;
-  border-radius: 50%;
-  background: transparent;
+  border-radius: 4px;
+  /* !important everywhere: the global `button { background-color }`
+     rule applies the accent color by default; we have to win the
+     cascade to keep this icon clean (no bubble). */
+  background: transparent !important;
   color: var(--text-muted);
-  border: none;
+  border: 0 !important;
   cursor: pointer;
+  font-weight: normal;
 }
-.ai-attach:hover { color: var(--text); background: var(--surface); }
-.ai-attach:disabled { opacity: 0.5; cursor: not-allowed; }
+.ai-attach:hover { color: var(--text); background: transparent !important; }
+.ai-attach:disabled { opacity: 0.5; cursor: not-allowed; background: transparent !important; }
 .ai-drawer-composer textarea {
   flex: 1;
-  min-height: 2.5rem;
+  /* line-height drives the visual baseline so a single-line message
+     sits centered in the bar instead of sticking to the top. */
+  min-height: 36px;
   max-height: 8rem;
   resize: none;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
   border-radius: 8px;
-  padding: 0.5rem;
+  padding: 8px 10px;
   font-family: inherit;
   font-size: 0.9rem;
+  line-height: 1.4;
 }
 .ai-send {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
+  /* Sized to match the input's outer height (36px) so the button
+     visually clicks into the bar's right edge instead of floating. */
   width: 36px;
   height: 36px;
   flex-shrink: 0;
-  /* Both `align-self` (flex parent) and `place-self` (grid parent) so
-     either layout puts the button dead-center. !important guards
-     against any leftover stale rule with `flex-end`. */
   align-self: center !important;
   place-self: center !important;
   padding: 0;
@@ -1619,6 +1627,9 @@ input:focus, textarea:focus, select:focus {
   cursor: pointer;
 }
 .ai-send:disabled { background: var(--surface-strong); color: var(--text-muted); cursor: not-allowed; }
+/* Page composer's send button is a touch bigger than the drawer's so
+   it stays in proportion with the larger input bar. */
+.ai-page-composer .ai-send { width: 40px; height: 40px; }
 
 /* ─── Cross-project gallery ──────────────────────────────────────── */
 .gallery-tile {
@@ -1851,16 +1862,19 @@ input:focus, textarea:focus, select:focus {
 }
 .ai-page-composer textarea {
   flex: 1;
-  min-height: 2.75rem;
+  /* Match the send button's 40px outer height so the button sits flush
+     with the input bar instead of floating above it. */
+  min-height: 40px;
   max-height: 10rem;
   resize: none;
   border: 1px solid var(--border);
   background: var(--bg-elevated);
   color: var(--text);
   border-radius: 10px;
-  padding: 0.6rem 0.75rem;
+  padding: 9px 12px;
   font-family: inherit;
   font-size: 0.95rem;
+  line-height: 1.4;
 }
 @media (max-width: 800px) {
   .ai-page {
