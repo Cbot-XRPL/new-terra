@@ -1189,9 +1189,16 @@ input:focus, textarea:focus, select:focus {
      can refuse to shrink below the longest event title and overflow the
      card on mobile. The 0 minimum lets columns shrink + ellipsis kick in. */
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  background: rgba(95, 99, 104, 0.32);
+  /* Theme-aware grid lines: the container's background paints the gaps
+     between cells. Hardcoded rgba was too transparent on the Native
+     theme — switching to var(--border) gives consistent contrast on
+     every theme without needing per-theme overrides. */
+  background: var(--border);
   gap: 1px;
   min-width: 0;
+  /* Wrap the whole grid with a 1px border too so the outer edge has a
+     line and doesn't bleed into the card's border-radius / background. */
+  border: 1px solid var(--border);
 }
 .calendar-dow {
   background: var(--bg-elevated);
@@ -1208,7 +1215,9 @@ input:focus, textarea:focus, select:focus {
   padding: 0.4rem;
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  /* Tight gap between the day number + event pills so 3-4 events fit
+     comfortably without overflowing into "+ N more". */
+  gap: 0.15rem;
   font-size: 0.8rem;
 }
 .calendar-cell.muted-cell { background: var(--bg); opacity: 0.5; }
@@ -1235,25 +1244,30 @@ input:focus, textarea:focus, select:focus {
 }
 .calendar-day-num {
   font-weight: 600;
-  font-size: 1rem;
-  margin-bottom: 0.25rem;
+  font-size: 0.9rem;
+  margin-bottom: 0.15rem;
+  line-height: 1.1;
 }
 .calendar-event {
   display: block;
   max-width: 100%;
   background: var(--accent);
   color: #202124;
-  border-radius: 4px;
-  padding: 1px 6px;
+  border-radius: 3px;
+  /* Thinner pill — was 1px 6px / 0.75rem font. Drops the per-event
+     height by ~30% so 3-4 events fit in a cell where 2 used to. */
+  padding: 0 5px;
   text-decoration: none;
-  font-size: 0.75rem;
+  font-size: 0.68rem;
+  line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-bottom: 1px;
 }
 .calendar-event:hover { background: var(--accent-strong); }
-.calendar-event-time { font-weight: 700; margin-right: 4px; }
-.calendar-more { font-size: 0.7rem; }
+.calendar-event-time { font-weight: 700; margin-right: 3px; }
+.calendar-more { font-size: 0.65rem; line-height: 1.2; }
 @media (max-width: 700px) {
   .calendar-cell { min-height: 60px; padding: 0.25rem; font-size: 0.7rem; }
   .calendar-day-num { font-size: 0.8rem; }
