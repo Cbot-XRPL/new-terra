@@ -551,6 +551,13 @@ const chatSchema = z.object({
       content: z.string().min(1).max(20_000),
     }),
   ).min(1),
+  // Optional images attached to the latest user turn. Base64 data only
+  // (no data: prefix); the server stitches them into the message before
+  // forwarding to Anthropic. Capped per-call so payloads stay sane.
+  images: z.array(z.object({
+    mediaType: z.string().regex(/^image\/(png|jpeg|gif|webp)$/, 'Unsupported image type'),
+    data: z.string().min(1).max(15_000_000), // ~11MB base64-encoded
+  })).max(8).optional(),
 });
 
 router.post('/chat', async (req, res, next) => {
@@ -560,7 +567,7 @@ router.post('/chat', async (req, res, next) => {
         error: 'AI assistant is not configured. Set ANTHROPIC_API_KEY in the server env.',
       });
     }
-    const { messages, conversationId } = chatSchema.parse(req.body);
+    const { messages, conversationId, images } = chatSchema.parse(req.body);
     const me = await prisma.user.findUnique({
       where: { id: req.user!.sub },
       select: { id: true, role: true, isSales: true, isProjectManager: true, isAccounting: true },
@@ -585,6 +592,28 @@ router.post('/chat', async (req, res, next) => {
       role: m.role,
       content: m.content,
     }));
+    // Stitch attached images onto the latest user message. Anthropic's
+    // image content blocks live alongside text in a content array.
+    if (images && images.length > 0) {
+      const lastIdx = anthropicMessages.length - 1;
+      const last = anthropicMessages[lastIdx];
+      if (last && last.role === 'user' && typeof last.content === 'string') {
+        anthropicMessages[lastIdx] = {
+          role: 'user',
+          content: [
+            ...images.map((img) => ({
+              type: 'image' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: img.mediaType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+                data: img.data,
+              },
+            })),
+            { type: 'text' as const, text: last.content },
+          ],
+        };
+      }
+    }
 
     let hops = 0;
     let finalText = '';

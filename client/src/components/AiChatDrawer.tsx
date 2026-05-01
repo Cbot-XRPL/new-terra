@@ -2,7 +2,36 @@ import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
-import { Sparkles, X, Send, Maximize2 } from 'lucide-react';
+import { Sparkles, X, Send, Maximize2, Paperclip } from 'lucide-react';
+
+interface AttachedImage {
+  // Original filename for display.
+  name: string;
+  // image/jpeg, image/png, etc.
+  mediaType: string;
+  // Base64 data URL minus the prefix — what Anthropic's API wants.
+  data: string;
+  // Local URL for the thumbnail preview.
+  preview: string;
+}
+
+async function fileToAttached(file: File): Promise<AttachedImage> {
+  const buf = await file.arrayBuffer();
+  // btoa-friendly base64 conversion in chunks (large files crash naive
+  // String.fromCharCode... approaches).
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
+  }
+  return {
+    name: file.name,
+    mediaType: file.type || 'image/jpeg',
+    data: btoa(binary),
+    preview: URL.createObjectURL(file),
+  };
+}
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -35,9 +64,11 @@ export default function AiChatDrawer() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [images, setImages] = useState<AttachedImage[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const streamRef = useRef<HTMLDivElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   // Typewriter animation state. animatedPlaceholder is the current
   // partial string; lureStopped flag halts the loop once the user
   // engages (focuses, types, or sends a message).
@@ -112,16 +143,27 @@ export default function AiChatDrawer() {
   async function send(e: FormEvent) {
     e.preventDefault();
     const text = input.trim();
-    if (!text || busy) return;
+    if ((!text && images.length === 0) || busy) return;
     setError(null);
-    const next: ChatMessage[] = [...messages, { role: 'user', content: text }];
+    // Build a display-only content string so the bubble shows what was sent.
+    const display = text + (images.length > 0 ? `\n[${images.length} image${images.length === 1 ? '' : 's'} attached]` : '');
+    const next: ChatMessage[] = [...messages, { role: 'user', content: display || '(image)' }];
     setMessages(next);
+    const sendImages = images;
     setInput('');
+    setImages([]);
+    if (fileRef.current) fileRef.current.value = '';
     setBusy(true);
     try {
       const r = await api<{ reply: string }>('/api/ai/chat', {
         method: 'POST',
-        body: JSON.stringify({ messages: next }),
+        body: JSON.stringify({
+          messages: next,
+          // Server attaches these to the latest user message before
+          // forwarding to Anthropic. Stripping the preview URL — only
+          // mediaType + base64 data are wire-relevant.
+          images: sendImages.map((i) => ({ mediaType: i.mediaType, data: i.data })),
+        }),
       });
       setMessages((prev) => [...prev, { role: 'assistant', content: r.reply }]);
     } catch (err) {
@@ -129,6 +171,30 @@ export default function AiChatDrawer() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function pickImages(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const next: AttachedImage[] = [];
+    for (const f of Array.from(files)) {
+      if (!f.type.startsWith('image/')) continue;
+      // 10 MB hard cap — Anthropic rejects huge images anyway and
+      // sending raw 4K phone shots wastes tokens.
+      if (f.size > 10 * 1024 * 1024) {
+        setError(`${f.name} is over 10 MB`);
+        continue;
+      }
+      next.push(await fileToAttached(f));
+    }
+    setImages((prev) => [...prev, ...next]);
+    setLureStopped(true);
+  }
+  function removeImage(idx: number) {
+    setImages((prev) => {
+      const dropped = prev[idx];
+      if (dropped) URL.revokeObjectURL(dropped.preview);
+      return prev.filter((_, i) => i !== idx);
+    });
   }
 
   return (
@@ -147,34 +213,16 @@ export default function AiChatDrawer() {
         <div className="ai-drawer" role="dialog" aria-label="AI assistant">
           <div className="ai-drawer-header">
             <strong>AI assistant</strong>
-            <div style={{ display: 'flex', gap: '0.25rem' }}>
-              <Link
-                to="/portal/ai"
-                className="button-ghost button-small"
-                title="Open the full assistant page"
-                onClick={() => setOpen(false)}
-              >
-                <Maximize2 size={12} />
-              </Link>
-              <button
-                type="button"
-                className="button-ghost button-small"
-                onClick={() => setMessages([])}
-                disabled={busy || messages.length === 0}
-                title="Clear conversation"
-              >
-                Clear
-              </button>
-            </div>
+            <Link
+              to="/portal/ai"
+              className="button-ghost button-small"
+              title="Open the full assistant page"
+              onClick={() => setOpen(false)}
+            >
+              <Maximize2 size={12} />
+            </Link>
           </div>
           <div className="ai-drawer-stream" ref={streamRef}>
-            {messages.length === 0 && (
-              <div className="muted" style={{ fontSize: '0.85rem', padding: '0.5rem 0' }}>
-                Ask anything: <em>"list leads stuck in QUOTE_SENT"</em>,{' '}
-                <em>"create a project for Cody Ricketts at 2211 Doc Hughes"</em>,{' '}
-                <em>"DM Matt that the foundation pour is moved to Wednesday"</em>.
-              </div>
-            )}
             {messages.map((m, i) => (
               <div key={i} className={`ai-bubble ${m.role}`}>
                 {m.content}
@@ -183,7 +231,42 @@ export default function AiChatDrawer() {
             {busy && <div className="ai-bubble assistant ai-thinking">Thinking…</div>}
             {error && <div className="form-error" style={{ marginTop: '0.5rem' }}>{error}</div>}
           </div>
+          {images.length > 0 && (
+            <div className="ai-drawer-attachments">
+              {images.map((img, i) => (
+                <div key={i} className="ai-attached">
+                  <img src={img.preview} alt={img.name} />
+                  <button
+                    type="button"
+                    onClick={() => removeImage(i)}
+                    title="Remove"
+                    aria-label="Remove image"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <form className="ai-drawer-composer" onSubmit={send}>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              multiple
+              style={{ display: 'none' }}
+              onChange={(e) => pickImages(e.target.files)}
+            />
+            <button
+              type="button"
+              className="ai-attach"
+              onClick={() => fileRef.current?.click()}
+              disabled={busy}
+              title="Attach images"
+              aria-label="Attach images"
+            >
+              <Paperclip size={16} />
+            </button>
             <textarea
               rows={2}
               value={input}
@@ -200,7 +283,7 @@ export default function AiChatDrawer() {
               onKeyDown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                   e.preventDefault();
-                  if (input.trim()) (e.currentTarget.form as HTMLFormElement).requestSubmit();
+                  if (input.trim() || images.length > 0) (e.currentTarget.form as HTMLFormElement).requestSubmit();
                 }
               }}
               disabled={busy}
@@ -208,7 +291,7 @@ export default function AiChatDrawer() {
             <button
               type="submit"
               className="ai-send"
-              disabled={busy || !input.trim()}
+              disabled={busy || (!input.trim() && images.length === 0)}
               aria-label="Send"
             >
               <Send size={16} />

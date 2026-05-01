@@ -1,7 +1,30 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
-import { Plus, Trash2, Send, Pencil } from 'lucide-react';
+import { Plus, Trash2, Send, Pencil, Paperclip } from 'lucide-react';
+
+interface AttachedImage {
+  name: string;
+  mediaType: string;
+  data: string;
+  preview: string;
+}
+
+async function fileToAttached(file: File): Promise<AttachedImage> {
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
+  }
+  return {
+    name: file.name,
+    mediaType: file.type || 'image/jpeg',
+    data: btoa(binary),
+    preview: URL.createObjectURL(file),
+  };
+}
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -34,9 +57,32 @@ export default function AiAssistantPage() {
   const [activeId, setActiveId] = useState<string | null>(routeId ?? null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [images, setImages] = useState<AttachedImage[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const streamRef = useRef<HTMLDivElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  async function pickImages(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const next: AttachedImage[] = [];
+    for (const f of Array.from(files)) {
+      if (!f.type.startsWith('image/')) continue;
+      if (f.size > 10 * 1024 * 1024) {
+        setError(`${f.name} is over 10 MB`);
+        continue;
+      }
+      next.push(await fileToAttached(f));
+    }
+    setImages((prev) => [...prev, ...next]);
+  }
+  function removeImage(idx: number) {
+    setImages((prev) => {
+      const dropped = prev[idx];
+      if (dropped) URL.revokeObjectURL(dropped.preview);
+      return prev.filter((_, i) => i !== idx);
+    });
+  }
 
   // Reflect URL → state when the user clicks a sidebar item or hits back/forward.
   useEffect(() => {
@@ -127,7 +173,7 @@ export default function AiAssistantPage() {
   async function send(e: FormEvent) {
     e.preventDefault();
     const text = input.trim();
-    if (!text || busy) return;
+    if ((!text && images.length === 0) || busy) return;
     setError(null);
 
     // Lazy-create the conversation if the user lands on /portal/ai
@@ -143,18 +189,24 @@ export default function AiAssistantPage() {
       navigate(`/portal/ai/${convId}`, { replace: true });
     }
 
-    const next: ChatMessage[] = [...messages, { role: 'user', content: text }];
+    const display = text + (images.length > 0 ? `\n[${images.length} image${images.length === 1 ? '' : 's'} attached]` : '');
+    const next: ChatMessage[] = [...messages, { role: 'user', content: display || '(image)' }];
     setMessages(next);
+    const sendImages = images;
     setInput('');
+    setImages([]);
+    if (fileRef.current) fileRef.current.value = '';
     setBusy(true);
     try {
       const r = await api<{ reply: string }>('/api/ai/chat', {
         method: 'POST',
-        body: JSON.stringify({ conversationId: convId, messages: next }),
+        body: JSON.stringify({
+          conversationId: convId,
+          messages: next,
+          images: sendImages.map((i) => ({ mediaType: i.mediaType, data: i.data })),
+        }),
       });
       setMessages((prev) => [...prev, { role: 'assistant', content: r.reply }]);
-      // Refresh the sidebar so the title (which is auto-set from the
-      // first user message) updates and this chat moves to the top.
       await loadConversations();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'AI request failed');
@@ -249,7 +301,42 @@ export default function AiAssistantPage() {
           {error && <div className="form-error" style={{ marginTop: '0.5rem' }}>{error}</div>}
         </div>
 
+        {images.length > 0 && (
+          <div className="ai-drawer-attachments" style={{ padding: '0.5rem 0.75rem 0' }}>
+            {images.map((img, i) => (
+              <div key={i} className="ai-attached">
+                <img src={img.preview} alt={img.name} />
+                <button
+                  type="button"
+                  onClick={() => removeImage(i)}
+                  title="Remove"
+                  aria-label="Remove image"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <form className="ai-page-composer" onSubmit={send}>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            style={{ display: 'none' }}
+            onChange={(e) => pickImages(e.target.files)}
+          />
+          <button
+            type="button"
+            className="ai-attach"
+            onClick={() => fileRef.current?.click()}
+            disabled={busy}
+            title="Attach images"
+            aria-label="Attach images"
+          >
+            <Paperclip size={18} />
+          </button>
           <textarea
             rows={2}
             value={input}
@@ -258,7 +345,7 @@ export default function AiAssistantPage() {
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                 e.preventDefault();
-                if (input.trim()) (e.currentTarget.form as HTMLFormElement).requestSubmit();
+                if (input.trim() || images.length > 0) (e.currentTarget.form as HTMLFormElement).requestSubmit();
               }
             }}
             disabled={busy}
@@ -266,7 +353,7 @@ export default function AiAssistantPage() {
           <button
             type="submit"
             className="ai-send"
-            disabled={busy || !input.trim()}
+            disabled={busy || (!input.trim() && images.length === 0)}
             aria-label="Send"
           >
             <Send size={16} />
