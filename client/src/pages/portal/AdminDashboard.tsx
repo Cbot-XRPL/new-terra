@@ -385,12 +385,12 @@ export default function AdminDashboard() {
           <tbody>
             {sortedUsers.map((u) => (
               <tr key={u.id}>
-                <td>
+                <td data-label="Name">
                   <Link to={`/portal/admin/users/${u.id}`} title="Open detail">{u.name}</Link>
                 </td>
-                <td>{u.email}</td>
-                <td>{u.role.toLowerCase()}</td>
-                <td>
+                <td data-label="Email">{u.email}</td>
+                <td data-label="Role">{u.role.toLowerCase()}</td>
+                <td data-label="Sales">
                   {u.role === 'EMPLOYEE' ? (
                     <button
                       className={`button-small ${u.isSales ? '' : 'button-ghost'}`}
@@ -403,7 +403,7 @@ export default function AdminDashboard() {
                     <span className="muted">—</span>
                   )}
                 </td>
-                <td>
+                <td data-label="PM">
                   {u.role === 'EMPLOYEE' ? (
                     <button
                       className={`button-small ${u.isProjectManager ? '' : 'button-ghost'}`}
@@ -416,7 +416,7 @@ export default function AdminDashboard() {
                     <span className="muted">—</span>
                   )}
                 </td>
-                <td>
+                <td data-label="Acct">
                   {u.role === 'EMPLOYEE' ? (
                     <button
                       className={`button-small ${u.isAccounting ? '' : 'button-ghost'}`}
@@ -429,7 +429,7 @@ export default function AdminDashboard() {
                     <span className="muted">—</span>
                   )}
                 </td>
-                <td>
+                <td data-label="Pay">
                   {u.role !== 'CUSTOMER' ? (
                     <button
                       className="button-small button-ghost"
@@ -444,7 +444,7 @@ export default function AdminDashboard() {
                     <span className="muted">—</span>
                   )}
                 </td>
-                <td>{u.isActive ? 'Active' : 'Disabled'}</td>
+                <td data-label="Status">{u.isActive ? 'Active' : 'Disabled'}</td>
                 <td>
                   {u.role === 'SUBCONTRACTOR' && (
                     <button

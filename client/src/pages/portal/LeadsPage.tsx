@@ -407,7 +407,7 @@ export default function LeadsPage() {
               <tbody>
                 {data.leads.map((l) => (
                   <tr key={l.id}>
-                    <td>
+                    <td data-label="Name">
                       <Link to={`/portal/leads/${l.id}`}><strong>{l.name}</strong></Link>
                       {l.serviceCategory && (
                         <div style={{ fontSize: '0.75rem', marginTop: '0.15rem' }}>
@@ -416,15 +416,15 @@ export default function LeadsPage() {
                       )}
                       {l.address && <div className="muted" style={{ fontSize: '0.85rem' }}>{l.address}</div>}
                     </td>
-                    <td>
+                    <td data-label="Contact">
                       {l.email && <div>{l.email}</div>}
                       {l.phone && <div className="muted">{l.phone}</div>}
                     </td>
-                    <td className="muted" style={{ maxWidth: 280 }}>
+                    <td data-label="Scope" className="muted" style={{ maxWidth: 280 }}>
                       {l.scope ? l.scope.slice(0, 80) + (l.scope.length > 80 ? '…' : '') : '—'}
                     </td>
-                    <td>{l.owner?.name ?? <span className="muted">unassigned</span>}</td>
-                    <td>
+                    <td data-label="Owner">{l.owner?.name ?? <span className="muted">unassigned</span>}</td>
+                    <td data-label="Status">
                       <select
                         value={l.status}
                         onChange={(e) => quickStatus(l, e.target.value as LeadStatus)}
@@ -438,8 +438,8 @@ export default function LeadsPage() {
                         <span className={`badge ${STATUS_BADGE[l.status]}`}>{humanize(l.status)}</span>
                       </div>
                     </td>
-                    <td>{l.estimatedValueCents ? formatCents(l.estimatedValueCents) : <span className="muted">—</span>}</td>
-                    <td>{formatDate(l.updatedAt)}</td>
+                    <td data-label="Est.">{l.estimatedValueCents ? formatCents(l.estimatedValueCents) : <span className="muted">—</span>}</td>
+                    <td data-label="Updated">{formatDate(l.updatedAt)}</td>
                     <td>
                       <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
                         <Link to={`/portal/leads/${l.id}`} className="button button-ghost button-small">Open</Link>

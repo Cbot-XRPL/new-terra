@@ -160,7 +160,7 @@ export default function ExpensesPage() {
               <tbody>
                 {data.expenses.map((e) => (
                   <tr key={e.id}>
-                    <td>
+                    <td data-label="Photo">
                       {e.receiptThumbnailUrl ? (
                         <a href={e.receiptThumbnailUrl} target="_blank" rel="noreferrer">
                           <img
@@ -174,8 +174,8 @@ export default function ExpensesPage() {
                         <span className="muted">—</span>
                       )}
                     </td>
-                    <td>{formatDate(e.date)}</td>
-                    <td>
+                    <td data-label="Date">{formatDate(e.date)}</td>
+                    <td data-label="Vendor">
                       {e.vendor?.name ?? <span className="muted">—</span>}
                       {e.description && (
                         <div className="muted" style={{ fontSize: '0.8rem' }}>
@@ -183,16 +183,16 @@ export default function ExpensesPage() {
                         </div>
                       )}
                     </td>
-                    <td>{e.category?.name ?? <span className="muted">—</span>}</td>
-                    <td>
+                    <td data-label="Category">{e.category?.name ?? <span className="muted">—</span>}</td>
+                    <td data-label="Project">
                       {e.project ? (
                         <Link to={`/portal/projects/${e.project.id}`}>{e.project.name}</Link>
                       ) : (
                         <span className="muted">—</span>
                       )}
                     </td>
-                    <td>{e.paidBy?.name ?? <span className="muted">—</span>}</td>
-                    <td>
+                    <td data-label="Paid by">{e.paidBy?.name ?? <span className="muted">—</span>}</td>
+                    <td data-label="Amount">
                       {formatCents(e.amountCents)}
                       {e.reimbursable && (
                         <div className="muted" style={{ fontSize: '0.75rem' }}>
@@ -200,7 +200,7 @@ export default function ExpensesPage() {
                         </div>
                       )}
                     </td>
-                    <td>
+                    <td data-label="Status">
                       <span className={`badge ${SYNC_BADGE[e.syncStatus]}`}>
                         {e.syncStatus.toLowerCase().replace('_', ' ')}
                       </span>

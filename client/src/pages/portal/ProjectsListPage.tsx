@@ -201,16 +201,16 @@ export default function ProjectsListPage() {
             <tbody>
               {projects.map((p) => (
                 <tr key={p.id}>
-                  <td><strong>{p.name}</strong></td>
-                  <td>
+                  <td data-label="Project"><strong>{p.name}</strong></td>
+                  <td data-label="Status">
                     <span className={`badge ${STATUS_BADGE[p.status]}`}>{humanize(p.status)}</span>
                   </td>
-                  <td>{p.customer.name}</td>
-                  <td>{p.projectManager?.name ?? <span className="muted">unassigned</span>}</td>
-                  <td>{p.address ?? '—'}</td>
-                  <td>{p._count.schedules}</td>
-                  <td>{p._count.invoices}</td>
-                  <td>{p._count.contracts}</td>
+                  <td data-label="Customer">{p.customer.name}</td>
+                  <td data-label="PM">{p.projectManager?.name ?? <span className="muted">unassigned</span>}</td>
+                  <td data-label="Address">{p.address ?? '—'}</td>
+                  <td data-label="Schedules">{p._count.schedules}</td>
+                  <td data-label="Invoices">{p._count.invoices}</td>
+                  <td data-label="Contracts">{p._count.contracts}</td>
                   <td>
                     <Link to={`/portal/projects/${p.id}`} className="button button-ghost">
                       Open

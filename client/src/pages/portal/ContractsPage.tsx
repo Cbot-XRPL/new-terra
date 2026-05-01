@@ -224,13 +224,13 @@ export default function ContractsPage() {
               <tbody>
                 {contracts.map((c) => (
                   <tr key={c.id}>
-                    <td>{c.templateNameSnapshot}</td>
-                    {user?.role !== 'CUSTOMER' && <td>{c.customer?.name}</td>}
-                    {user?.role === 'ADMIN' && <td>{c.createdBy?.name}</td>}
-                    <td><span className={`badge ${STATUS_BADGE[c.status]}`}>{c.status.toLowerCase()}</span></td>
-                    <td>{formatDate(c.createdAt)}</td>
-                    <td>{formatDate(c.sentAt)}</td>
-                    <td>{formatDate(c.signedAt)}</td>
+                    <td data-label="Template">{c.templateNameSnapshot}</td>
+                    {user?.role !== 'CUSTOMER' && <td data-label="Customer">{c.customer?.name}</td>}
+                    {user?.role === 'ADMIN' && <td data-label="Rep">{c.createdBy?.name}</td>}
+                    <td data-label="Status"><span className={`badge ${STATUS_BADGE[c.status]}`}>{c.status.toLowerCase()}</span></td>
+                    <td data-label="Created">{formatDate(c.createdAt)}</td>
+                    <td data-label="Sent">{formatDate(c.sentAt)}</td>
+                    <td data-label="Signed">{formatDate(c.signedAt)}</td>
                     <td>
                       <Link to={`/portal/contracts/${c.id}`} className="button button-ghost button-small">
                         Open

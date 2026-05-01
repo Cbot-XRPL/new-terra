@@ -135,19 +135,20 @@ export default function InvoicesPage() {
             <tbody>
               {invoices.map((inv) => (
                 <tr key={inv.id}>
-                  <td>{inv.number}</td>
-                  <td>{formatDate(inv.issuedAt)}</td>
-                  <td>{formatDate(inv.dueAt)}</td>
-                  {user?.role !== 'CUSTOMER' && <td>{inv.customer.name}</td>}
-                  <td>
+                  <td data-label="#">{inv.number}</td>
+                  <td data-label="Issued">{formatDate(inv.issuedAt)}</td>
+                  <td data-label="Due">{formatDate(inv.dueAt)}</td>
+                  {user?.role !== 'CUSTOMER' && <td data-label="Customer">{inv.customer.name}</td>}
+                  <td data-label="Project">
                     {inv.project ? (
                       <Link to={`/portal/projects/${inv.project.id}`}>{inv.project.name}</Link>
                     ) : (
                       <span className="muted">—</span>
                     )}
                   </td>
-                  <td style={{ textAlign: 'right' }}>{formatCents(inv.amountCents)}</td>
+                  <td data-label="Amount" style={{ textAlign: 'right' }}>{formatCents(inv.amountCents)}</td>
                   <td
+                    data-label="Balance"
                     style={{
                       textAlign: 'right',
                       color: inv.balanceCents > 0 && inv.status !== 'VOID' ? 'var(--accent)' : undefined,
@@ -155,7 +156,7 @@ export default function InvoicesPage() {
                   >
                     {formatCents(inv.balanceCents)}
                   </td>
-                  <td>
+                  <td data-label="Status">
                     <span className={`badge badge-${inv.status.toLowerCase()}`}>
                       {inv.status.toLowerCase()}
                     </span>

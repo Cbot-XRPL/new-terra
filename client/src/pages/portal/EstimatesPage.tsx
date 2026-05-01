@@ -142,20 +142,20 @@ export default function EstimatesPage() {
               <tbody>
                 {data.estimates.map((e) => (
                   <tr key={e.id}>
-                    <td>{e.number}</td>
-                    <td><strong>{e.title}</strong></td>
+                    <td data-label="#">{e.number}</td>
+                    <td data-label="Title"><strong>{e.title}</strong></td>
                     {!isCustomer && (
-                      <td>
+                      <td data-label="Customer / Lead">
                         {e.customer?.name ?? e.lead?.name ?? <span className="muted">—</span>}
                       </td>
                     )}
-                    {!isCustomer && <td>{e.createdBy.name}</td>}
-                    <td>{formatCents(e.totalCents)}</td>
-                    <td>
+                    {!isCustomer && <td data-label="Rep">{e.createdBy.name}</td>}
+                    <td data-label="Total">{formatCents(e.totalCents)}</td>
+                    <td data-label="Status">
                       <span className={`badge ${STATUS_BADGE[e.status]}`}>{humanize(e.status)}</span>
                     </td>
-                    <td>{formatDate(e.createdAt)}</td>
-                    <td>{formatDate(e.validUntil)}</td>
+                    <td data-label="Created">{formatDate(e.createdAt)}</td>
+                    <td data-label="Valid until">{formatDate(e.validUntil)}</td>
                     <td>
                       <Link to={`/portal/estimates/${e.id}`} className="button button-ghost button-small">
                         Open

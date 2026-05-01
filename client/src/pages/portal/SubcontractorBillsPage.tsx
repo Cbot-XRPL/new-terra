@@ -654,7 +654,7 @@ export default function SubcontractorBillsPage() {
               {bills.map((b) => (
                 <Fragment key={b.id}>
                 <tr>
-                  <td>
+                  <td data-label="#">
                     <strong>{b.number}</strong>
                     {b.attachments.length > 0 && (
                       <button
@@ -678,15 +678,15 @@ export default function SubcontractorBillsPage() {
                       </button>
                     )}
                   </td>
-                  {!isSub && <td>{b.subcontractor.name}</td>}
-                  <td>{b.project ? b.project.name : <span className="muted">overhead</span>}</td>
-                  <td>{b.externalNumber ?? <span className="muted">—</span>}</td>
-                  <td>{formatDate(b.receivedAt)}</td>
-                  <td style={{ textAlign: 'right' }}>{formatCents(b.amountCents)}</td>
-                  <td>
+                  {!isSub && <td data-label="Sub">{b.subcontractor.name}</td>}
+                  <td data-label="Project">{b.project ? b.project.name : <span className="muted">overhead</span>}</td>
+                  <td data-label="Their #">{b.externalNumber ?? <span className="muted">—</span>}</td>
+                  <td data-label="Received">{formatDate(b.receivedAt)}</td>
+                  <td data-label="Amount" style={{ textAlign: 'right' }}>{formatCents(b.amountCents)}</td>
+                  <td data-label="Status">
                     <span className={`badge ${STATUS_BADGE[b.status]}`}>{b.status.toLowerCase()}</span>
                   </td>
-                  <td className="muted" style={{ fontSize: '0.85rem' }}>
+                  <td data-label="Paid" className="muted" style={{ fontSize: '0.85rem' }}>
                     {b.paidAt
                       ? <>{formatDate(b.paidAt)}{b.paidMethod ? ` · ${METHOD_LABEL[b.paidMethod]}` : ''}{b.paidReference ? ` · ${b.paidReference}` : ''}</>
                       : '—'}

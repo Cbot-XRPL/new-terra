@@ -2245,33 +2245,55 @@ input:focus, textarea:focus, select:focus {
   .table button + button { margin-left: 0; margin-top: 0.25rem; display: inline-block; }
 
   /* Stacked-card table layout — at phone width, columns can't survive
-     side-by-side so each row becomes a vertical block. Header is hidden
-     (the cell content is self-describing for our tables: the first cell
-     is always a name/identifier, follow-on cells are short metadata).
-     Keeps tap targets generous and kills the column-overlap bug. */
+     side-by-side so each row becomes a vertical block. Header is hidden;
+     each cell renders its own data-label as a small caption above the
+     value so the row reads like a labeled mini-card. Cells without a
+     data-label (action button cells, etc.) just stack inline. */
   .card .table { display: block; overflow-x: visible; max-width: 100%; }
   .card .table thead { display: none; }
   .card .table tbody, .card .table tr { display: block; }
   .card .table tr {
-    padding: 0.6rem 0;
-    border-bottom: 1px solid var(--border);
+    padding: 0.85rem 0.75rem;
+    margin-bottom: 0.6rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
     display: flex;
     flex-direction: column;
-    gap: 0.2rem;
+    gap: 0.5rem;
   }
-  .card .table tr:last-child { border-bottom: none; }
+  .card .table tr:last-child { margin-bottom: 0; }
   .card .table td {
-    display: block;
-    padding: 0.1rem 0;
+    display: grid;
+    grid-template-columns: minmax(80px, 110px) 1fr;
+    align-items: baseline;
+    gap: 0.6rem;
+    padding: 0;
     border: none;
     word-break: break-word;
   }
-  /* First cell — usually the name — gets a touch more weight so the row
-     reads like a list item with a heading + supporting metadata below. */
-  .card .table td:first-child { font-weight: 600; font-size: 0.95rem; }
-  /* Inputs / selects inside table cells (e.g. the Active toggle, qty
-     fields) shouldn't be jammed against text — let them sit on their
-     own row at full width. */
+  .card .table td[data-label]::before {
+    content: attr(data-label);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+  /* Cells with no label (action buttons, checkboxes) span full width. */
+  .card .table td:not([data-label]) {
+    display: block;
+    padding-top: 0.25rem;
+  }
+  /* First cell — usually the name — bold, no label prefix. */
+  .card .table td:first-child {
+    display: block;
+    font-weight: 600;
+    font-size: 1rem;
+    margin-bottom: 0.15rem;
+  }
+  .card .table td:first-child::before { display: none; }
+  /* Inputs / selects inside cells take the right column fully. */
   .card .table td input,
   .card .table td select,
   .card .table td textarea { width: 100%; max-width: 100%; }
