@@ -1,4 +1,8 @@
 import { Router } from 'express';
+import multer from 'multer';
+import path from 'node:path';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import { z } from 'zod';
 import {
   ContractStatus,
@@ -32,11 +36,31 @@ function recalcLineTotal(quantity: number, unitPriceCents: number): number {
 function recalcTotals(
   lines: Array<{ totalCents: number }>,
   taxRateBps: number,
-): { subtotalCents: number; taxCents: number; totalCents: number } {
+  overheadBps: number = 0,
+  profitBps: number = 0,
+): {
+  subtotalCents: number;
+  taxCents: number;
+  overheadCents: number;
+  profitCents: number;
+  totalCents: number;
+} {
   const subtotal = lines.reduce((s, l) => s + l.totalCents, 0);
   // taxRateBps of 700 = 7.00% — divide by 10_000.
   const tax = Math.round((subtotal * taxRateBps) / 10_000);
-  return { subtotalCents: subtotal, taxCents: tax, totalCents: subtotal + tax };
+  // Xactimate's order: O is computed off subtotal, P is computed off
+  // (subtotal + O). Tax is added at the end on the pre-O&P subtotal so
+  // the customer isn't taxed on the contractor's profit. Each piece is
+  // independent: a 0% O&P estimate falls through with no change.
+  const overhead = Math.round((subtotal * overheadBps) / 10_000);
+  const profit = Math.round(((subtotal + overhead) * profitBps) / 10_000);
+  return {
+    subtotalCents: subtotal,
+    taxCents: tax,
+    overheadCents: overhead,
+    profitCents: profit,
+    totalCents: subtotal + overhead + profit + tax,
+  };
 }
 
 // Masks an estimate for a customer-bound payload. Two transformations:
@@ -56,8 +80,12 @@ function recalcTotals(
 function maskEstimateForCustomer<E extends {
   markupBps?: number;
   taxRateBps?: number;
+  overheadBps?: number;
+  profitBps?: number;
   subtotalCents?: number;
   taxCents?: number;
+  overheadCents?: number;
+  profitCents?: number;
   totalCents?: number;
   lines: Array<{
     description: string;
@@ -90,15 +118,26 @@ function maskEstimateForCustomer<E extends {
     };
   });
 
-  // Recompute totals from the marked-up line totals so the cents tie out.
+  // Recompute totals from the marked-up line totals so the cents tie
+  // out. O&P stays visible to the customer (Xactimate-style — overhead
+  // + profit are itemized on the customer's estimate, not hidden).
+  // Markup is separate: it's the cost-side scrub from the contractor's
+  // raw cost up to the price they're quoting; O&P is the
+  // industry-standard 10/10 (or whatever they configured) on top.
   let subtotalCents = estimate.subtotalCents;
   let taxCents = estimate.taxCents;
+  let overheadCents = estimate.overheadCents ?? 0;
+  let profitCents = estimate.profitCents ?? 0;
   let totalCents = estimate.totalCents;
-  if (markupBps > 0) {
+  const overheadBps = estimate.overheadBps ?? 0;
+  const profitBps = estimate.profitBps ?? 0;
+  if (markupBps > 0 || overheadBps > 0 || profitBps > 0) {
     subtotalCents = lines.reduce((s, l) => s + l.totalCents, 0);
     const taxRateBps = estimate.taxRateBps ?? 0;
     taxCents = Math.round((subtotalCents * taxRateBps) / 10_000);
-    totalCents = subtotalCents + taxCents;
+    overheadCents = Math.round((subtotalCents * overheadBps) / 10_000);
+    profitCents = Math.round(((subtotalCents + overheadCents) * profitBps) / 10_000);
+    totalCents = subtotalCents + overheadCents + profitCents + taxCents;
   }
 
   return {
@@ -106,6 +145,8 @@ function maskEstimateForCustomer<E extends {
     lines,
     subtotalCents,
     taxCents,
+    overheadCents,
+    profitCents,
     totalCents,
     // Don't leak markup info to the customer — they don't need to know.
     markupBps: 0,
@@ -145,6 +186,9 @@ const lineInputSchema = z.object({
   // contractor's User.tradeType (or "Labor"). Lets sales flip the same
   // contractor between e.g. Demo and Framing across different lines.
   displayTrade: z.string().max(60).nullable().optional(),
+  // Xactimate-style action variant: REPLACE / RR / DR / CLEAN. Free-form
+  // so we don't have to ship a migration to add another variant.
+  action: z.string().max(20).nullable().optional(),
 });
 
 const createSchema = z.object({
@@ -160,6 +204,11 @@ const createSchema = z.object({
   // time. 1500 = 15%. Cap at 100% (10_000 bps) — anything above that is
   // almost certainly a typo and would scare a customer.
   markupBps: z.number().int().min(0).max(10_000).optional(),
+  // Overhead + Profit in basis points. Default 1000/1000 (10/10) to
+  // match Xactimate's residential default. Cap at 50% each — anything
+  // higher is almost certainly a fat-finger that would tank the deal.
+  overheadBps: z.number().int().min(0).max(5_000).optional(),
+  profitBps: z.number().int().min(0).max(5_000).optional(),
   validUntil: z.string().datetime().optional().nullable(),
   // Lines optional on create — when a templateId is provided we'll seed
   // from the template's lines.
@@ -361,7 +410,14 @@ router.post('/', async (req, res, next) => {
       position: l.position ?? idx,
       totalCents: recalcLineTotal(l.quantity, l.unitPriceCents),
     }));
-    const totals = recalcTotals(linesWithTotals, data.taxRateBps ?? 0);
+    const overheadBps = data.overheadBps ?? 1000;
+    const profitBps = data.profitBps ?? 1000;
+    const totals = recalcTotals(
+      linesWithTotals,
+      data.taxRateBps ?? 0,
+      overheadBps,
+      profitBps,
+    );
 
     const number = await nextEstimateNumber();
     const estimate = await prisma.estimate.create({
@@ -373,6 +429,8 @@ router.post('/', async (req, res, next) => {
         termsText: data.termsText,
         taxRateBps: data.taxRateBps ?? 0,
         markupBps: data.markupBps ?? 0,
+        overheadBps,
+        profitBps,
         validUntil: data.validUntil ? new Date(data.validUntil) : null,
         customerId: data.customerId ?? null,
         leadId: data.leadId ?? null,
@@ -392,6 +450,7 @@ router.post('/', async (req, res, next) => {
             position: l.position,
             contractorId: l.contractorId ?? null,
             displayTrade: l.displayTrade ?? null,
+            action: l.action ?? null,
           })),
         },
       },
@@ -447,12 +506,19 @@ router.patch('/:id', async (req, res, next) => {
 
     const data = updateSchema.parse(req.body);
 
-    let totals: { subtotalCents: number; taxCents: number; totalCents: number } | null = null;
+    let totals: ReturnType<typeof recalcTotals> | null = null;
     let lines: Array<{
       description: string; quantity: number; unit: string | null; unitPriceCents: number;
       totalCents: number; category: string; notes: string | null; position: number;
-      contractorId: string | null; displayTrade: string | null;
+      contractorId: string | null; displayTrade: string | null; action: string | null;
     }> | null = null;
+
+    // Resolve effective O&P: caller's value if supplied, else preserve
+    // what's already on the row. This means a PATCH that only changes
+    // the title doesn't accidentally zero out O&P.
+    const effectiveOverheadBps = data.overheadBps ?? (existing as unknown as { overheadBps?: number }).overheadBps ?? 0;
+    const effectiveProfitBps = data.profitBps ?? (existing as unknown as { profitBps?: number }).profitBps ?? 0;
+    const effectiveTaxRateBps = data.taxRateBps ?? existing.taxRateBps;
 
     if (data.lines) {
       lines = data.lines.map((l, idx) => ({
@@ -466,12 +532,18 @@ router.patch('/:id', async (req, res, next) => {
         totalCents: recalcLineTotal(l.quantity, l.unitPriceCents),
         contractorId: l.contractorId ?? null,
         displayTrade: l.displayTrade ?? null,
+        action: l.action ?? null,
       }));
-      totals = recalcTotals(lines, data.taxRateBps ?? existing.taxRateBps);
-    } else if (data.taxRateBps !== undefined) {
-      // Re-tax existing lines without rebuilding them.
+      totals = recalcTotals(lines, effectiveTaxRateBps, effectiveOverheadBps, effectiveProfitBps);
+    } else if (
+      data.taxRateBps !== undefined ||
+      data.overheadBps !== undefined ||
+      data.profitBps !== undefined
+    ) {
+      // Recompute against existing lines if any of the percentage knobs
+      // changed but the lines didn't.
       const cur = await prisma.estimateLine.findMany({ where: { estimateId: existing.id } });
-      totals = recalcTotals(cur, data.taxRateBps);
+      totals = recalcTotals(cur, effectiveTaxRateBps, effectiveOverheadBps, effectiveProfitBps);
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -484,6 +556,8 @@ router.patch('/:id', async (req, res, next) => {
           termsText: data.termsText,
           taxRateBps: data.taxRateBps,
           markupBps: data.markupBps,
+          overheadBps: data.overheadBps,
+          profitBps: data.profitBps,
           validUntil: data.validUntil === null ? null : data.validUntil ? new Date(data.validUntil) : undefined,
           ...(totals ?? {}),
         },
@@ -504,6 +578,7 @@ router.patch('/:id', async (req, res, next) => {
               position: l.position,
               contractorId: l.contractorId,
               displayTrade: l.displayTrade,
+              action: l.action,
             })),
           });
         }
@@ -918,9 +993,12 @@ router.post('/:id/add-assembly', async (req, res, next) => {
     }));
 
     const allLines = [...existing.lines, ...newLines];
+    const existingAny = existing as unknown as { overheadBps?: number; profitBps?: number };
     const totals = recalcTotals(
       allLines.map((l) => ({ totalCents: l.totalCents })),
       existing.taxRateBps,
+      existingAny.overheadBps ?? 0,
+      existingAny.profitBps ?? 0,
     );
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -963,6 +1041,130 @@ router.post('/:id/void', async (req, res, next) => {
       meta: { previousStatus: existing.status },
     }).catch(() => undefined);
     res.json({ estimate: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Per-line photos ──────────────────────────────────────────────────
+//
+// Adjuster-style photo attachment on each estimate line. Files land in
+// uploads/estimate-lines/<lineId>/<stamp>-<filename>; URLs are returned
+// for the client to render thumbnails inline. No sharp pipeline yet —
+// raw upload, lines tend to have only a couple of photos each.
+
+const LINE_IMAGE_ROOT = path.resolve(process.cwd(), 'uploads', 'estimate-lines');
+const lineImageUpload = multer({
+  storage: multer.diskStorage({
+    destination(req, _file, cb) {
+      const dir = path.join(LINE_IMAGE_ROOT, req.params.lineId);
+      fs.mkdir(dir, { recursive: true }, (err) => cb(err, dir));
+    },
+    filename(_req, file, cb) {
+      const stamp = Date.now();
+      const safe = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+      cb(null, `${stamp}-${safe}`);
+    },
+  }),
+  limits: { fileSize: 30 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new Error('Only image uploads are allowed'));
+    }
+    cb(null, true);
+  },
+});
+
+async function ensureLineEditable(lineId: string, userId: string, isAdmin: boolean) {
+  const line = await prisma.estimateLine.findUnique({
+    where: { id: lineId },
+    include: { estimate: { select: { id: true, createdById: true, status: true } } },
+  });
+  if (!line) return null;
+  if (line.estimate.status !== EstimateStatus.DRAFT) return null;
+  if (!isAdmin && line.estimate.createdById !== userId) return null;
+  return line;
+}
+
+router.get('/:id/lines/:lineId/images', async (req, res, next) => {
+  try {
+    const me = await loadMe(req.user!.sub);
+    if (!me || !hasSalesAccess(me)) return res.status(403).json({ error: 'Forbidden' });
+    const line = await prisma.estimateLine.findUnique({
+      where: { id: req.params.lineId },
+      include: { estimate: { select: { id: true, createdById: true } } },
+    });
+    if (!line || line.estimateId !== req.params.id) {
+      return res.status(404).json({ error: 'Line not found' });
+    }
+    if (me.role !== Role.ADMIN && line.estimate.createdById !== me.id) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const images = await (prisma as any).estimateLineImage.findMany({
+      where: { lineId: line.id },
+      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+    });
+    res.json({ images });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post(
+  '/:id/lines/:lineId/images',
+  lineImageUpload.array('files', 8),
+  async (req, res, next) => {
+    try {
+      const me = await loadMe(req.user!.sub);
+      if (!me || !hasSalesAccess(me)) return res.status(403).json({ error: 'Forbidden' });
+      const line = await ensureLineEditable(req.params.lineId, me.id, me.role === Role.ADMIN);
+      if (!line || line.estimateId !== req.params.id) {
+        return res.status(404).json({ error: 'Line not found or estimate locked' });
+      }
+      const files = (req.files as Express.Multer.File[]) ?? [];
+      if (files.length === 0) return res.status(400).json({ error: 'No files received' });
+      const caption = typeof req.body.caption === 'string' ? req.body.caption.slice(0, 400) : null;
+
+      const created = await Promise.all(
+        files.map((f) =>
+          (prisma as any).estimateLineImage.create({
+            data: {
+              lineId: line.id,
+              url: `/uploads/estimate-lines/${line.id}/${f.filename}`,
+              caption,
+            },
+          }),
+        ),
+      );
+      res.status(201).json({ images: created });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.delete('/:id/lines/:lineId/images/:imageId', async (req, res, next) => {
+  try {
+    const me = await loadMe(req.user!.sub);
+    if (!me || !hasSalesAccess(me)) return res.status(403).json({ error: 'Forbidden' });
+    const line = await ensureLineEditable(req.params.lineId, me.id, me.role === Role.ADMIN);
+    if (!line || line.estimateId !== req.params.id) {
+      return res.status(404).json({ error: 'Line not found or estimate locked' });
+    }
+    const image = await (prisma as any).estimateLineImage.findUnique({
+      where: { id: req.params.imageId },
+    });
+    if (!image || image.lineId !== line.id) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+    await (prisma as any).estimateLineImage.delete({ where: { id: image.id } });
+    // Best-effort cleanup of the on-disk file.
+    if (image.url?.startsWith('/uploads/estimate-lines/')) {
+      const filename = path.basename(image.url);
+      const filePath = path.join(LINE_IMAGE_ROOT, line.id, filename);
+      await fsp.unlink(filePath).catch(() => undefined);
+    }
+    res.status(204).end();
   } catch (err) {
     next(err);
   }

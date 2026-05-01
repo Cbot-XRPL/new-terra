@@ -1867,6 +1867,15 @@ model Estimate {
   markupBps   Int @default(0)
   taxRateBps  Int @default(0) // 700 = 7.00%
   taxCents    Int @default(0)
+  // Overhead + Profit, Xactimate-style. 1000 = 10.00%. Defaults to
+  // 10/10 (industry standard) but every estimate can override either
+  // independently — we don't bake the 10/10 into the customer view,
+  // just the math. Keep modifiable per-row so cost-plus / discounted
+  // jobs can flip them off without a special path.
+  overheadBps Int @default(1000)
+  profitBps   Int @default(1000)
+  overheadCents Int @default(0)
+  profitCents Int @default(0)
   totalCents  Int @default(0)
 
   validUntil  DateTime?
@@ -1922,8 +1931,33 @@ model EstimateLine {
   // Per-line so a sales rep can flip-flop the same contractor between
   // demo / framing / etc. on different lines of the same estimate.
   displayTrade String?
+  // Action variant à la Xactimate: REPLACE, RR (remove + replace),
+  // DR (detach + reset), CLEAN. Free-form so we don't have to ship a
+  // migration to add another variant. Null means "unspecified" — the
+  // line is just whatever its description says.
+  action       String?
+
+  images       EstimateLineImage[]
 
   @@index([contractorId])
+}
+
+// Photos tied to a specific estimate line — adjuster-style "this is the
+// damage / scope this line covers" attachment. Distinct from the
+// project-level ProjectImage gallery so a sales rep can stage scope
+// photos per line before the project even exists.
+model EstimateLineImage {
+  id         String   @id @default(cuid())
+  lineId     String
+  line       EstimateLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  // Public URL served by /uploads/...; a thumbnail variant if generated.
+  url        String
+  thumbnailUrl String?
+  caption    String?
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([lineId])
 }
 
 // Product — a single SKU in the catalog. Materials, labor units, fees, etc.
@@ -1940,6 +1974,14 @@ model Product {
   kind            String   @default("material")
   unit            String?  // "ea", "lf", "sqft", "cuyd", "hr", "lump"
   defaultUnitPriceCents Int @default(0)
+  // Optional labor + material split. When both are 0 we treat the
+  // product as "lump" (legacy behavior). When set, sums are reported
+  // separately for job-cost rollups, profit-margin analysis, and the
+  // future regional-pricing overlay (Xactimate-style separated rates).
+  // Sum doesn't have to equal defaultUnitPriceCents — admin can keep
+  // a custom blended price while still tracking the underlying split.
+  defaultLaborCents    Int @default(0)
+  defaultMaterialCents Int @default(0)
   // Optional category mirrors ExpenseCategory naming so estimate→budget
   // flow groups cleanly.
   category        String?

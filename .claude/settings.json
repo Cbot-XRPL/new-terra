@@ -47,7 +47,8 @@
       "Bash(npm --prefix client install --package-lock-only)",
       "WebSearch",
       "WebFetch(domain:www.homedepot.com)",
-      "Bash(awk -F: '/^[0-9]+:}/')"
+      "Bash(awk -F: '/^[0-9]+:}/')",
+      "Bash(xargs -I {} bash -c 'echo \"=== line {} ===\"; sed -n \"{}p\" c:/Users/codyr/Desktop/code/new-terra-4/client/src/pages/portal/NewEstimatePage.tsx')"
     ]
   }
 }

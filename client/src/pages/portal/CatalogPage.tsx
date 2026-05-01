@@ -11,6 +11,11 @@ interface Product {
   kind: string;
   unit: string | null;
   defaultUnitPriceCents: number;
+  // Optional labor + material split. When both 0 the row is "lump"
+  // (legacy). When set, totals roll up separately for job-cost and
+  // future regional-pricing overlays.
+  defaultLaborCents?: number;
+  defaultMaterialCents?: number;
   category: string | null;
   active: boolean;
   trackInventory?: boolean;
@@ -162,6 +167,8 @@ export default function CatalogPage() {
     kind: 'material',
     unit: '',
     price: '',
+    laborPrice: '',
+    materialPrice: '',
     category: '',
   });
   const [editSaving, setEditSaving] = useState(false);
@@ -174,6 +181,8 @@ export default function CatalogPage() {
       kind: p.kind,
       unit: p.unit ?? '',
       price: (p.defaultUnitPriceCents / 100).toFixed(2),
+      laborPrice: ((p.defaultLaborCents ?? 0) / 100).toFixed(2),
+      materialPrice: ((p.defaultMaterialCents ?? 0) / 100).toFixed(2),
       category: p.category ?? '',
     });
   }
@@ -192,6 +201,8 @@ export default function CatalogPage() {
           kind: editForm.kind,
           unit: editForm.unit || null,
           defaultUnitPriceCents: Math.round(Number(editForm.price || 0) * 100),
+          defaultLaborCents: Math.round(Number(editForm.laborPrice || 0) * 100),
+          defaultMaterialCents: Math.round(Number(editForm.materialPrice || 0) * 100),
           category: editForm.category || null,
         }),
       });
@@ -520,6 +531,35 @@ export default function CatalogPage() {
                                 <input
                                   value={editForm.category}
                                   onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))}
+                                />
+                              </div>
+                            </div>
+                            {/* Optional labor + material split à la
+                                Xactimate. Leave both 0 to keep the row
+                                as a "lump" item (legacy behaviour). When
+                                set, job-cost rollups break out by type. */}
+                            <div className="form-row">
+                              <div>
+                                <label>Labor portion (USD)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={editForm.laborPrice}
+                                  onChange={(e) => setEditForm((f) => ({ ...f, laborPrice: e.target.value }))}
+                                  placeholder="0.00"
+                                  title="If this product is part labor + part material, split here. Sum doesn't have to equal Default price — keep the blended price for what the customer sees, while tracking the underlying split."
+                                />
+                              </div>
+                              <div>
+                                <label>Material portion (USD)</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={editForm.materialPrice}
+                                  onChange={(e) => setEditForm((f) => ({ ...f, materialPrice: e.target.value }))}
+                                  placeholder="0.00"
                                 />
                               </div>
                             </div>

@@ -72,7 +72,19 @@ interface WorkingLine {
   // Per-line trade label override (Demo, Framing, Electrical, …). Falls
   // back to the contractor's baseline tradeType when blank.
   displayTrade: string;
+  // Xactimate-style action variant: '', 'REPLACE', 'RR', 'DR', 'CLEAN'.
+  // Empty string means "unspecified" — the line renders as just its
+  // description without a variant tag.
+  action: string;
 }
+
+const LINE_ACTION_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '', label: '— Action —' },
+  { value: 'REPLACE', label: 'Replace' },
+  { value: 'RR', label: 'Remove & Replace' },
+  { value: 'DR', label: 'Detach & Reset' },
+  { value: 'CLEAN', label: 'Clean only' },
+];
 
 interface ContractorOption {
   id: string;
@@ -93,6 +105,7 @@ function blankLine(position: number): WorkingLine {
     position,
     contractorId: null,
     displayTrade: '',
+    action: '',
   };
 }
 
@@ -117,6 +130,7 @@ function fromTemplate(t: Template): WorkingLine[] {
     position: idx,
     contractorId: null,
     displayTrade: '',
+    action: '',
   }));
 }
 
@@ -147,6 +161,7 @@ export default function NewEstimatePage() {
         position: 0,
         contractorId: null,
         displayTrade: '',
+        action: '',
       };
     } catch {
       return null;
@@ -223,6 +238,7 @@ export default function NewEstimatePage() {
         position: cur.length,
         contractorId: null,
         displayTrade: '',
+        action: '',
       },
     ]);
   }
@@ -291,6 +307,7 @@ export default function NewEstimatePage() {
         position: cur.length + idx,
         contractorId: null,
         displayTrade: '',
+        action: '',
       })),
     ]);
     setAssemblyPreview(null);
@@ -433,6 +450,7 @@ export default function NewEstimatePage() {
           position: idx,
           contractorId: l.contractorId || null,
           displayTrade: l.displayTrade.trim() || null,
+          action: l.action || null,
         })),
       };
       const created = await api<{ estimate: { id: string } }>('/api/estimates', {
@@ -763,6 +781,21 @@ export default function NewEstimatePage() {
                         )}
                       </div>
                     )}
+                    {/* Action variant lives on every line, contractor or
+                        not — Xactimate-style "what's happening to this
+                        thing" tag. Empty == unspecified. */}
+                    <div style={{ marginTop: 4 }}>
+                      <select
+                        value={l.action}
+                        onChange={(e) => patchLine(idx, { action: e.target.value })}
+                        title="Action variant — Replace, Remove & Replace, Detach & Reset, Clean only"
+                        style={{ marginBottom: 0, width: '100%' }}
+                      >
+                        {LINE_ACTION_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </div>
                   </td>
                   <td>
                     <input

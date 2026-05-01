@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
@@ -17,6 +17,9 @@ interface Line {
   category: string | null;
   notes: string | null;
   position: number;
+  // Xactimate-style action variant: REPLACE / RR / DR / CLEAN. Optional;
+  // legacy lines without an explicit action render as plain.
+  action?: string | null;
 }
 interface Estimate {
   id: string;
@@ -30,6 +33,13 @@ interface Estimate {
   subtotalCents: number;
   taxRateBps: number;
   taxCents: number;
+  // O&P — staff sees real values; customer sees these too (not hidden
+  // like markupBps). Optional on the type so old responses without
+  // these keys don't blow up the renderer.
+  overheadBps?: number;
+  profitBps?: number;
+  overheadCents?: number;
+  profitCents?: number;
   totalCents: number;
   validUntil: string | null;
   sentAt: string | null;
@@ -286,16 +296,37 @@ export default function EstimateDetailPage() {
                     <th>Unit</th>
                     <th>Price</th>
                     <th>Total</th>
+                    {isStaff && <th aria-label="Photos">📷</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((l) => (
                     <tr key={l.id}>
-                      <td>{l.description}</td>
+                      <td>
+                        {l.description}
+                        {l.action && (
+                          <span
+                            className="badge"
+                            style={{ marginLeft: 6, fontSize: '0.7rem' }}
+                            title="Action variant"
+                          >
+                            {actionLabel(l.action)}
+                          </span>
+                        )}
+                      </td>
                       <td>{l.quantity}</td>
                       <td>{l.unit ?? '—'}</td>
                       <td>{formatCents(l.unitPriceCents)}</td>
                       <td><strong>{formatCents(l.totalCents)}</strong></td>
+                      {isStaff && (
+                        <td>
+                          <LinePhotosButton
+                            estimateId={estimate.id}
+                            lineId={l.id}
+                            editable={estimate.status === 'DRAFT'}
+                          />
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -303,6 +334,7 @@ export default function EstimateDetailPage() {
                   <tr>
                     <td colSpan={4} style={{ textAlign: 'right' }}><em>Subtotal — {cat}</em></td>
                     <td><strong>{formatCents(subtotal)}</strong></td>
+                    {isStaff && <td />}
                   </tr>
                 </tfoot>
               </table>
@@ -312,9 +344,24 @@ export default function EstimateDetailPage() {
 
         <dl className="kv" style={{ maxWidth: 360, marginLeft: 'auto' }}>
           <dt>Subtotal</dt><dd>{formatCents(estimate.subtotalCents)}</dd>
+          {!!estimate.overheadBps && estimate.overheadBps > 0 && (
+            <>
+              <dt>Overhead ({(estimate.overheadBps / 100).toFixed(2)}%)</dt>
+              <dd>{formatCents(estimate.overheadCents ?? 0)}</dd>
+            </>
+          )}
+          {!!estimate.profitBps && estimate.profitBps > 0 && (
+            <>
+              <dt>Profit ({(estimate.profitBps / 100).toFixed(2)}%)</dt>
+              <dd>{formatCents(estimate.profitCents ?? 0)}</dd>
+            </>
+          )}
           <dt>Tax ({(estimate.taxRateBps / 100).toFixed(2)}%)</dt><dd>{formatCents(estimate.taxCents)}</dd>
           <dt><strong>Total</strong></dt><dd><strong>{formatCents(estimate.totalCents)}</strong></dd>
         </dl>
+        {isStaff && estimate.status === 'DRAFT' && (
+          <OPEditor estimate={estimate} onChanged={load} />
+        )}
       </section>
 
       {estimate.termsText && (
@@ -425,6 +472,281 @@ export default function EstimateDetailPage() {
           )}
         </section>
       )}
+    </div>
+  );
+}
+
+// Translate a stored action code to the human label shown next to the
+// line description. Unknown codes pass through verbatim so future
+// variants don't render as blank.
+function actionLabel(code: string): string {
+  switch (code) {
+    case 'REPLACE': return 'Replace';
+    case 'RR':      return 'R&R';
+    case 'DR':      return 'D&R';
+    case 'CLEAN':   return 'Clean';
+    default:        return code;
+  }
+}
+
+// Per-line photo button + popover. Click → opens a small panel showing
+// existing photos, with an upload control when the estimate is still
+// editable. Loads lazily on first open so the table doesn't fire one
+// fetch per line on initial render.
+function LinePhotosButton({
+  estimateId,
+  lineId,
+  editable,
+}: {
+  estimateId: string;
+  lineId: string;
+  editable: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [photos, setPhotos] = useState<Array<{ id: string; url: string; caption: string | null }> | null>(null);
+  const [count, setCount] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  // One-shot fetch on first open. Subsequent re-opens reuse cached state
+  // until an upload/delete invalidates it via setPhotos(null).
+  async function load() {
+    try {
+      const r = await api<{ images: Array<{ id: string; url: string; caption: string | null }> }>(
+        `/api/estimates/${estimateId}/lines/${lineId}/images`,
+      );
+      setPhotos(r.images);
+      setCount(r.images.length);
+    } catch {
+      setPhotos([]);
+      setCount(0);
+    }
+  }
+  useEffect(() => {
+    if (open && photos === null) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  async function upload(files: FileList) {
+    if (files.length === 0) return;
+    setBusy(true);
+    try {
+      const form = new FormData();
+      for (const f of Array.from(files)) form.append('files', f);
+      const token = sessionStorage.getItem('nt_token') ?? localStorage.getItem('nt_token');
+      const base = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
+      const res = await fetch(`${base}/api/estimates/${estimateId}/lines/${lineId}/images`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setPhotos(null);
+      await load();
+    } catch {
+      // Fall through; bubble could be added later.
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
+  async function remove(id: string) {
+    if (!confirm('Delete this photo?')) return;
+    try {
+      await api(`/api/estimates/${estimateId}/lines/${lineId}/images/${id}`, {
+        method: 'DELETE',
+      });
+      setPhotos(null);
+      await load();
+    } catch {
+      // ignore
+    }
+  }
+
+  return (
+    <span style={{ position: 'relative' }}>
+      <button
+        type="button"
+        className="button-ghost button-small"
+        onClick={() => setOpen((v) => !v)}
+        title="Per-line photos"
+        style={{ padding: '2px 6px' }}
+      >
+        📷{count !== null && count > 0 ? ` ${count}` : ''}
+      </button>
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '110%',
+            right: 0,
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            padding: '0.5rem',
+            zIndex: 10,
+            minWidth: 240,
+            maxWidth: 320,
+            boxShadow: '0 4px 12px var(--shadow)',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {photos === null ? (
+            <p className="muted" style={{ fontSize: '0.8rem', margin: 0 }}>Loading…</p>
+          ) : photos.length === 0 ? (
+            <p className="muted" style={{ fontSize: '0.8rem', margin: 0 }}>No photos yet.</p>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4 }}>
+              {photos.map((p) => (
+                <div key={p.id} style={{ position: 'relative' }}>
+                  <img
+                    src={p.url}
+                    alt={p.caption ?? ''}
+                    style={{ width: '100%', height: 80, objectFit: 'cover', borderRadius: 4 }}
+                  />
+                  {editable && (
+                    <button
+                      type="button"
+                      onClick={() => remove(p.id)}
+                      title="Delete"
+                      style={{
+                        position: 'absolute',
+                        top: 2,
+                        right: 2,
+                        width: 18,
+                        height: 18,
+                        borderRadius: '50%',
+                        background: 'rgba(0,0,0,0.6)',
+                        color: '#fff',
+                        border: 0,
+                        fontSize: 12,
+                        lineHeight: 1,
+                        padding: 0,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {editable && (
+            <>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: 'none' }}
+                onChange={(e) => e.target.files && upload(e.target.files)}
+              />
+              <button
+                type="button"
+                className="button-small"
+                disabled={busy}
+                onClick={() => fileRef.current?.click()}
+                style={{ width: '100%', marginTop: 6 }}
+              >
+                {busy ? 'Uploading…' : '+ Add photos'}
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            className="button-ghost button-small"
+            onClick={() => setOpen(false)}
+            style={{ width: '100%', marginTop: 4 }}
+          >
+            Close
+          </button>
+        </div>
+      )}
+    </span>
+  );
+}
+
+// ─── O&P inline editor ────────────────────────────────────────────────
+//
+// Two number inputs (overhead %, profit %) backed by the estimate's
+// overheadBps/profitBps. Defaults to 10/10 like Xactimate. PATCHes
+// /api/estimates/:id which recomputes totals server-side.
+function OPEditor({
+  estimate,
+  onChanged,
+}: {
+  estimate: { id: string; overheadBps?: number; profitBps?: number };
+  onChanged: () => void | Promise<void>;
+}) {
+  const [overhead, setOverhead] = useState(((estimate.overheadBps ?? 1000) / 100).toFixed(2));
+  const [profit, setProfit] = useState(((estimate.profitBps ?? 1000) / 100).toFixed(2));
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setErr(null);
+    try {
+      const oBps = Math.round(Number(overhead) * 100);
+      const pBps = Math.round(Number(profit) * 100);
+      if (!Number.isFinite(oBps) || oBps < 0 || oBps > 5000) throw new Error('Overhead must be 0–50%');
+      if (!Number.isFinite(pBps) || pBps < 0 || pBps > 5000) throw new Error('Profit must be 0–50%');
+      await api(`/api/estimates/${estimate.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ overheadBps: oBps, profitBps: pBps }),
+      });
+      await onChanged();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: '1rem',
+        paddingTop: '1rem',
+        borderTop: '1px solid var(--border)',
+        display: 'flex',
+        gap: '0.5rem',
+        alignItems: 'flex-end',
+        flexWrap: 'wrap',
+      }}
+    >
+      <div>
+        <label htmlFor="op-oh" style={{ fontSize: '0.85rem' }}>Overhead %</label>
+        <input
+          id="op-oh"
+          type="number"
+          step="0.1"
+          min="0"
+          max="50"
+          value={overhead}
+          onChange={(e) => setOverhead(e.target.value)}
+          style={{ width: 90, marginBottom: 0 }}
+        />
+      </div>
+      <div>
+        <label htmlFor="op-pr" style={{ fontSize: '0.85rem' }}>Profit %</label>
+        <input
+          id="op-pr"
+          type="number"
+          step="0.1"
+          min="0"
+          max="50"
+          value={profit}
+          onChange={(e) => setProfit(e.target.value)}
+          style={{ width: 90, marginBottom: 0 }}
+        />
+      </div>
+      <button type="button" onClick={save} disabled={saving} className="button-small">
+        {saving ? 'Saving…' : 'Save O&P'}
+      </button>
+      {err && <span className="form-error" style={{ marginLeft: 8 }}>{err}</span>}
     </div>
   );
 }

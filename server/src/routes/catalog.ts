@@ -18,6 +18,11 @@ const productSchema = z.object({
   kind: z.string().max(40).optional(),
   unit: z.string().max(20).optional(),
   defaultUnitPriceCents: z.number().int().nonnegative().default(0),
+  // Optional labor + material split. Default 0/0 means "lump" — no
+  // breakdown — and the row behaves exactly as before. When admin
+  // populates either, downstream rollups can split labor vs material.
+  defaultLaborCents: z.number().int().nonnegative().optional(),
+  defaultMaterialCents: z.number().int().nonnegative().optional(),
   category: z.string().max(80).optional(),
   vendorId: z.string().nullable().optional(),
   active: z.boolean().optional(),
@@ -71,11 +76,13 @@ router.post('/products', requireRole(Role.ADMIN), async (req, res, next) => {
         kind: data.kind ?? 'material',
         unit: data.unit,
         defaultUnitPriceCents: data.defaultUnitPriceCents,
+        defaultLaborCents: data.defaultLaborCents ?? 0,
+        defaultMaterialCents: data.defaultMaterialCents ?? 0,
         category: data.category,
         vendorId: data.vendorId ?? null,
         active: data.active ?? true,
         notes: data.notes,
-      },
+      } as never,
     });
     res.status(201).json({ product });
   } catch (err) {
@@ -102,11 +109,13 @@ router.patch('/products/:id', requireRole(Role.ADMIN), async (req, res, next) =>
         kind: data.kind,
         unit: data.unit,
         defaultUnitPriceCents: data.defaultUnitPriceCents,
+        defaultLaborCents: data.defaultLaborCents,
+        defaultMaterialCents: data.defaultMaterialCents,
         category: data.category,
         vendorId: data.vendorId === null ? null : data.vendorId,
         active: data.active,
         notes: data.notes,
-      },
+      } as never,
     });
     if (before && data.defaultUnitPriceCents !== undefined
         && data.defaultUnitPriceCents !== before.defaultUnitPriceCents) {
