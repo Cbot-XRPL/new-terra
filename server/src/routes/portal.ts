@@ -331,6 +331,19 @@ router.get('/users/:id', async (req, res, next) => {
     if (me.role === Role.CUSTOMER && target.role === Role.CUSTOMER && me.id !== target.id) {
       return res.status(403).json({ error: 'Forbidden' });
     }
+
+    // Email + phone are sensitive contact info. Only admins, the user
+    // looking themselves up, and staff with a working reason (sales,
+    // PM, accounting) get the full record. Everyone else sees a
+    // contact-redacted profile so a sub can't enumerate every customer
+    // / employee phone number through this endpoint.
+    const isAdminOrSelf = me.role === Role.ADMIN || me.id === target.id;
+    const isPrivilegedStaff =
+      me.role === Role.EMPLOYEE && (me.isSales || me.isProjectManager || me.isAccounting);
+    if (!isAdminOrSelf && !isPrivilegedStaff) {
+      const { email: _e, phone: _p, ...redacted } = target;
+      return res.json({ user: redacted });
+    }
     res.json({ user: target });
   } catch (err) {
     next(err);

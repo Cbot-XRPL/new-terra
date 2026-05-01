@@ -195,10 +195,15 @@ router.get('/by-project/:projectId', async (req, res, next) => {
     if (!me) return res.status(401).json({ error: 'Unauthenticated' });
     const project = await prisma.project.findUnique({ where: { id: req.params.projectId } });
     if (!project) return res.status(404).json({ error: 'Project not found' });
-    // Customers see this only on their own projects; staff broadly.
+    // Customers see this only on their own projects (and we mask cost
+     // / margin fields below). Staff who can see estimate cost: admin,
+     // sales, PM, accounting. Plain employees and subs/photographers
+     // shouldn't see the contractor cost basis on a project's estimates.
     const isCustomer = me.role === Role.CUSTOMER && project.customerId === me.id;
-    const isStaff = me.role === Role.ADMIN || me.role === Role.EMPLOYEE;
-    if (!isCustomer && !isStaff) return res.status(403).json({ error: 'Forbidden' });
+    const isPrivilegedStaff =
+      me.role === Role.ADMIN ||
+      (me.role === Role.EMPLOYEE && (me.isSales || me.isProjectManager || me.isAccounting));
+    if (!isCustomer && !isPrivilegedStaff) return res.status(403).json({ error: 'Forbidden' });
 
     const estimates = await prisma.estimate.findMany({
       where: { convertedProjectId: project.id },

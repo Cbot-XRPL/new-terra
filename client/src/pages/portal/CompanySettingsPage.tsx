@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { ApiError, api } from '../../lib/api';
+import { invalidatePaymentInstructionsCache } from './PaymentInstructions';
 
 interface Settings {
   companyName: string | null;
@@ -121,6 +122,10 @@ export default function CompanySettingsPage() {
         body: JSON.stringify(payload),
       });
       setSettings(r.settings);
+      // Bust the customer-facing payment-instructions cache so updates
+      // here (Zelle email, ACH instructions, mailing address) reflect
+      // immediately for anyone with the SPA already loaded.
+      invalidatePaymentInstructionsCache();
       setSaved(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Save failed');

@@ -87,7 +87,14 @@ router.post('/', async (req, res, next) => {
     }
     const data = createSchema.parse(req.body);
     const settings = await getCompanySettings();
-    const rate = data.rateCentsPerMile ?? settings.mileageRateCents;
+    // Only accounting + admin can override the company-wide deductible
+    // rate per entry. Letting plain employees set their own rate would
+    // let a worker inflate their own claimed deduction by passing in a
+    // higher rateCentsPerMile.
+    const overrideAllowed = me.role === Role.ADMIN || hasAccountingAccess(me);
+    const rate = overrideAllowed && data.rateCentsPerMile != null
+      ? data.rateCentsPerMile
+      : settings.mileageRateCents;
     const milesTenths = Math.round(data.miles * 10);
     // total = miles * rate. miles is in tenths (×10); rate is in cents.
     // total cents = (milesTenths * rate) / 10.

@@ -63,6 +63,38 @@ export default function GalleryPage() {
 
   const isStaff = user?.role !== 'CUSTOMER';
 
+  // Race-safe loader. The effect's `ignored` flag guards against an
+  // older response landing after the user already changed page or
+  // filter — without it, a fast typist on the filter dropdown could
+  // see the wrong list flash in for a moment.
+  useEffect(() => {
+    let ignored = false;
+    (async () => {
+      try {
+        const params = new URLSearchParams({
+          page: String(page),
+          pageSize: '60',
+        });
+        if (filterProjectId) params.set('projectId', filterProjectId);
+        const r = await api<ListResponse>(`/api/portal/gallery?${params.toString()}`);
+        if (ignored) return;
+        setData(r);
+        if (!uploadProjectId && r.projects.length > 0) {
+          setUploadProjectId(r.projects[0]!.id);
+        }
+      } catch (err) {
+        if (ignored) return;
+        setError(err instanceof ApiError ? err.message : 'Failed to load gallery');
+      }
+    })();
+    return () => {
+      ignored = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, filterProjectId]);
+
+  // Reload after upload — same shape as the effect above but invocable
+  // from event handlers.
   async function load() {
     try {
       const params = new URLSearchParams({
@@ -72,8 +104,6 @@ export default function GalleryPage() {
       if (filterProjectId) params.set('projectId', filterProjectId);
       const r = await api<ListResponse>(`/api/portal/gallery?${params.toString()}`);
       setData(r);
-      // Default the upload picker to the most-recent project so the
-      // user can upload without expanding the dropdown.
       if (!uploadProjectId && r.projects.length > 0) {
         setUploadProjectId(r.projects[0]!.id);
       }
@@ -81,10 +111,6 @@ export default function GalleryPage() {
       setError(err instanceof ApiError ? err.message : 'Failed to load gallery');
     }
   }
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, filterProjectId]);
 
   async function handleUpload(files: FileList) {
     if (!uploadProjectId || files.length === 0) return;

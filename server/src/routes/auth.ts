@@ -187,6 +187,15 @@ router.post('/register', registerLimiter, async (req, res, next) => {
         error: 'This email is reserved for a different account type. Please contact us to sort it out.',
       });
     }
+    // Pre-seeded SUBCONTRACTOR rows can only be claimed via the invite
+    // link the admin emails out (which hits /accept-invite with a
+    // signed token). Without that gate, anyone who knows a sub's email
+    // could register as them before the admin sends the invite.
+    if (existing && wantedRole === Role.SUBCONTRACTOR) {
+      return res.status(409).json({
+        error: 'A subcontractor with this email already exists — use the invite link an admin emailed you to set your password.',
+      });
+    }
 
     const passwordHash = await hashPassword(password);
     const user = await prisma.$transaction(async (tx) => {

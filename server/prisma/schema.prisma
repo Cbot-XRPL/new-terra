@@ -1465,8 +1465,11 @@ model Lead {
   ownerId       String?
   owner         User?      @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
-  createdById   String
-  createdBy     User       @relation("LeadCreator", fields: [createdById], references: [id])
+  // Nullable so public-signup leads (no logged-in author) are stored
+   // honestly instead of being attributed to a synthetic admin. The
+   // landingPath/referrer/utm columns already carry the inbound context.
+  createdById   String?
+  createdBy     User?      @relation("LeadCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   // Set when the lead is converted to a customer account (via invitation).
   convertedAt           DateTime?

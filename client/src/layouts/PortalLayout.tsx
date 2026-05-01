@@ -219,6 +219,11 @@ export default function PortalLayout() {
             </NavLink>
           )}
           {(user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isSales)) && (
+            <NavLink to="/portal/catalog/inventory">
+              <Box size={ICON_SIZE} /> <span>Inventory</span>
+            </NavLink>
+          )}
+          {(user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isSales)) && (
             <NavLink to="/portal/estimator/visual">
               <Box size={ICON_SIZE} /> <span>Visual estimator</span>
             </NavLink>

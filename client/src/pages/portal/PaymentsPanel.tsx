@@ -109,7 +109,7 @@ export default function PaymentsPanel({ invoiceId, onChange }: Props) {
     if (methods.length === 0) {
       api<{ methods: string[] }>('/api/invoices/_meta/payment-methods')
         .then((r) => setMethods(r.methods))
-        .catch(() => undefined);
+        .catch((err) => console.warn('[Payments] payment-methods fetch failed', err));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceId]);

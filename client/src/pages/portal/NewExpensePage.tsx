@@ -45,7 +45,9 @@ export default function NewExpensePage() {
   });
 
   useEffect(() => {
-    pendingCount().then((n) => setQueueInfo((cur) => ({ ...cur, pending: n }))).catch(() => undefined);
+    pendingCount()
+      .then((n) => setQueueInfo((cur) => ({ ...cur, pending: n })))
+      .catch((err) => console.warn('[NewExpense] offline-queue count failed', err));
   }, []);
 
   // Revoke any active blob URL on unmount so a user who picked a photo

@@ -90,7 +90,7 @@ export default function EstimateDetailPage() {
     if (!isStaff) return;
     api<{ templates: ContractTemplateRef[] }>('/api/contract-templates')
       .then((r) => setContractTemplates(r.templates))
-      .catch(() => undefined);
+      .catch((err) => console.warn('[EstimateDetail] contract templates fetch failed', err));
   }, [isStaff]);
 
   if (!estimate) {

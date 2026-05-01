@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { LeadSource, LeadStatus, Role } from '@prisma/client';
+import { LeadSource, LeadStatus } from '@prisma/client';
 import { prisma } from '../db.js';
 import { sendInquiryEmail } from '../lib/mailer.js';
 
@@ -130,18 +130,9 @@ router.post('/signup', contactLimiter, async (req, res, next) => {
       return res.status(400).json({ error: 'Captcha verification failed. Please try again.' });
     }
 
-    // Lead.createdBy is non-nullable but a public signup has no logged-in
-    // author. Use the first active admin as the synthetic creator so leads
-    // always have a valid FK; if none exists, fall back to any active user
-    // (a fresh install with no admin is broken anyway).
-    const seedUser = await prisma.user.findFirst({
-      where: { role: Role.ADMIN, isActive: true },
-      orderBy: { createdAt: 'asc' },
-    }) ?? await prisma.user.findFirst({ where: { isActive: true }, orderBy: { createdAt: 'asc' } });
-    if (!seedUser) {
-      return res.status(503).json({ error: 'System not initialized — please contact us directly.' });
-    }
-
+    // Public-signup leads have no logged-in author. createdById is now
+    // nullable in the schema so we store that honestly; the landingPath,
+    // referrer, and utm columns carry the inbound context for audit.
     await prisma.lead.create({
       data: {
         name: data.name,
@@ -158,7 +149,7 @@ router.post('/signup', contactLimiter, async (req, res, next) => {
         utmSource: data.utmSource ?? null,
         utmMedium: data.utmMedium ?? null,
         utmCampaign: data.utmCampaign ?? null,
-        createdById: seedUser.id,
+        createdById: null,
       },
     });
 

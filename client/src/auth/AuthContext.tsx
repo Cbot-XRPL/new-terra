@@ -23,6 +23,9 @@ export interface AuthUser {
   billingMode?: 'HOURLY' | 'DAILY';
   dailyRateCents?: number;
   hourlyRateCents?: number;
+  // Free-form trade label (Plumbing, Framing, …) — set on SUBCONTRACTOR
+  // users via signup or admin edit. Surfaced in pickers + assignee tags.
+  tradeType?: string | null;
   avatarUrl?: string | null;
   avatarThumbnailUrl?: string | null;
   driversLicenseUrl?: string | null;

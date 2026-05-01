@@ -325,20 +325,40 @@ router.post('/plaid', async (req, res, next) => {
 // Setup steps (one-time):
 //   1. Add an MX record for inbound.<your-domain> pointing at Resend.
 //   2. In Resend → Inbound, configure the catch-all to POST here.
-//   3. Optional: set RESEND_INBOUND_SECRET in .env and we'll verify
-//      the X-Resend-Signature header.
+//   3. Optional: set RESEND_INBOUND_SECRET in .env. If the secret
+//      contains a colon (e.g. "hmac:<key>") we treat the value after
+//      the colon as an HMAC key and verify
+//      X-Resend-Signature = hex(HMAC_SHA256(rawBody, key)).
+//      Otherwise we fall back to plain shared-secret comparison.
 //
 // Resend's payload (text/plain by default) includes:
 //   { from: string, to: string[], subject: string, text: string, ... }
 router.post('/inbound-email', async (req, res, next) => {
   try {
-    // Optional shared-secret header check.
+    const text = req.body instanceof Buffer ? req.body.toString('utf8') : '';
+
+    // Two auth modes — HMAC over the body if you provisioned a key,
+    // otherwise a static shared secret. HMAC is preferred (resists
+    // replay if combined with a timestamp header) but the static path
+    // is fine for low-volume internal use.
     const expected = process.env.RESEND_INBOUND_SECRET;
     if (expected) {
-      const got = req.header('x-resend-signature');
-      if (got !== expected) return res.status(401).json({ error: 'Bad signature' });
+      const got = req.header('x-resend-signature') ?? '';
+      if (expected.startsWith('hmac:')) {
+        const key = expected.slice('hmac:'.length);
+        const computed = crypto
+          .createHmac('sha256', key)
+          .update(text)
+          .digest('hex');
+        // Use timingSafeEqual to avoid leaking the digest one byte at a
+        // time via response timing.
+        const okLength = got.length === computed.length;
+        const ok = okLength && crypto.timingSafeEqual(Buffer.from(got), Buffer.from(computed));
+        if (!ok) return res.status(401).json({ error: 'Bad signature' });
+      } else if (got !== expected) {
+        return res.status(401).json({ error: 'Bad signature' });
+      }
     }
-    const text = req.body instanceof Buffer ? req.body.toString('utf8') : '';
     let evt: {
       from?: string;
       to?: string[] | string;

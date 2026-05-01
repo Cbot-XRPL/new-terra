@@ -114,10 +114,10 @@ export default function FinanceOverviewPage() {
     if (isAccounting) {
       api<ArSummary>('/api/finance/ar')
         .then(setAr)
-        .catch(() => undefined);
+        .catch((err) => console.warn('[Finance] AR summary fetch failed', err));
       api<ApSummary>('/api/finance/ap')
         .then(setAp)
-        .catch(() => undefined);
+        .catch((err) => console.warn('[Finance] AP summary fetch failed', err));
     }
   }, [isAccounting]);
 

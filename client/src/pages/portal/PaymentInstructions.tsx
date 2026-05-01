@@ -17,25 +17,42 @@ interface Props {
   variant?: 'compact' | 'card';
 }
 
-// Cached at module scope so opening five invoice rows in a row doesn't fire
-// /api/settings five times. The settings change rarely, the cache lives for
-// the lifetime of the SPA, and admin's own settings page does its own GET.
+// Cached at module scope so opening five invoice rows in a row doesn't
+// fire /api/settings five times. The cache has a 5-minute TTL so an
+// admin who updates payment details on the settings page sees the new
+// values reflected for customers within minutes — not "next full page
+// reload, whenever that happens to be". Settings pages can also call
+// `invalidatePaymentInstructionsCache()` directly after a PATCH to
+// force-refresh on the current session.
+const CACHE_TTL_MS = 5 * 60 * 1000;
 let cache: Settings | null = null;
+let cacheAt = 0;
+
+export function invalidatePaymentInstructionsCache(): void {
+  cache = null;
+  cacheAt = 0;
+}
 
 export default function PaymentInstructions({ variant = 'compact' }: Props) {
-  const [settings, setSettings] = useState<Settings | null>(cache);
+  const fresh = cache && Date.now() - cacheAt < CACHE_TTL_MS;
+  const [settings, setSettings] = useState<Settings | null>(fresh ? cache : null);
 
   useEffect(() => {
-    if (cache) {
+    if (cache && Date.now() - cacheAt < CACHE_TTL_MS) {
       setSettings(cache);
       return;
     }
     api<{ settings: Settings }>('/api/settings')
       .then((r) => {
         cache = r.settings;
+        cacheAt = Date.now();
         setSettings(r.settings);
       })
-      .catch(() => undefined);
+      .catch((err) => {
+        // Surface to console so a flaky /api/settings doesn't render a
+        // silent empty panel on the customer-facing invoice page.
+        console.warn('[PaymentInstructions] settings fetch failed', err);
+      });
   }, []);
 
   if (!settings) return null;

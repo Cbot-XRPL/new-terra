@@ -153,7 +153,39 @@ export default function LeadsPage() {
     }
   }
 
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [page, pageSize, sort, dir, status, source, mine, q]);
+  // Race-safe loader effect. `ignored` guards against an older fetch
+  // landing after the user retyped the search box or flipped a filter.
+  useEffect(() => {
+    let ignored = false;
+    (async () => {
+      try {
+        const search = new URLSearchParams({
+          page: String(page),
+          pageSize: String(pageSize),
+          sort,
+          dir,
+        });
+        if (status !== 'ALL') search.set('status', status);
+        if (source !== 'ALL') search.set('source', source);
+        if (mine) search.set('mine', 'true');
+        if (q) search.set('q', q);
+        const [res, boardRes] = await Promise.all([
+          api<ListResponse>(`/api/leads?${search.toString()}`),
+          api<BoardSummary>('/api/leads/board-summary'),
+        ]);
+        if (ignored) return;
+        setData(res);
+        setBoard(boardRes);
+      } catch (err) {
+        if (ignored) return;
+        setError(err instanceof ApiError ? err.message : 'Failed to load leads');
+      }
+    })();
+    return () => {
+      ignored = true;
+    };
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [page, pageSize, sort, dir, status, source, mine, q]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
