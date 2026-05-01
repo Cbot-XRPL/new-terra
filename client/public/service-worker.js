@@ -11,8 +11,12 @@
 //
 // Bump SHELL_CACHE when the manifest changes so old shells get evicted.
 
-const SHELL_CACHE = 'newterra-shell-v1';
-const RUNTIME_CACHE = 'newterra-runtime-v1';
+// Bump these whenever the SW logic changes so browsers fetch the new
+// service-worker.js + drop the old caches on next visit. The old SW
+// had a clone() bug that left users with broken /assets/ responses;
+// v2 is the fixed version.
+const SHELL_CACHE = 'newterra-shell-v2';
+const RUNTIME_CACHE = 'newterra-runtime-v2';
 const SHELL_URLS = ['/', '/portal', '/index.html', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -56,7 +60,11 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(
       caches.match(request).then((cached) => cached ?? fetch(request).then((res) => {
-        cacheClone(RUNTIME_CACHE, request, res);
+        // Clone BEFORE returning — the same response body can't be
+        // consumed twice. Without this, cacheClone's internal .clone()
+        // throws "Response body is already used" the moment the
+        // browser starts reading `res`.
+        cacheClone(RUNTIME_CACHE, request, res.clone());
         return res;
       })),
     );
