@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Hammer,
@@ -21,6 +21,8 @@ import {
   Settings,
   Wrench,
   Camera,
+  Menu,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
@@ -32,7 +34,15 @@ const ICON_SIZE = 18;
 export default function PortalLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [unread, setUnread] = useState(0);
+  // Mobile nav drawer state. Ignored on desktop via CSS (the toggle and
+  // closed state apply only at <=900px). Auto-closes when the route
+  // changes so tapping a link doesn't leave the menu hovering open.
+  const [navOpen, setNavOpen] = useState(false);
+  useEffect(() => {
+    setNavOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!user) return;
@@ -60,11 +70,20 @@ export default function PortalLayout() {
 
   return (
     <div className="portal-shell">
-      <aside className="portal-sidebar">
+      <aside className={`portal-sidebar${navOpen ? ' is-open' : ''}`}>
         <Link to="/" className="portal-brand">
           <img src="/media/logo.png" alt="New Terra Construction" />
           <span>New Terra</span>
         </Link>
+        <button
+          type="button"
+          className="portal-nav-toggle"
+          onClick={() => setNavOpen((v) => !v)}
+          aria-expanded={navOpen}
+          aria-label={navOpen ? 'Close menu' : 'Open menu'}
+        >
+          {navOpen ? <X size={22} /> : <Menu size={22} />}
+        </button>
         <nav>
           {user?.role === 'CUSTOMER' && (
             <NavLink to="/portal/customer">
