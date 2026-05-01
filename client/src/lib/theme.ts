@@ -2,7 +2,7 @@
 // to <html data-theme="…"> so the CSS in global.css can target each variant.
 // The `system` mode follows the user's OS color preference live.
 
-export type ThemeMode = 'light' | 'dark' | 'system';
+export type ThemeMode = 'light' | 'dark' | 'system' | 'tech';
 export type CookieConsent = 'minimal' | 'all';
 
 const THEME_KEY = 'nt_theme';
@@ -10,7 +10,7 @@ const COOKIE_KEY = 'nt_cookie_consent';
 
 export function getStoredTheme(): ThemeMode {
   const v = localStorage.getItem(THEME_KEY);
-  return v === 'light' || v === 'dark' || v === 'system' ? v : 'system';
+  return v === 'light' || v === 'dark' || v === 'system' || v === 'tech' ? v : 'system';
 }
 
 export function setStoredTheme(mode: ThemeMode): void {
@@ -18,7 +18,7 @@ export function setStoredTheme(mode: ThemeMode): void {
   applyTheme(mode);
 }
 
-function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
+function resolveTheme(mode: ThemeMode): 'light' | 'dark' | 'tech' {
   if (mode === 'system') {
     return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   }

@@ -49,6 +49,29 @@
   --body-gradient: linear-gradient(180deg, #ffffff 0%, #f7f9fa 100%);
 }
 
+/* "Tech" theme — flat black dev-doc aesthetic. Pure black background,
+   minimal surface elevation, amber accent. Inspired by modern doc sites
+   (GitBook, Mintlify) where the chrome stays out of the way and the
+   content carries the page. No gradient on the body so the background
+   reads as one solid plane. */
+[data-theme="tech"] {
+  color-scheme: dark;
+  --bg: #000000;
+  --bg-elevated: #0a0a0a;
+  --bg-soft: #050505;
+  --surface: #141414;
+  --surface-strong: #1c1c1c;
+  --text: #f0f0f0;
+  --text-muted: #8a8a8a;
+  --border: #1f1f1f;
+  --accent: #f59e0b;
+  --accent-strong: #d97706;
+  --shadow: rgba(0, 0, 0, 0.8);
+  --error: #ef4444;
+  --success: #10b981;
+  --body-gradient: #000000;
+}
+
 html, body, #root {
   min-height: 100%;
 }
@@ -2010,23 +2033,26 @@ input:focus, textarea:focus, select:focus {
     justify-content: space-between;
     gap: 0.5rem;
     padding: 0.75rem 1rem;
+    /* Drop the desktop right-border that's awkward in a row layout. */
+    border-right: none;
+    border-bottom: none;
   }
-  /* Hamburger sits to the LEFT of the logo. The drawer expands as a
-     rounded card below the top bar and pushes the rest of the page
-     down (it lives inside the sidebar, which is the first row of the
-     grid, so the main content reflows naturally). */
+  /* Hamburger sits to the LEFT of the logo. Bare icon — no bubble, no
+     border — pulled flush against the brand on the right via negative
+     margin so the icon and logo read as a single unit. */
   .portal-sidebar .portal-nav-toggle {
     order: 0;
     display: inline-flex !important;
     align-items: center;
     justify-content: center;
-    background: var(--bg-elevated) !important;
+    background: transparent !important;
     color: var(--text) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 8px !important;
-    width: 40px !important;
-    height: 40px !important;
+    border: none !important;
+    border-radius: 0 !important;
+    width: 36px !important;
+    height: 36px !important;
     padding: 0 !important;
+    margin-right: -0.25rem !important;
     font-weight: normal !important;
     cursor: pointer;
   }
