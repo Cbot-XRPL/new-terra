@@ -129,16 +129,16 @@ router.get('/alerts', async (req, res, next) => {
       });
     }
 
-    // Staff (employee + subcontractor) compliance items.
-    if (me.role === Role.EMPLOYEE || me.role === Role.SUBCONTRACTOR) {
-      if (!me.w9SignedAt) {
-        alerts.push({
-          level: 'warning',
-          message: 'W-9 not on file — submit before your next pay request.',
-          href: '/portal/time',
-          dismissable: false,
-        });
-      }
+    // W-9 compliance — everyone in the company (admin, employee,
+    // subcontractor) needs one on file. Customers don't file W-9s
+    // with us, so they're excluded.
+    if (me.role !== Role.CUSTOMER && !me.w9SignedAt) {
+      alerts.push({
+        level: 'warning',
+        message: 'W-9 not on file — submit before your next pay request.',
+        href: '/portal/time',
+        dismissable: false,
+      });
     }
 
     // Admin / accounting — approval queues.
