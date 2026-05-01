@@ -18,6 +18,18 @@ interface ExpenseRow {
   category: { id: string; name: string } | null;
   project: { id: string; name: string } | null;
   paidBy: { id: string; name: string } | null;
+  paymentSource: 'cash' | 'account' | 'other' | null;
+  paymentSourceLabel: string | null;
+  paidFromAccount: { id: string; name: string; last4: string | null } | null;
+}
+
+function paymentSourceText(e: ExpenseRow): string | null {
+  if (e.paidFromAccount) {
+    return `${e.paidFromAccount.name}${e.paidFromAccount.last4 ? ` ··${e.paidFromAccount.last4}` : ''}`;
+  }
+  if (e.paymentSource === 'cash') return 'Cash';
+  if (e.paymentSource === 'other') return e.paymentSourceLabel ?? 'Other';
+  return null;
 }
 
 interface ListResponse {
@@ -152,6 +164,7 @@ export default function ExpensesPage() {
                   <th>Category</th>
                   <th>Project</th>
                   <th>Paid by</th>
+                  <th>Paid with</th>
                   <th className="sortable" onClick={() => toggleSort('amountCents')}>Amount{sortInd('amountCents')}</th>
                   <th>Status</th>
                   <th></th>
@@ -192,6 +205,9 @@ export default function ExpensesPage() {
                       )}
                     </td>
                     <td data-label="Paid by">{e.paidBy?.name ?? <span className="muted">—</span>}</td>
+                    <td data-label="Paid with">
+                      {paymentSourceText(e) ?? <span className="muted">—</span>}
+                    </td>
                     <td data-label="Amount">
                       {formatCents(e.amountCents)}
                       {e.reimbursable && (

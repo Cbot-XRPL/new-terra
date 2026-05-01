@@ -282,7 +282,18 @@ router.get(
       const users = await prisma.user.findMany({
         where: { role: { in: [Role.ADMIN, Role.EMPLOYEE, Role.SUBCONTRACTOR] }, isActive: true },
         orderBy: { name: 'asc' },
-        select: { id: true, name: true, role: true },
+        // Return capability flags + trade so the assignee picker can label
+        // each option with the user's actual role (PM, Sales, Plumber)
+        // instead of the generic "(employee)" / "(admin)" text.
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          isSales: true,
+          isProjectManager: true,
+          isAccounting: true,
+          tradeType: true,
+        },
       });
       res.json({ users });
     } catch (err) {

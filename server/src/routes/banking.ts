@@ -111,6 +111,8 @@ const txSchema = z.object({
   externalId: z.string().nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
   reconciled: z.boolean().optional(),
+  // True = skip this row (no match needed); false = un-skip.
+  matchSkipped: z.boolean().optional(),
 });
 
 const txQuery = z.object({
@@ -192,6 +194,8 @@ router.patch('/transactions/:id', async (req, res, next) => {
     const existing = await prisma.bankTransaction.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ error: 'Transaction not found' });
     const reconciledChanged = body.reconciled !== undefined && body.reconciled !== existing.reconciled;
+    const skipChanged = body.matchSkipped !== undefined &&
+      !!body.matchSkipped !== !!existing.matchSkippedAt;
     const tx = await prisma.bankTransaction.update({
       where: { id: req.params.id },
       data: {
@@ -206,6 +210,7 @@ router.patch('/transactions/:id', async (req, res, next) => {
         notes: body.notes === null ? null : body.notes,
         reconciled: body.reconciled,
         reconciledAt: reconciledChanged ? (body.reconciled ? new Date() : null) : undefined,
+        matchSkippedAt: skipChanged ? (body.matchSkipped ? new Date() : null) : undefined,
       },
     });
     res.json({ transaction: tx });
@@ -235,6 +240,137 @@ router.delete('/transactions/:id', async (req, res, next) => {
 //
 // We return at most 8 candidates total so the UI doesn't drown the
 // admin in choices. Already-matched bank-tx rows return an empty list.
+// Score is shared between three candidate kinds. The threshold for an
+// "auto-confident" match (used by the bulk auto-match endpoint) is high
+// enough that only same-account + exact-cents + recent matches pass.
+const AUTO_MATCH_SCORE = 100;
+
+interface ScoredMatch {
+  kind: 'expense' | 'payment' | 'subBill';
+  score: number;
+  expenseId?: string;
+  paymentId?: string;
+  subBillId?: string;
+  // Display fields used by the client UI.
+  date: Date;
+  amountCents: number;
+  label: string;
+  meta?: string;
+}
+
+async function scoreMatches(tx: {
+  id: string; accountId: string; amountCents: number; date: Date; description: string;
+}): Promise<ScoredMatch[]> {
+  const target = Math.abs(tx.amountCents);
+  const minDate = new Date(tx.date.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const maxDate = new Date(tx.date.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const lcDesc = tx.description.toLowerCase();
+
+  const [expenses, payments, subBills] = await Promise.all([
+    prisma.expense.findMany({
+      where: {
+        amountCents: { gte: target - 100, lte: target + 100 },
+        date: { gte: minDate, lte: maxDate },
+        bankTransactions: { none: {} },
+        OR: [{ paidFromAccountId: tx.accountId }, { paidFromAccountId: null }],
+      },
+      include: {
+        vendor: { select: { id: true, name: true } },
+        project: { select: { id: true, name: true } },
+        paidFromAccount: { select: { id: true, name: true, last4: true } },
+      },
+      take: 25,
+    }),
+    prisma.payment.findMany({
+      where: {
+        amountCents: { gte: target - 100, lte: target + 100 },
+        receivedAt: { gte: minDate, lte: maxDate },
+        bankTransactions: { none: {} },
+      },
+      include: { invoice: { select: { id: true, number: true, customer: { select: { name: true } } } } },
+      take: 25,
+    }),
+    prisma.subcontractorBill.findMany({
+      where: {
+        amountCents: { gte: target - 100, lte: target + 100 },
+        receivedAt: { gte: minDate, lte: maxDate },
+        bankTransactions: { none: {} },
+        // Only paid/approved sub-bills have a corresponding bank-tx outflow.
+        status: { in: ['APPROVED', 'PAID'] },
+      },
+      include: {
+        subcontractor: { select: { id: true, name: true } },
+        project: { select: { id: true, name: true } },
+      },
+      take: 25,
+    }),
+  ]);
+
+  const scored: ScoredMatch[] = [];
+
+  for (const e of expenses) {
+    let score = 0;
+    if (e.paidFromAccountId === tx.accountId) score += 50;
+    if (e.amountCents === target) score += 40;
+    else score += Math.max(0, 30 - Math.abs(e.amountCents - target));
+    const days = Math.abs((e.date.getTime() - tx.date.getTime()) / 86_400_000);
+    score += Math.max(0, 20 - days * 3);
+    if (e.vendor && lcDesc.includes(e.vendor.name.toLowerCase())) score += 30;
+    scored.push({
+      kind: 'expense',
+      score,
+      expenseId: e.id,
+      date: e.date,
+      amountCents: e.amountCents,
+      label: e.vendor?.name ?? e.description ?? 'Expense',
+      meta: [
+        e.project?.name,
+        e.paidFromAccount && `Paid from ${e.paidFromAccount.name}${e.paidFromAccount.last4 ? ` ··${e.paidFromAccount.last4}` : ''}`,
+      ].filter(Boolean).join(' · '),
+    });
+  }
+
+  for (const p of payments) {
+    let score = 0;
+    if (p.amountCents === target) score += 40;
+    else score += Math.max(0, 30 - Math.abs(p.amountCents - target));
+    const days = Math.abs((p.receivedAt.getTime() - tx.date.getTime()) / 86_400_000);
+    score += Math.max(0, 20 - days * 3);
+    if (p.invoice && lcDesc.includes(p.invoice.number.toLowerCase())) score += 30;
+    if (p.invoice?.customer && lcDesc.includes(p.invoice.customer.name.toLowerCase())) score += 30;
+    scored.push({
+      kind: 'payment',
+      score,
+      paymentId: p.id,
+      date: p.receivedAt,
+      amountCents: p.amountCents,
+      label: `Payment on ${p.invoice?.number ?? 'invoice'}`,
+      meta: p.invoice?.customer?.name ?? '',
+    });
+  }
+
+  for (const b of subBills) {
+    let score = 0;
+    if (b.amountCents === target) score += 40;
+    else score += Math.max(0, 30 - Math.abs(b.amountCents - target));
+    const days = Math.abs((b.receivedAt.getTime() - tx.date.getTime()) / 86_400_000);
+    score += Math.max(0, 20 - days * 3);
+    if (b.subcontractor && lcDesc.includes(b.subcontractor.name.toLowerCase())) score += 30;
+    scored.push({
+      kind: 'subBill',
+      score,
+      subBillId: b.id,
+      date: b.receivedAt,
+      amountCents: b.amountCents,
+      label: `Sub bill ${b.number} · ${b.subcontractor.name}`,
+      meta: b.project?.name ?? '',
+    });
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored;
+}
+
 router.get('/transactions/:id/suggestions', async (req, res, next) => {
   try {
     if (!await gateAccounting(req, res)) return;
@@ -243,74 +379,52 @@ router.get('/transactions/:id/suggestions', async (req, res, next) => {
       include: { account: { select: { id: true, name: true, last4: true } } },
     });
     if (!tx) return res.status(404).json({ error: 'Transaction not found' });
-    if (tx.matchedExpenseId || tx.matchedPaymentId || tx.matchedSubBillId) {
+    if (tx.matchedExpenseId || tx.matchedPaymentId || tx.matchedSubBillId || tx.matchSkippedAt) {
       return res.json({ suggestions: [] });
     }
+    const all = await scoreMatches(tx);
+    res.json({ suggestions: all.slice(0, 8) });
+  } catch (err) { next(err); }
+});
 
-    // The tx amount we're trying to match against. Bank exports use
-    // signed cents (negative = outflow); expenses are stored positive.
-    const target = Math.abs(tx.amountCents);
-    const minDate = new Date(tx.date.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const maxDate = new Date(tx.date.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-    // Expenses: prefer same account if expense has paidFromAccountId, but
-    // fall back to all expenses in the date window when accountless.
-    const candidates = await prisma.expense.findMany({
+// Bulk auto-match — runs scoring against every unmatched, un-skipped tx
+// on the given account and applies any candidate that scores above the
+// AUTO_MATCH_SCORE threshold. Returns a summary of how many fired.
+router.post('/accounts/:id/auto-match', async (req, res, next) => {
+  try {
+    if (!await gateAccounting(req, res)) return;
+    const txs = await prisma.bankTransaction.findMany({
       where: {
-        amountCents: { gte: target - 100, lte: target + 100 }, // ±$1
-        date: { gte: minDate, lte: maxDate },
-        bankTransactions: { none: {} }, // not already matched
-        OR: [
-          { paidFromAccountId: tx.accountId },
-          { paidFromAccountId: null },
-        ],
+        accountId: req.params.id,
+        matchedExpenseId: null,
+        matchedPaymentId: null,
+        matchedSubBillId: null,
+        matchSkippedAt: null,
       },
-      include: {
-        vendor: { select: { id: true, name: true } },
-        category: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } },
-        paidFromAccount: { select: { id: true, name: true, last4: true } },
-      },
-      take: 25,
+      take: 200,
     });
-
-    const lcDesc = tx.description.toLowerCase();
-    const scored = candidates.map((e) => {
-      let score = 0;
-      // Same-account match — strongest hint when set.
-      if (e.paidFromAccountId === tx.accountId) score += 50;
-      // Exact-cents match beats off-by-a-rounding-cent.
-      if (e.amountCents === target) score += 40;
-      else score += Math.max(0, 30 - Math.abs(e.amountCents - target));
-      // Date proximity — closer = better.
-      const days = Math.abs((e.date.getTime() - tx.date.getTime()) / 86_400_000);
-      score += Math.max(0, 20 - days * 3);
-      // Vendor name appears in bank description.
-      if (e.vendor && lcDesc.includes(e.vendor.name.toLowerCase())) score += 30;
-      // Description match (e.g. "Home Depot" in both).
-      if (e.description && lcDesc.includes(e.description.toLowerCase().slice(0, 12))) {
-        score += 15;
+    let matched = 0;
+    const skipped: string[] = [];
+    for (const tx of txs) {
+      const candidates = await scoreMatches(tx);
+      const top = candidates[0];
+      if (!top || top.score < AUTO_MATCH_SCORE) {
+        skipped.push(tx.id);
+        continue;
       }
-      return { kind: 'expense' as const, score, expense: e };
-    });
-    scored.sort((a, b) => b.score - a.score);
-
-    res.json({
-      suggestions: scored.slice(0, 8).map((s) => ({
-        kind: s.kind,
-        score: s.score,
-        expense: {
-          id: s.expense.id,
-          date: s.expense.date,
-          amountCents: s.expense.amountCents,
-          description: s.expense.description,
-          vendor: s.expense.vendor,
-          category: s.expense.category,
-          project: s.expense.project,
-          paidFromAccount: s.expense.paidFromAccount,
+      await prisma.bankTransaction.update({
+        where: { id: tx.id },
+        data: {
+          matchedExpenseId: top.expenseId ?? null,
+          matchedPaymentId: top.paymentId ?? null,
+          matchedSubBillId: top.subBillId ?? null,
+          reconciled: true,
+          reconciledAt: new Date(),
         },
-      })),
-    });
+      });
+      matched++;
+    }
+    res.json({ matched, scanned: txs.length, skipped: skipped.length });
   } catch (err) { next(err); }
 });
 

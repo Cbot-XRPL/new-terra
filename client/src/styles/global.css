@@ -910,8 +910,8 @@ input:focus, textarea:focus, select:focus {
 }
 .chat-bubble:hover .chat-bubble-actions { opacity: 1; }
 /* Composer — full-width text area with the action toolbar tucked beneath.
-   On phone widths this sticks to the bottom of the viewport so it feels
-   like a real chat window. */
+   Sticky at the bottom of the viewport on every screen size so it
+   stays in reach the same way Slack / Discord / iMessage do. */
 .chat-composer {
   display: flex;
   flex-direction: column;
@@ -921,6 +921,10 @@ input:focus, textarea:focus, select:focus {
   border: 1px solid var(--border);
   border-radius: 12px;
   margin-top: auto;
+  position: sticky;
+  bottom: 0.5rem;
+  z-index: 5;
+  box-shadow: 0 -4px 16px var(--shadow);
 }
 .chat-composer textarea {
   width: 100%;
@@ -973,14 +977,10 @@ input:focus, textarea:focus, select:focus {
 @media (max-width: 700px) {
   /* Always-visible actions on touch (no hover). */
   .chat-bubble-actions { opacity: 1; }
-  /* Pin the composer to the bottom of the screen so the user can always
-     reach it — this is what makes the page feel like a real chat. */
-  .chat-composer {
-    position: sticky;
-    bottom: 0;
-    z-index: 5;
-    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
-  }
+  /* Composer sits flush against the screen edge on phones (no half-rem
+     gap below) so the keyboard rests right under it. Desktop keeps the
+     small gap so it feels like a floating card. */
+  .chat-composer { bottom: 0; }
   /* Headline shrinks so the channel name + tools fit a phone width. */
   .chat-header h1 { font-size: 1.05rem; }
 }

@@ -247,6 +247,8 @@ model User {
   estimatesReceived Estimate[]         @relation("EstimatesForCustomer")
   // Estimate lines that route work to this user as the contractor.
   estimateLinesAsContractor EstimateLine[] @relation("EstimateLineContractor")
+  // Multi-assignee schedule rows. Counterpart to Schedule.assignees.
+  scheduleAssignments     ScheduleAssignee[] @relation("ScheduleAssignees")
   // Lead/estimate photo uploads — back-relations for the FK uploader links.
   leadAttachments       LeadAttachment[]     @relation("LeadAttachmentUploader")
   estimateAttachments   EstimateAttachment[] @relation("EstimateAttachmentUploader")
@@ -367,8 +369,16 @@ model Schedule {
   id          String   @id @default(cuid())
   projectId   String
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // Legacy single-assignee field kept for back-compat (older rows wrote
+  // here before the join table existed). New code reads + writes via
+  // `assignees` and ignores this column. We keep it nullable so the
+  // older schedule records don't lose their context.
   assigneeId  String?
   assignee    User?    @relation("AssignedSchedules", fields: [assigneeId], references: [id])
+  // Multi-assignee join — every schedule item can route to any number
+  // of people. Indexed by the join table; cascade delete on the
+  // schedule side so orphan rows don't accumulate.
+  assignees   ScheduleAssignee[]
   title       String
   notes       String?
   startsAt    DateTime
@@ -376,6 +386,20 @@ model Schedule {
   createdAt   DateTime @default(now())
 
   @@index([startsAt])
+}
+
+// Join table — schedule ↔ user (many-to-many). One row per assignment.
+// We leave the order of insertion as the only ordering signal; the UI
+// can sort alphabetically after loading.
+model ScheduleAssignee {
+  scheduleId String
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation("ScheduleAssignees", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@id([scheduleId, userId])
+  @@index([userId])
 }
 
 model Invoice {
@@ -761,6 +785,11 @@ model BankTransaction {
   // reconciled without being tied to a portal record, e.g. a bank fee).
   reconciled      Boolean  @default(false)
   reconciledAt    DateTime?
+  // "No match needed" marker — admin reviewed this row and confirmed
+  // there's no corresponding portal record (bank fee, interest, ATM
+  // withdrawal, etc.). Suppresses suggestion-fetching and auto-match
+  // attempts so the same row doesn't keep getting offered up.
+  matchSkippedAt  DateTime?
   // At most one of these three is non-null (we don't enforce that at the DB
   // level — admin overrides should be cheap). When set, the transaction is
   // already represented by the matched record so the P&L uses the matched

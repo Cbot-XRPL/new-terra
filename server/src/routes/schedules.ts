@@ -13,33 +13,71 @@ const calendarQuery = z.object({
   mine: z.enum(['true', 'false']).optional(),
 });
 
+// Common include shape — pull both the legacy single assignee (for any
+// older rows that haven't been migrated) AND the join-table users so
+// the API returns a unified `assignees: User[]` either way.
+const scheduleInclude = {
+  project: { select: { id: true, name: true, address: true } },
+  assignee: {
+    select: {
+      id: true, name: true, role: true,
+      isSales: true, isProjectManager: true, isAccounting: true, tradeType: true,
+    },
+  },
+  assignees: {
+    include: {
+      user: {
+        select: {
+          id: true, name: true, role: true,
+          isSales: true, isProjectManager: true, isAccounting: true, tradeType: true,
+        },
+      },
+    },
+  },
+} as const;
+
+// Flatten the assignee + assignees rows into one deduped list before
+// sending to the client. Older rows have only the singular FK; newer
+// rows write to the join table.
+function withFlatAssignees<T extends {
+  assignee: { id: string; name: string; role: Role; isSales?: boolean; isProjectManager?: boolean; isAccounting?: boolean; tradeType?: string | null } | null;
+  assignees: Array<{ user: { id: string; name: string; role: Role; isSales?: boolean; isProjectManager?: boolean; isAccounting?: boolean; tradeType?: string | null } }>;
+}>(s: T) {
+  const flat = [
+    ...s.assignees.map((a) => a.user),
+    ...(s.assignee && !s.assignees.some((a) => a.user.id === s.assignee!.id) ? [s.assignee] : []),
+  ];
+  return { ...s, assignees: flat };
+}
+
 // Company-wide calendar view for staff. Customers must keep using the
 // per-project schedule list — they shouldn't see other customers' projects.
 router.get('/', requireRole(Role.ADMIN, Role.EMPLOYEE, Role.SUBCONTRACTOR), async (req, res, next) => {
   try {
     const { from, to, mine } = calendarQuery.parse(req.query);
-    const where: {
-      startsAt: { gte: Date; lte: Date };
-      assigneeId?: string;
-    } = {
-      startsAt: { gte: new Date(from), lte: new Date(to) },
-    };
-    // Subs are always scoped to their own schedules — they should never see
-    // the company-wide calendar. The mine=true flag is honored for staff who
-    // want to filter by themselves.
-    if (req.user!.role === Role.SUBCONTRACTOR || mine === 'true') {
-      where.assigneeId = req.user!.sub;
-    }
+    const meId = req.user!.sub;
+    const meScoped = req.user!.role === Role.SUBCONTRACTOR || mine === 'true';
+
+    const where = meScoped
+      ? {
+          startsAt: { gte: new Date(from), lte: new Date(to) },
+          // "mine" matches either the legacy singular assignee OR a row
+          // in the join table.
+          OR: [
+            { assigneeId: meId },
+            { assignees: { some: { userId: meId } } },
+          ],
+        }
+      : {
+          startsAt: { gte: new Date(from), lte: new Date(to) },
+        };
 
     const schedules = await prisma.schedule.findMany({
       where,
       orderBy: { startsAt: 'asc' },
-      include: {
-        project: { select: { id: true, name: true, address: true } },
-        assignee: { select: { id: true, name: true, role: true } },
-      },
+      include: scheduleInclude,
     });
-    res.json({ schedules });
+    res.json({ schedules: schedules.map(withFlatAssignees) });
   } catch (err) {
     next(err);
   }
@@ -50,7 +88,11 @@ const updateScheduleSchema = z.object({
   notes: z.string().nullable().optional(),
   startsAt: z.string().datetime().optional(),
   endsAt: z.string().datetime().optional(),
+  // Legacy single-assignee field — kept for back-compat.
   assigneeId: z.string().nullable().optional(),
+  // Multi-assignee — replaces the join-table set entirely on update.
+  // Empty array clears all assignments.
+  assigneeIds: z.array(z.string()).optional(),
 });
 
 function staffOnly(role: Role) {
@@ -65,14 +107,29 @@ router.get('/:id', async (req, res, next) => {
       where: { id: req.params.id },
       include: {
         project: { select: { id: true, name: true, customerId: true, address: true } },
-        assignee: { select: { id: true, name: true, role: true } },
+        assignee: {
+          select: {
+            id: true, name: true, role: true,
+            isSales: true, isProjectManager: true, isAccounting: true, tradeType: true,
+          },
+        },
+        assignees: {
+          include: {
+            user: {
+              select: {
+                id: true, name: true, role: true,
+                isSales: true, isProjectManager: true, isAccounting: true, tradeType: true,
+              },
+            },
+          },
+        },
       },
     });
     if (!schedule) return res.status(404).json({ error: 'Schedule not found' });
     if (role === Role.CUSTOMER && schedule.project.customerId !== sub) {
       return res.status(404).json({ error: 'Schedule not found' });
     }
-    res.json({ schedule });
+    res.json({ schedule: withFlatAssignees(schedule) });
   } catch (err) {
     next(err);
   }
@@ -88,19 +145,40 @@ router.patch('/:id', requireRole(Role.ADMIN, Role.EMPLOYEE), async (req, res, ne
         return res.status(400).json({ error: 'assigneeId must reference a staff user' });
       }
     }
+    if (data.assigneeIds) {
+      const users = await prisma.user.findMany({
+        where: { id: { in: data.assigneeIds } },
+        select: { id: true, role: true },
+      });
+      if (users.length !== data.assigneeIds.length || users.some((u) => !staffOnly(u.role))) {
+        return res.status(400).json({ error: 'assigneeIds must reference staff users' });
+      }
+    }
 
-    const schedule = await prisma.schedule.update({
-      where: { id: req.params.id },
-      data: {
-        title: data.title,
-        notes: data.notes ?? undefined,
-        startsAt: data.startsAt ? new Date(data.startsAt) : undefined,
-        endsAt: data.endsAt ? new Date(data.endsAt) : undefined,
-        assigneeId: data.assigneeId,
-      },
-      include: { assignee: { select: { id: true, name: true, role: true } } },
+    const schedule = await prisma.$transaction(async (tx) => {
+      await tx.schedule.update({
+        where: { id: req.params.id },
+        data: {
+          title: data.title,
+          notes: data.notes ?? undefined,
+          startsAt: data.startsAt ? new Date(data.startsAt) : undefined,
+          endsAt: data.endsAt ? new Date(data.endsAt) : undefined,
+          assigneeId: data.assigneeId,
+        },
+      });
+      if (data.assigneeIds) {
+        // Replace the entire assignment set so the UI's checkbox state
+        // is the source of truth. Cheapest path: nuke + recreate.
+        await tx.scheduleAssignee.deleteMany({ where: { scheduleId: req.params.id } });
+        if (data.assigneeIds.length > 0) {
+          await tx.scheduleAssignee.createMany({
+            data: data.assigneeIds.map((userId) => ({ scheduleId: req.params.id, userId })),
+          });
+        }
+      }
+      return tx.schedule.findUnique({ where: { id: req.params.id }, include: scheduleInclude });
     });
-    res.json({ schedule });
+    res.json({ schedule: schedule ? withFlatAssignees(schedule) : null });
   } catch (err) {
     next(err);
   }

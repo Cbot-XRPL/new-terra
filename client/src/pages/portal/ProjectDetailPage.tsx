@@ -61,12 +61,36 @@ interface Schedule {
   startsAt: string;
   endsAt: string;
   assignee: { id: string; name: string; role: Role } | null;
+  assignees?: Array<{ id: string; name: string; role: Role; isSales?: boolean; isProjectManager?: boolean; isAccounting?: boolean; tradeType?: string | null }>;
 }
 
 interface StaffOption {
   id: string;
   name: string;
   role: Role;
+  isSales?: boolean;
+  isProjectManager?: boolean;
+  isAccounting?: boolean;
+  tradeType?: string | null;
+}
+
+// Derive a friendly tag for the assignee picker. Subs get their trade
+// (Plumber, Framer), employees get their capabilities (PM, Sales, …),
+// admins are flagged plainly. Falls back to the role when nothing else
+// is set so the option never renders bare.
+function staffTag(u: StaffOption): string {
+  if (u.role === 'SUBCONTRACTOR') return u.tradeType?.trim() || 'Contractor';
+  if (u.role === 'EMPLOYEE') {
+    const caps: string[] = [];
+    if (u.isProjectManager) caps.push('PM');
+    if (u.isSales) caps.push('Sales');
+    if (u.isAccounting) caps.push('Accounting');
+    if (u.tradeType) caps.push(u.tradeType);
+    if (caps.length > 0) return caps.join(' · ');
+    return 'Employee';
+  }
+  if (u.role === 'ADMIN') return 'Admin';
+  return u.role.toLowerCase();
 }
 
 interface ProjectContract {
@@ -99,9 +123,19 @@ export default function ProjectDetailPage() {
   const [notes, setNotes] = useState('');
   const [startsAt, setStartsAt] = useState(toDatetimeLocal(defaultStart));
   const [endsAt, setEndsAt] = useState(toDatetimeLocal(defaultEnd));
-  const [assigneeId, setAssigneeId] = useState('');
+  // Multi-select assignees. Set keyed by user id so toggle stays O(1).
+  const [assigneeIds, setAssigneeIds] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [showAddSchedule, setShowAddSchedule] = useState(false);
+
+  function toggleAssignee(id: string) {
+    setAssigneeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   async function load() {
     if (!id) return;
@@ -231,12 +265,12 @@ export default function ProjectDetailPage() {
           notes: notes || undefined,
           startsAt: new Date(startsAt).toISOString(),
           endsAt: new Date(endsAt).toISOString(),
-          assigneeId: assigneeId || undefined,
+          assigneeIds: Array.from(assigneeIds),
         }),
       });
       setTitle('');
       setNotes('');
-      setAssigneeId('');
+      setAssigneeIds(new Set());
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to add schedule');
@@ -392,11 +426,18 @@ export default function ProjectDetailPage() {
                     <div className="muted">
                       {formatDateTime(s.startsAt)} → {formatDateTime(s.endsAt)}
                     </div>
-                    {s.assignee && (
+                    {(s.assignees && s.assignees.length > 0) || s.assignee ? (
                       <div className="muted">
-                        Assigned: {s.assignee.name} ({s.assignee.role.toLowerCase()})
+                        Assigned:{' '}
+                        {(s.assignees && s.assignees.length > 0 ? s.assignees : s.assignee ? [s.assignee] : [])
+                          .map((a) => {
+                            const found = staff.find((u) => u.id === a.id);
+                            const tag = found ? staffTag(found) : a.role.toLowerCase();
+                            return `${a.name} · ${tag}`;
+                          })
+                          .join(' / ')}
                       </div>
-                    )}
+                    ) : null}
                     {s.notes && <p>{s.notes}</p>}
                   </div>
                   {canAddSchedule && (
@@ -460,19 +501,53 @@ export default function ProjectDetailPage() {
               </div>
             </div>
 
-            <label htmlFor="s-assignee">Assignee</label>
-            <select
-              id="s-assignee"
-              value={assigneeId}
-              onChange={(e) => setAssigneeId(e.target.value)}
+            <label>Assignees ({assigneeIds.size} selected)</label>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.25rem',
+                maxHeight: 200,
+                overflowY: 'auto',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                padding: '0.5rem',
+                marginBottom: '1rem',
+                background: 'var(--bg-elevated)',
+              }}
             >
-              <option value="">Unassigned</option>
-              {staff.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name} ({u.role.toLowerCase()})
-                </option>
-              ))}
-            </select>
+              {staff.length === 0 ? (
+                <span className="muted">No staff available.</span>
+              ) : (
+                staff.map((u) => (
+                  <label
+                    key={u.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      cursor: 'pointer',
+                      fontWeight: 'normal',
+                      margin: 0,
+                      padding: '0.25rem 0.4rem',
+                      borderRadius: 6,
+                      background: assigneeIds.has(u.id) ? 'var(--surface)' : 'transparent',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={assigneeIds.has(u.id)}
+                      onChange={() => toggleAssignee(u.id)}
+                      style={{ width: 'auto', margin: 0 }}
+                    />
+                    <span style={{ flex: 1 }}>{u.name}</span>
+                    <span className="muted" style={{ fontSize: '0.8rem' }}>
+                      {staffTag(u)}
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
 
             <label htmlFor="s-notes">Notes</label>
             <textarea

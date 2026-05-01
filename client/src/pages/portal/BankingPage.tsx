@@ -26,6 +26,7 @@ interface BankTransaction {
   description: string;
   runningBalanceCents: number | null;
   reconciled: boolean;
+  matchSkippedAt: string | null;
   notes: string | null;
   account: { id: string; name: string; kind: AccountKind };
   category: { id: string; name: string } | null;
@@ -53,18 +54,15 @@ function isLiability(a: BankAccount): boolean {
 }
 
 interface MatchSuggestion {
-  kind: 'expense';
+  kind: 'expense' | 'payment' | 'subBill';
   score: number;
-  expense: {
-    id: string;
-    date: string;
-    amountCents: number;
-    description: string | null;
-    vendor: { id: string; name: string } | null;
-    category: { id: string; name: string } | null;
-    project: { id: string; name: string } | null;
-    paidFromAccount: { id: string; name: string; last4: string | null } | null;
-  };
+  expenseId?: string;
+  paymentId?: string;
+  subBillId?: string;
+  date: string;
+  amountCents: number;
+  label: string;
+  meta?: string;
 }
 
 export default function BankingPage() {
@@ -100,17 +98,54 @@ export default function BankingPage() {
     }
   }
 
-  async function applyMatch(tx: BankTransaction, expenseId: string) {
+  async function applyMatch(tx: BankTransaction, s: MatchSuggestion) {
     try {
+      const body: Record<string, unknown> = { reconciled: true };
+      if (s.kind === 'expense') body.matchedExpenseId = s.expenseId;
+      else if (s.kind === 'payment') body.matchedPaymentId = s.paymentId;
+      else if (s.kind === 'subBill') body.matchedSubBillId = s.subBillId;
       await api(`/api/banking/transactions/${tx.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ matchedExpenseId: expenseId, reconciled: true }),
+        body: JSON.stringify(body),
       });
       setOpenSuggestId(null);
       setSuggestions([]);
       if (active) await loadTransactions(active);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Match failed');
+    }
+  }
+
+  async function skipTx(tx: BankTransaction, skip: boolean) {
+    try {
+      await api(`/api/banking/transactions/${tx.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ matchSkipped: skip }),
+      });
+      setOpenSuggestId(null);
+      setSuggestions([]);
+      if (active) await loadTransactions(active);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Skip failed');
+    }
+  }
+
+  async function autoMatchAccount() {
+    if (!active) return;
+    setError(null);
+    setInfo(null);
+    try {
+      const r = await api<{ matched: number; scanned: number; skipped: number }>(
+        `/api/banking/accounts/${active}/auto-match`,
+        { method: 'POST' },
+      );
+      setInfo(
+        `Auto-matched ${r.matched} of ${r.scanned} unmatched transaction${r.scanned === 1 ? '' : 's'} ` +
+        `(${r.skipped} below confidence threshold).`,
+      );
+      await loadTransactions(active);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Auto-match failed');
     }
   }
 
@@ -454,6 +489,13 @@ export default function BankingPage() {
               <button type="button" className="button-ghost" onClick={() => setShowNewTx((v) => !v)}>
                 {showNewTx ? 'Cancel' : '+ Add transaction'}
               </button>
+              <button
+                type="button"
+                onClick={autoMatchAccount}
+                title="Auto-match every unmatched transaction with a high-confidence expense, payment, or sub bill"
+              >
+                Auto-match
+              </button>
               <button type="button" className="button-ghost" onClick={applyRules} title="Re-run categorization rules across uncategorized transactions">
                 Apply rules
               </button>
@@ -565,7 +607,9 @@ export default function BankingPage() {
                       {t.matchedPayment && <>Payment {formatCents(t.matchedPayment.amountCents)}</>}
                       {t.matchedExpense && <>Expense {formatCents(t.matchedExpense.amountCents)}</>}
                       {t.matchedSubBill && <>Sub bill {t.matchedSubBill.number}</>}
-                      {!t.matchedPayment && !t.matchedExpense && !t.matchedSubBill && '—'}
+                      {!t.matchedPayment && !t.matchedExpense && !t.matchedSubBill && (
+                        t.matchSkippedAt ? <em>Skipped</em> : '—'
+                      )}
                     </td>
                     <td
                       style={{
@@ -584,15 +628,37 @@ export default function BankingPage() {
                       />
                     </td>
                     <td>
-                      {!t.matchedExpense && !t.matchedPayment && !t.matchedSubBill && (
+                      {!t.matchedExpense && !t.matchedPayment && !t.matchedSubBill && !t.matchSkippedAt && (
+                        <>
+                          <button
+                            type="button"
+                            className="button-small"
+                            onClick={() => loadSuggestions(t.id)}
+                            style={{ marginRight: '0.25rem' }}
+                            title="Suggest matches for this transaction"
+                          >
+                            {openSuggestId === t.id ? 'Hide' : 'Match'}
+                          </button>
+                          <button
+                            type="button"
+                            className="button-ghost button-small"
+                            onClick={() => skipTx(t, true)}
+                            style={{ marginRight: '0.25rem' }}
+                            title="No portal record matches this — bank fee, ATM, etc."
+                          >
+                            Skip
+                          </button>
+                        </>
+                      )}
+                      {t.matchSkippedAt && (
                         <button
                           type="button"
-                          className="button-small"
-                          onClick={() => loadSuggestions(t.id)}
+                          className="button-ghost button-small"
+                          onClick={() => skipTx(t, false)}
                           style={{ marginRight: '0.25rem' }}
-                          title="Suggest expense matches for this transaction"
+                          title="Re-enable matching for this transaction"
                         >
-                          {openSuggestId === t.id ? 'Hide' : 'Match'}
+                          Un-skip
                         </button>
                       )}
                       <button
@@ -611,15 +677,16 @@ export default function BankingPage() {
                           <p className="muted">Looking for matches…</p>
                         ) : suggestions.length === 0 ? (
                           <p className="muted">
-                            No matching expenses found. Add the expense via Job receipts or
-                            the Expenses page first, then come back here.
+                            No matching records found. Log the expense via Job receipts or
+                            the Expenses page first, then come back here — or hit Skip if
+                            this is a bank fee / non-portal item.
                           </p>
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                             <strong>Suggested matches</strong>
                             {suggestions.map((s) => (
                               <div
-                                key={s.expense.id}
+                                key={`${s.kind}-${s.expenseId ?? s.paymentId ?? s.subBillId}`}
                                 style={{
                                   display: 'flex',
                                   justifyContent: 'space-between',
@@ -633,31 +700,33 @@ export default function BankingPage() {
                                 }}
                               >
                                 <div style={{ flex: 1, minWidth: 200 }}>
-                                  <strong>{formatCents(s.expense.amountCents)}</strong>
+                                  <span
+                                    style={{
+                                      fontSize: '0.7rem',
+                                      textTransform: 'uppercase',
+                                      letterSpacing: '0.05em',
+                                      color: 'var(--text-muted)',
+                                      marginRight: '0.5rem',
+                                    }}
+                                  >
+                                    {s.kind === 'expense' ? 'Expense' :
+                                     s.kind === 'payment' ? 'Payment' : 'Sub bill'}
+                                  </span>
+                                  <strong>{formatCents(s.amountCents)}</strong>
                                   {' · '}
-                                  {new Date(s.expense.date).toLocaleDateString()}
-                                  {s.expense.vendor && (
-                                    <>{' · '}{s.expense.vendor.name}</>
-                                  )}
-                                  {s.expense.project && (
-                                    <>{' · '}{s.expense.project.name}</>
-                                  )}
-                                  {s.expense.description && (
-                                    <div className="muted" style={{ fontSize: '0.8rem' }}>
-                                      {s.expense.description}
-                                    </div>
-                                  )}
-                                  {s.expense.paidFromAccount && (
+                                  {new Date(s.date).toLocaleDateString()}
+                                  {' · '}
+                                  {s.label}
+                                  {s.meta && (
                                     <div className="muted" style={{ fontSize: '0.75rem' }}>
-                                      Paid from {s.expense.paidFromAccount.name}
-                                      {s.expense.paidFromAccount.last4 && ` ··${s.expense.paidFromAccount.last4}`}
+                                      {s.meta}
                                     </div>
                                   )}
                                 </div>
                                 <button
                                   type="button"
                                   className="button-small"
-                                  onClick={() => applyMatch(t, s.expense.id)}
+                                  onClick={() => applyMatch(t, s)}
                                 >
                                   Match
                                 </button>

@@ -449,7 +449,10 @@ const createScheduleSchema = z.object({
   notes: z.string().optional(),
   startsAt: z.string().datetime(),
   endsAt: z.string().datetime(),
+  // Legacy single-assignee — kept for old clients.
   assigneeId: z.string().optional(),
+  // Multi-assignee — preferred. Empty array OK.
+  assigneeIds: z.array(z.string()).optional(),
 });
 
 router.get('/:id/schedules', async (req, res, next) => {
@@ -461,9 +464,36 @@ router.get('/:id/schedules', async (req, res, next) => {
     const schedules = await prisma.schedule.findMany({
       where: { projectId: project.id },
       orderBy: { startsAt: 'asc' },
-      include: { assignee: { select: { id: true, name: true, role: true } } },
+      include: {
+        assignee: {
+          select: {
+            id: true, name: true, role: true,
+            isSales: true, isProjectManager: true, isAccounting: true, tradeType: true,
+          },
+        },
+        assignees: {
+          include: {
+            user: {
+              select: {
+                id: true, name: true, role: true,
+                isSales: true, isProjectManager: true, isAccounting: true, tradeType: true,
+              },
+            },
+          },
+        },
+      },
     });
-    res.json({ schedules });
+    // Flatten the two assignee shapes into one `assignees` array.
+    const flat = schedules.map((s) => ({
+      ...s,
+      assignees: [
+        ...s.assignees.map((a) => a.user),
+        ...(s.assignee && !s.assignees.some((a) => a.user.id === s.assignee!.id)
+          ? [s.assignee]
+          : []),
+      ],
+    }));
+    res.json({ schedules: flat });
   } catch (err) {
     next(err);
   }
@@ -493,19 +523,68 @@ router.post('/:id/schedules', async (req, res, next) => {
         return res.status(400).json({ error: 'assigneeId must reference a staff user' });
       }
     }
+    if (data.assigneeIds && data.assigneeIds.length > 0) {
+      const users = await prisma.user.findMany({
+        where: { id: { in: data.assigneeIds } },
+        select: { id: true, role: true },
+      });
+      if (users.length !== data.assigneeIds.length || users.some((u) => !isStaff(u.role))) {
+        return res.status(400).json({ error: 'assigneeIds must reference staff users' });
+      }
+    }
 
-    const schedule = await prisma.schedule.create({
-      data: {
-        projectId: project.id,
-        title: data.title,
-        notes: data.notes,
-        startsAt: new Date(data.startsAt),
-        endsAt: new Date(data.endsAt),
-        assigneeId: data.assigneeId,
-      },
-      include: { assignee: { select: { id: true, name: true, role: true } } },
+    const schedule = await prisma.$transaction(async (tx) => {
+      const created = await tx.schedule.create({
+        data: {
+          projectId: project.id,
+          title: data.title,
+          notes: data.notes,
+          startsAt: new Date(data.startsAt),
+          endsAt: new Date(data.endsAt),
+          assigneeId: data.assigneeId,
+        },
+      });
+      if (data.assigneeIds && data.assigneeIds.length > 0) {
+        await tx.scheduleAssignee.createMany({
+          data: data.assigneeIds.map((userId) => ({ scheduleId: created.id, userId })),
+        });
+      }
+      return tx.schedule.findUnique({
+        where: { id: created.id },
+        include: {
+          assignee: {
+            select: {
+              id: true, name: true, role: true,
+              isSales: true, isProjectManager: true, isAccounting: true, tradeType: true,
+            },
+          },
+          assignees: {
+            include: {
+              user: {
+                select: {
+                  id: true, name: true, role: true,
+                  isSales: true, isProjectManager: true, isAccounting: true, tradeType: true,
+                },
+              },
+            },
+          },
+        },
+      });
     });
-    res.status(201).json({ schedule });
+    // Flatten the two assignee shapes into one for the client.
+    const flat = schedule
+      ? {
+          ...schedule,
+          assignees: [
+            ...schedule.assignees.map((a) => a.user),
+            ...(schedule.assignee &&
+            !schedule.assignees.some((a) => a.user.id === schedule.assignee!.id)
+              ? [schedule.assignee]
+              : []),
+          ],
+        }
+      : null;
+    res.status(201).json({ schedule: flat });
   } catch (err) {
     next(err);
   }
