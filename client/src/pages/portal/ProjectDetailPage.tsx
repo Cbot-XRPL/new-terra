@@ -207,6 +207,23 @@ export default function ProjectDetailPage() {
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
+  async function renameProject() {
+    if (!project) return;
+    const next = prompt('New project name:', project.name);
+    if (next === null) return;
+    const trimmed = next.trim();
+    if (!trimmed || trimmed === project.name) return;
+    try {
+      await api(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: trimmed }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Rename failed');
+    }
+  }
+
   async function editLaborBudget() {
     if (!project) return;
     const current = project.laborBudgetCents != null ? (project.laborBudgetCents / 100).toFixed(2) : '';
@@ -299,7 +316,12 @@ export default function ProjectDetailPage() {
     );
   }
 
-  const isPmOrAdmin = isAdmin || (user?.role === 'EMPLOYEE' && user.isProjectManager && project.projectManager?.id === user.id);
+  // Project-management capability — admins always pass; any PM-flagged
+  // employee can drive any project (status, schedule, budget). Was
+  // previously gated to the project's assigned PM only, which broke
+  // unassigned / shared-PM workflows where a different PM needed to
+  // step in.
+  const isPmOrAdmin = isAdmin || (user?.role === 'EMPLOYEE' && user.isProjectManager);
 
   return (
     <div className="dashboard">
@@ -307,7 +329,20 @@ export default function ProjectDetailPage() {
         <Link to="/portal/projects" className="muted">← All projects</Link>
         <div className="row-between" style={{ alignItems: 'flex-end' }}>
           <div>
-            <h1 style={{ marginBottom: 4 }}>{project.name}</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <h1 style={{ marginBottom: 4 }}>{project.name}</h1>
+              {isPmOrAdmin && (
+                <button
+                  type="button"
+                  className="button-ghost button-small"
+                  onClick={renameProject}
+                  title="Rename project"
+                  style={{ marginBottom: 4 }}
+                >
+                  ✎ Rename
+                </button>
+              )}
+            </div>
             <p className="muted" style={{ margin: 0 }}>
               <span className={`badge ${STATUS_BADGE[project.status]}`}>{humanize(project.status)}</span>
               {' · '}Customer: <strong>{project.customer.name}</strong>

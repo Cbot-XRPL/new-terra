@@ -48,7 +48,11 @@ export function canSubmitExpense(
 /**
  * True if the user can see / edit project-level data for this specific project.
  * - ADMIN: every project, full write
- * - EMPLOYEE PM (assigned): full write
+ * - EMPLOYEE PM: full write on any project. Originally scoped to the
+ *   assigned PM only, but real construction crews share PM duties (one
+ *   covers when another's out, unassigned/intake projects need anyone
+ *   with the flag to drive them). Treat the isProjectManager flag as a
+ *   company-wide capability rather than a per-project assignment.
  * - EMPLOYEE sales: read (and comment via the comments route's read gate) so
  *   reps can keep tabs on their accounts and help the PM coordinate with the
  *   customer; cannot edit project metadata or status
@@ -61,7 +65,7 @@ export function canManageProject(
   project: Pick<Project, 'projectManagerId' | 'customerId'>,
 ): { read: boolean; write: boolean } {
   if (user.role === 'ADMIN') return { read: true, write: true };
-  if (user.role === 'EMPLOYEE' && user.isProjectManager && project.projectManagerId === user.id) {
+  if (user.role === 'EMPLOYEE' && user.isProjectManager) {
     return { read: true, write: true };
   }
   if (user.role === 'EMPLOYEE' && user.isSales) {

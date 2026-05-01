@@ -104,11 +104,13 @@ describe('canManageProject', () => {
     const me = user({ id: 'u1', role: 'EMPLOYEE', isProjectManager: true });
     expect(canManageProject(me, project({ projectManagerId: 'u1' }))).toEqual({ read: true, write: true });
   });
-  it('un-assigned PM gets nothing', () => {
+  it('any PM-flagged employee gets read+write on any project', () => {
+    // Loosened from "assigned PM only" so shared / unassigned PM
+    // workflows aren't blocked — see canManageProject.
     const me = user({ id: 'u1', role: 'EMPLOYEE', isProjectManager: true });
     expect(canManageProject(me, project({ projectManagerId: 'someone-else' }))).toEqual({
-      read: false,
-      write: false,
+      read: true,
+      write: true,
     });
   });
   it('sales-flagged employee reads any project but cannot write', () => {
