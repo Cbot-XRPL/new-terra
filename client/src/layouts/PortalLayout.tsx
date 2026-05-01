@@ -23,6 +23,7 @@ import {
   Camera,
   Menu,
   X,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
@@ -161,6 +162,11 @@ export default function PortalLayout() {
               && (user.isProjectManager || user.isAccounting))) && (
             <NavLink to="/portal/job-receipts">
               <Camera size={ICON_SIZE} /> <span>Job receipts</span>
+            </NavLink>
+          )}
+          {user?.role !== 'CUSTOMER' && (
+            <NavLink to="/portal/ai">
+              <Sparkles size={ICON_SIZE} /> <span>AI assistant</span>
             </NavLink>
           )}
           {(user?.role === 'ADMIN' ||

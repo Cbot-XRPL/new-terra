@@ -249,6 +249,8 @@ model User {
   estimateLinesAsContractor EstimateLine[] @relation("EstimateLineContractor")
   // Multi-assignee schedule rows. Counterpart to Schedule.assignees.
   scheduleAssignments     ScheduleAssignee[] @relation("ScheduleAssignees")
+  // AI assistant conversations belonging to this user.
+  aiConversations         AiConversation[]   @relation("AiConversations")
   // Lead/estimate photo uploads — back-relations for the FK uploader links.
   leadAttachments       LeadAttachment[]     @relation("LeadAttachmentUploader")
   estimateAttachments   EstimateAttachment[] @relation("EstimateAttachmentUploader")
@@ -909,6 +911,36 @@ model Membership {
   startedAt    DateTime       @default(now())
   renewsAt     DateTime?
   active       Boolean        @default(true)
+}
+
+// AI assistant conversation thread. One row per chat the user starts.
+// title is auto-generated from the first user message + can be renamed.
+// On delete, cascades to AiMessage so we don't keep orphan transcripts.
+model AiConversation {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation("AiConversations", fields: [userId], references: [id], onDelete: Cascade)
+  title     String      @default("New chat")
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  messages  AiMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+// One row per message in an AI conversation. role = 'user' | 'assistant'.
+// content is the rendered text only (tool-use turns aren't persisted —
+// we replay tool calls live each time so changes to tool definitions
+// don't break old chats).
+model AiMessage {
+  id             String         @id @default(cuid())
+  conversationId String
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String
+  content        String         @db.Text
+  createdAt      DateTime       @default(now())
+
+  @@index([conversationId, createdAt])
 }
 
 // Lead-scoped photo / file attachment. Sales rep snaps a site photo at

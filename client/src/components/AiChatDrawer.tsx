@@ -1,7 +1,8 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ApiError, api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
-import { Sparkles, X, Send } from 'lucide-react';
+import { Sparkles, X, Send, Maximize2 } from 'lucide-react';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -146,15 +147,25 @@ export default function AiChatDrawer() {
         <div className="ai-drawer" role="dialog" aria-label="AI assistant">
           <div className="ai-drawer-header">
             <strong>AI assistant</strong>
-            <button
-              type="button"
-              className="button-ghost button-small"
-              onClick={() => setMessages([])}
-              disabled={busy || messages.length === 0}
-              title="Clear conversation"
-            >
-              Clear
-            </button>
+            <div style={{ display: 'flex', gap: '0.25rem' }}>
+              <Link
+                to="/portal/ai"
+                className="button-ghost button-small"
+                title="Open the full assistant page"
+                onClick={() => setOpen(false)}
+              >
+                <Maximize2 size={12} />
+              </Link>
+              <button
+                type="button"
+                className="button-ghost button-small"
+                onClick={() => setMessages([])}
+                disabled={busy || messages.length === 0}
+                title="Clear conversation"
+              >
+                Clear
+              </button>
+            </div>
           </div>
           <div className="ai-drawer-stream" ref={streamRef}>
             {messages.length === 0 && (
