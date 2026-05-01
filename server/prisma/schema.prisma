@@ -161,6 +161,13 @@ model User {
   // trade. Surfaced to customers as the default line label so we never
   // expose the contractor's name on a customer-facing estimate.
   tradeType            String?
+  // Document uploads — PDF or image, one URL per type. Driver's licence
+  // is required for everyone (enforced UI-side via a dashboard banner +
+  // a profile-page warning). Business + contractor licences are
+  // contractor-only and optional. URLs point at /uploads/licenses/...
+  driversLicenseUrl    String?
+  contractorLicenseUrl String?
+  businessLicenseUrl   String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

@@ -255,6 +255,9 @@ router.get('/me', requireAuth, async (req, res, next) => {
         hourlyRateCents: true,
         avatarUrl: true,
         avatarThumbnailUrl: true,
+        driversLicenseUrl: true,
+        contractorLicenseUrl: true,
+        businessLicenseUrl: true,
       },
     });
     if (!user) return res.status(404).json({ error: 'User not found' });

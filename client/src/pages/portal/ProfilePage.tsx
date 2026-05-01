@@ -258,6 +258,8 @@ export default function ProfilePage() {
         </p>
       </section>
 
+      <DocumentsSection user={user} refreshUser={refreshUser} />
+
       <section className="card">
         <h2>Account</h2>
         <dl className="kv">
@@ -287,6 +289,193 @@ export default function ProfilePage() {
           </button>
         </div>
       </section>
+    </div>
+  );
+}
+
+// ─── Documents (licenses) ────────────────────────────────────────────
+// One uploader per license type. Driver's licence is shown to everyone
+// and flagged as required; contractor + business licences only show for
+// SUBCONTRACTOR users. Files are saved as image (resized webp) or PDF.
+
+interface DocSpec {
+  slug: 'driver' | 'contractor' | 'business';
+  label: string;
+  required?: boolean;
+  description?: string;
+}
+
+function DocumentsSection({
+  user,
+  refreshUser,
+}: {
+  user: AuthUser;
+  refreshUser: (next?: AuthUser) => Promise<void>;
+}) {
+  const isContractor = user.role === 'SUBCONTRACTOR';
+  const docs: DocSpec[] = [
+    {
+      slug: 'driver',
+      label: "Driver's licence",
+      required: true,
+      description: 'Required for everyone — keep on file for project sign-ins and 1099 record-keeping.',
+    },
+  ];
+  if (isContractor) {
+    docs.push(
+      {
+        slug: 'contractor',
+        label: 'Contractor licence',
+        description: 'State / county contractor licence (if your trade requires one).',
+      },
+      {
+        slug: 'business',
+        label: 'Business licence',
+        description: 'Business licence or LLC certificate.',
+      },
+    );
+  }
+  return (
+    <section className="card">
+      <h2>Documents</h2>
+      {!user.driversLicenseUrl && (
+        <div className="form-error" style={{ marginBottom: '1rem' }}>
+          Driver's licence required — please upload below.
+        </div>
+      )}
+      <p className="muted" style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>
+        We accept JPG, PNG, or PDF up to 10 MB. Replacement uploads overwrite
+        the prior file.
+      </p>
+      {docs.map((d) => {
+        const url = (
+          d.slug === 'driver' ? user.driversLicenseUrl :
+          d.slug === 'contractor' ? user.contractorLicenseUrl :
+          user.businessLicenseUrl
+        );
+        return (
+          <DocRow
+            key={d.slug}
+            spec={d}
+            url={url ?? null}
+            onChanged={async (next) => {
+              await refreshUser(next);
+            }}
+          />
+        );
+      })}
+    </section>
+  );
+}
+
+function DocRow({
+  spec,
+  url,
+  onChanged,
+}: {
+  spec: DocSpec;
+  url: string | null;
+  onChanged: (next: AuthUser) => Promise<void>;
+}) {
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function upload(file: File) {
+    setError(null);
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`${API_BASE}/api/me/license/${spec.slug}`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: form,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new ApiError(res.status, data?.error ?? res.statusText, data);
+      await onChanged(data.user as AuthUser);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
+  async function remove() {
+    if (!confirm(`Remove your ${spec.label.toLowerCase()}?`)) return;
+    setError(null);
+    try {
+      const { user: updated } = await api<{ user: AuthUser }>(
+        `/api/me/license/${spec.slug}`,
+        { method: 'DELETE' },
+      );
+      await onChanged(updated);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Remove failed');
+    }
+  }
+
+  return (
+    <div style={{ marginBottom: '1.25rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <div>
+          <strong>{spec.label}</strong>
+          {spec.required && <span style={{ color: 'var(--error)', marginLeft: 4 }}>*</span>}
+          {url ? (
+            <span className="muted" style={{ marginLeft: 8, fontSize: '0.85rem' }}>· on file</span>
+          ) : (
+            <span className="muted" style={{ marginLeft: 8, fontSize: '0.85rem' }}>· not uploaded</span>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="button button-ghost button-small"
+            >
+              View
+            </a>
+          )}
+          <button
+            type="button"
+            className="button-small"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+          >
+            {uploading ? 'Uploading…' : url ? 'Replace' : 'Upload'}
+          </button>
+          {url && (
+            <button
+              type="button"
+              className="button button-ghost button-small"
+              onClick={remove}
+              disabled={uploading}
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
+      {spec.description && (
+        <p className="muted" style={{ fontSize: '0.8rem', margin: '0.25rem 0 0' }}>
+          {spec.description}
+        </p>
+      )}
+      {error && <div className="form-error" style={{ marginTop: '0.5rem' }}>{error}</div>}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*,application/pdf"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) upload(f);
+        }}
+      />
     </div>
   );
 }

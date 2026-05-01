@@ -13,6 +13,30 @@ const router = Router();
 router.use(requireAuth);
 
 const AVATAR_ROOT = path.resolve(process.cwd(), 'uploads', 'avatars');
+const LICENSE_ROOT = path.resolve(process.cwd(), 'uploads', 'licenses');
+
+// Image OR PDF; 10 MB cap is enough for a phone photo of a DL or a
+// scanned contractor licence PDF without choking the server.
+const licenseUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') {
+      return cb(null, true);
+    }
+    cb(new Error('Upload an image or PDF'));
+  },
+});
+
+// Map URL slug → DB column. Three documents we track per user. Driver's
+// licence is required for everyone; the other two are contractor-only
+// (UI hides them from non-contractors).
+const LICENSE_FIELDS = {
+  driver: 'driversLicenseUrl',
+  contractor: 'contractorLicenseUrl',
+  business: 'businessLicenseUrl',
+} as const;
+type LicenseSlug = keyof typeof LICENSE_FIELDS;
 
 // In-memory storage so sharp can resize without bouncing through disk first.
 // 8 MB cap is generous for a profile picture; sharp will downsize anyway.
@@ -44,6 +68,9 @@ const meSelect = {
   isAccounting: true,
   avatarUrl: true,
   avatarThumbnailUrl: true,
+  driversLicenseUrl: true,
+  contractorLicenseUrl: true,
+  businessLicenseUrl: true,
 } as const;
 
 router.get('/profile', async (req, res, next) => {
@@ -130,6 +157,89 @@ router.post('/avatar', upload.single('file'), async (req, res, next) => {
       select: meSelect,
     });
     res.status(201).json({ user });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// License uploads — driver, contractor, business. Image or PDF up to
+// 10 MB. Images are resized to ≤2000px webp; PDFs stored as-is. Each
+// upload replaces any prior file for the same slug + user.
+router.post('/license/:slug', licenseUpload.single('file'), async (req, res, next) => {
+  try {
+    const slug = req.params.slug as LicenseSlug;
+    if (!(slug in LICENSE_FIELDS)) {
+      return res.status(400).json({ error: 'Unknown license type' });
+    }
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const me = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!me) return res.status(401).json({ error: 'Unauthenticated' });
+    // Customers can only upload a driver's licence — they don't have
+    // contractor / business licences in this product.
+    if (me.role === Role.CUSTOMER && slug !== 'driver') {
+      return res.status(403).json({ error: 'Only contractors upload that document type' });
+    }
+
+    const userId = me.id;
+    const dir = path.join(LICENSE_ROOT, userId);
+    await fs.mkdir(dir, { recursive: true });
+
+    const stamp = Date.now();
+    let storedName: string;
+    let body: Buffer;
+    if (file.mimetype === 'application/pdf') {
+      storedName = `${slug}-${stamp}.pdf`;
+      body = file.buffer;
+    } else {
+      storedName = `${slug}-${stamp}.webp`;
+      body = await sharp(file.buffer)
+        .rotate()
+        .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 86 })
+        .toBuffer();
+    }
+    await fs.writeFile(path.join(dir, storedName), body);
+
+    const fieldKey = LICENSE_FIELDS[slug];
+    const url = `/uploads/licenses/${userId}/${storedName}`;
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { [fieldKey]: url },
+      select: meSelect,
+    });
+    audit(req, {
+      action: 'me.license_uploaded',
+      resourceType: 'user',
+      resourceId: userId,
+      meta: { slug },
+    }).catch(() => undefined);
+    res.status(201).json({ user });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/license/:slug', async (req, res, next) => {
+  try {
+    const slug = req.params.slug as LicenseSlug;
+    if (!(slug in LICENSE_FIELDS)) {
+      return res.status(400).json({ error: 'Unknown license type' });
+    }
+    const fieldKey = LICENSE_FIELDS[slug];
+    const user = await prisma.user.update({
+      where: { id: req.user!.sub },
+      data: { [fieldKey]: null },
+      select: meSelect,
+    });
+    audit(req, {
+      action: 'me.license_removed',
+      resourceType: 'user',
+      resourceId: req.user!.sub,
+      meta: { slug },
+    }).catch(() => undefined);
+    res.json({ user });
   } catch (err) {
     next(err);
   }

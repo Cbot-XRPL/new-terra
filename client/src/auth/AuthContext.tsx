@@ -25,6 +25,9 @@ export interface AuthUser {
   hourlyRateCents?: number;
   avatarUrl?: string | null;
   avatarThumbnailUrl?: string | null;
+  driversLicenseUrl?: string | null;
+  contractorLicenseUrl?: string | null;
+  businessLicenseUrl?: string | null;
 }
 
 interface AuthContextValue {
