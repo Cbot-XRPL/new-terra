@@ -78,11 +78,15 @@ export default function AiChatDrawer() {
   // examples would flash the static text every ~250ms.
   const [lureFinished, setLureFinished] = useState(false);
 
-  // Customer-facing portal users don't get the assistant. Also hide
-  // it on the dedicated /portal/ai page — the floating FAB would just
-  // duplicate what's already on screen.
-  const onAiPage = location.pathname.startsWith('/portal/ai');
-  const visible = !!user && user.role !== 'CUSTOMER' && !onAiPage;
+  // Customer-facing portal users don't get the assistant. Also hide it
+  // on chat-style pages where the FAB would either duplicate what's on
+  // screen (the dedicated /portal/ai page) or sit on top of the chat
+  // composer (board / DMs) and steal taps.
+  const onChatLikePage =
+    location.pathname.startsWith('/portal/ai') ||
+    location.pathname.startsWith('/portal/board') ||
+    location.pathname.startsWith('/portal/messages');
+  const visible = !!user && user.role !== 'CUSTOMER' && !onChatLikePage;
 
   useEffect(() => {
     if (streamRef.current) {

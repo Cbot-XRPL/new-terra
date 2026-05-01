@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAuth, type AuthUser } from '../../auth/AuthContext';
 import Avatar from '../../components/Avatar';
+import InstallAppButton from '../../components/InstallAppButton';
 import {
   type ThemeMode,
   type CookieConsent,
@@ -276,6 +277,13 @@ export default function ProfilePage() {
             </>
           )}
         </dl>
+        <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
+          <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '0.95rem' }}>
+            Mobile app
+          </h3>
+          <InstallAppButton />
+        </div>
+
         <div style={{ marginTop: '1rem' }}>
           <button
             type="button"

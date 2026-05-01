@@ -780,6 +780,12 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  /* Stream owns the scrolling, composer sits below at fixed height.
+     This is what keeps the composer always-visible — sticky alone was
+     unreliable when the layout's scroll ancestor wasn't predictable. */
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 .chat-msg {
   padding: 0.5rem 0.75rem;
@@ -824,8 +830,12 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  /* Lets the stream fill the viewport so the composer can sit below it. */
-  min-height: calc(100vh - 4rem);
+  /* Fixed viewport height so the .chat-stream child can own scrolling
+     and the composer stays glued to the bottom forever. min-height let
+     the page outgrow the viewport and pushed the composer off screen. */
+  height: calc(100vh - 4rem);
+  min-height: 0;
+  overflow: hidden;
 }
 .chat-channels {
   display: flex;
@@ -920,9 +930,10 @@ input:focus, textarea:focus, select:focus {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 12px;
-  margin-top: auto;
-  position: sticky;
-  bottom: 0.5rem;
+  /* The fixed-height .chat-shell + scrolling .chat-stream above keep
+     this composer glued to the bottom — no sticky / margin-top auto
+     needed, those were the source of the "scrolls away" bug. */
+  flex-shrink: 0;
   z-index: 5;
   box-shadow: 0 -4px 16px var(--shadow);
 }
