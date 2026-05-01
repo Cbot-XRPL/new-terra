@@ -45,6 +45,34 @@ interface ConversationDetail {
   messages: Array<{ id: string; role: string; content: string; createdAt: string }>;
 }
 
+// Typewriter "lure" examples — same set the corner drawer uses so the
+// empty-state vibe is consistent across both surfaces.
+const EXAMPLES = [
+  'list active projects',
+  'show overdue invoices',
+  'what leads went stale?',
+  'draft an email to Cody',
+  'DM Matt about Wednesday',
+  'create a project for Cody',
+  'recap the Hughes project',
+  'show pending pay requests',
+  'list this week\'s schedule',
+  'add a lead named Sam',
+  'email the Hughes follow-up',
+  'who\'s on the deck job?',
+  'show subs without W-9s',
+  'invoices over $5k?',
+  'mark lead 12 as won',
+  'draft a thanks to a customer',
+  'pending sub bills?',
+  'what\'s in my inbox?',
+];
+const STATIC_PLACEHOLDER = 'Ask the assistant…  (Cmd/Ctrl+Enter to send)';
+const TYPE_MS = 50;
+const DELETE_MS = 25;
+const HOLD_MS = 1300;
+const MAX_CYCLES = 6;
+
 // Full-page Claude-style assistant. Left rail = past conversations, right
 // pane = active thread. Conversations persist server-side so the user
 // can resume any chat later. The /portal/ai/:id route loads + opens
@@ -62,6 +90,8 @@ export default function AiAssistantPage() {
   const [error, setError] = useState<string | null>(null);
   const streamRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const [animatedPlaceholder, setAnimatedPlaceholder] = useState('');
+  const [lureStopped, setLureStopped] = useState(false);
 
   async function pickImages(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -75,6 +105,7 @@ export default function AiAssistantPage() {
       next.push(await fileToAttached(f));
     }
     setImages((prev) => [...prev, ...next]);
+    setLureStopped(true);
   }
   function removeImage(idx: number) {
     setImages((prev) => {
@@ -87,6 +118,9 @@ export default function AiAssistantPage() {
   // Reflect URL → state when the user clicks a sidebar item or hits back/forward.
   useEffect(() => {
     setActiveId(routeId ?? null);
+    // Restart the typewriter lure on every chat switch so a freshly
+    // opened empty thread shows the same animated hint as a cold load.
+    setLureStopped(false);
   }, [routeId]);
 
   async function loadConversations() {
@@ -124,6 +158,58 @@ export default function AiAssistantPage() {
       streamRef.current.scrollTop = streamRef.current.scrollHeight;
     }
   }, [messages, busy]);
+
+  // Typewriter lure — runs only when the thread is empty and the user
+  // hasn't engaged the composer. Matches the corner drawer so both
+  // empty states feel like the same product.
+  useEffect(() => {
+    if (lureStopped || input.length > 0 || messages.length > 0) {
+      return;
+    }
+    let cancelled = false;
+    let cycle = 0;
+    let exampleIdx = Math.floor(Math.random() * EXAMPLES.length);
+    let charIdx = 0;
+    let phase: 'typing' | 'pausing' | 'deleting' = 'typing';
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    function tick() {
+      if (cancelled) return;
+      const ex = EXAMPLES[exampleIdx]!;
+      if (phase === 'typing') {
+        if (charIdx < ex.length) {
+          charIdx++;
+          setAnimatedPlaceholder(ex.slice(0, charIdx));
+          timer = setTimeout(tick, TYPE_MS + Math.random() * 25);
+        } else {
+          phase = 'pausing';
+          timer = setTimeout(tick, HOLD_MS);
+        }
+      } else if (phase === 'pausing') {
+        phase = 'deleting';
+        timer = setTimeout(tick, 0);
+      } else if (phase === 'deleting') {
+        if (charIdx > 0) {
+          charIdx--;
+          setAnimatedPlaceholder(ex.slice(0, charIdx));
+          timer = setTimeout(tick, DELETE_MS);
+        } else {
+          cycle++;
+          if (cycle >= MAX_CYCLES) {
+            setAnimatedPlaceholder('');
+            return;
+          }
+          exampleIdx = (exampleIdx + 1) % EXAMPLES.length;
+          phase = 'typing';
+          timer = setTimeout(tick, 250);
+        }
+      }
+    }
+    tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [lureStopped, input.length, messages.length]);
 
   async function newChat() {
     try {
@@ -277,29 +363,17 @@ export default function AiAssistantPage() {
           </p>
         </header>
 
-        <div className="ai-page-stream" ref={streamRef}>
-          {messages.length === 0 && !busy ? (
-            <div className="ai-page-empty">
-              <p className="muted">
-                Try one of these:
-              </p>
-              <ul className="muted" style={{ paddingLeft: '1.25rem', lineHeight: 1.7 }}>
-                <li><em>"Show me leads stuck in QUOTE_SENT for more than a week"</em></li>
-                <li><em>"Draft a follow-up for the lead from the Hughes house"</em></li>
-                <li><em>"What's the total amount owed across open invoices?"</em></li>
-                <li><em>"Create a project called Smith Deck for Cody Ricketts"</em></li>
-              </ul>
-            </div>
-          ) : (
-            messages.map((m, i) => (
+        {(messages.length > 0 || busy || error) && (
+          <div className="ai-page-stream" ref={streamRef}>
+            {messages.map((m, i) => (
               <div key={i} className={`ai-page-bubble ${m.role}`}>
                 {m.content}
               </div>
-            ))
-          )}
-          {busy && <div className="ai-page-bubble assistant ai-thinking">Thinking…</div>}
-          {error && <div className="form-error" style={{ marginTop: '0.5rem' }}>{error}</div>}
-        </div>
+            ))}
+            {busy && <div className="ai-page-bubble assistant ai-thinking">Thinking…</div>}
+            {error && <div className="form-error" style={{ marginTop: '0.5rem' }}>{error}</div>}
+          </div>
+        )}
 
         {images.length > 0 && (
           <div className="ai-drawer-attachments" style={{ padding: '0.5rem 0.75rem 0' }}>
@@ -340,8 +414,16 @@ export default function AiAssistantPage() {
           <textarea
             rows={1}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask the assistant…  (Cmd/Ctrl+Enter to send)"
+            onChange={(e) => {
+              setInput(e.target.value);
+              if (e.target.value.length > 0) setLureStopped(true);
+            }}
+            onFocus={() => setLureStopped(true)}
+            placeholder={
+              lureStopped || messages.length > 0 || input.length > 0
+                ? STATIC_PLACEHOLDER
+                : animatedPlaceholder || STATIC_PLACEHOLDER
+            }
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                 e.preventDefault();

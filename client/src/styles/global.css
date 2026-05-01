@@ -1484,7 +1484,6 @@ input:focus, textarea:focus, select:focus {
   justify-content: space-between;
   align-items: center;
   padding: 0.6rem 0.85rem;
-  border-bottom: 1px solid var(--border);
 }
 .ai-drawer-stream {
   flex: 1;
@@ -1524,7 +1523,6 @@ input:focus, textarea:focus, select:focus {
   align-items: center;
   gap: 0.4rem;
   padding: 0.5rem;
-  border-top: 1px solid var(--border);
 }
 .ai-drawer-attachments {
   display: flex;

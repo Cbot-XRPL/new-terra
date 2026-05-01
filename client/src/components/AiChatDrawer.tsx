@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { ApiError, api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { Sparkles, X, Send, Maximize2, Paperclip } from 'lucide-react';
@@ -79,6 +79,7 @@ const MAX_CYCLES = 6;
 // persistence) so refresh = fresh chat.
 export default function AiChatDrawer() {
   const { user } = useAuth();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -93,8 +94,11 @@ export default function AiChatDrawer() {
   const [animatedPlaceholder, setAnimatedPlaceholder] = useState('');
   const [lureStopped, setLureStopped] = useState(false);
 
-  // Customer-facing portal users don't get the assistant.
-  const visible = !!user && user.role !== 'CUSTOMER';
+  // Customer-facing portal users don't get the assistant. Also hide
+  // it on the dedicated /portal/ai page — the floating FAB would just
+  // duplicate what's already on screen.
+  const onAiPage = location.pathname.startsWith('/portal/ai');
+  const visible = !!user && user.role !== 'CUSTOMER' && !onAiPage;
 
   useEffect(() => {
     if (streamRef.current) {
