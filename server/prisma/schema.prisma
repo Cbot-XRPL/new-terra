@@ -1895,6 +1895,7 @@ model Estimate {
 
   lines       EstimateLine[]
   attachments EstimateAttachment[]
+  sketch      EstimateSketch?
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -1902,6 +1903,47 @@ model Estimate {
   @@index([status])
   @@index([customerId])
   @@index([leadId])
+}
+
+// EstimateSketch — Xactimate-style 2D sketch tied to an estimate. We
+// store the shape graph as JSON and the derived totals (floor SF, wall
+// SF, etc.) alongside so the estimate page doesn't have to re-run the
+// math every render. The sketch tool computes everything client-side
+// on edit; the server validates + persists.
+//
+// Shape JSON shape (versioned via `version`):
+//   {
+//     rooms: [{
+//       id, name, ceilingHeightInches,
+//       points: [{x, y}, ...],     // polygon, inches
+//       openings: [{
+//         id, kind: 'door' | 'window',
+//         widthInches, heightInches,
+//         wallIndex,               // which polygon edge (0..n-1)
+//         offsetInches             // distance from wall start
+//       }]
+//     }],
+//     viewport: { x, y, scale }
+//   }
+//
+// Inches-everywhere keeps math integer-friendly; the UI converts to
+// feet on render.
+model EstimateSketch {
+  id          String   @id @default(cuid())
+  estimateId  String   @unique
+  estimate    Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  // JSON blob of shapes. Schema version lives inside so we can migrate
+  // older sketches when the format evolves.
+  data        Json
+  // Derived totals — recomputed on every save so the AI assistant /
+  // estimate detail can read them without parsing the JSON.
+  floorSqft         Int @default(0)
+  ceilingSqft       Int @default(0)
+  wallSqft          Int @default(0)
+  perimeterFeet     Int @default(0)
+  openingCount      Int @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model EstimateLine {

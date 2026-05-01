@@ -22,6 +22,7 @@ import AdminDashboard from './pages/portal/AdminDashboard';
 // Suspense boundary at the bottom catches them all with one shared
 // loading fallback.
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+const EstimateSketchPage = lazy(() => import('./pages/portal/EstimateSketchPage'));
 const ContactPage = lazy(() => import('./pages/public/ContactPage'));
 const PublicGalleryPage = lazy(() => import('./pages/public/PublicGalleryPage'));
 const SurveyPage = lazy(() => import('./pages/public/SurveyPage'));
@@ -392,6 +393,14 @@ export default function App() {
           }
         />
         <Route path="estimates/:id" element={<EstimateDetailPage />} />
+        <Route
+          path="estimates/:id/sketch"
+          element={
+            <RequireAuth salesAccess>
+              <EstimateSketchPage />
+            </RequireAuth>
+          }
+        />
         <Route
           path="estimator/visual"
           element={

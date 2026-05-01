@@ -68,6 +68,14 @@ export const env = {
     password: process.env.SEED_ADMIN_PASSWORD ?? 'changeMe!2026',
     name: process.env.SEED_ADMIN_NAME ?? 'Site Admin',
   },
+  openai: {
+    // platform.openai.com → API Keys → create. Used for the image-gen
+    // pipeline (gpt-image-1) that draws calculator skins, sketch icons,
+    // and other UI assets the GC asks Claude to coordinate. NEVER paste
+    // a key into chat or commit messages — store only here.
+    apiKey: process.env.OPENAI_API_KEY ?? '',
+    imageModel: process.env.OPENAI_IMAGE_MODEL ?? 'gpt-image-1',
+  },
   google: {
     // console.cloud.google.com → APIs & Services → Credentials → OAuth
     // 2.0 Client IDs (Web application). Authorized redirect URIs must

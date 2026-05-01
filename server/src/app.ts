@@ -30,6 +30,8 @@ import meRouter from './routes/me.js';
 import financeRouter from './routes/finance.js';
 import quickbooksRouter from './routes/quickbooks.js';
 import googleDriveRouter from './routes/googleDrive.js';
+import estimateSketchRouter from './routes/estimateSketch.js';
+import imageGenRouter from './routes/imageGen.js';
 import estimateTemplatesRouter from './routes/estimateTemplates.js';
 import estimatesRouter from './routes/estimates.js';
 import catalogRouter from './routes/catalog.js';
@@ -120,8 +122,10 @@ export function createApp(): Express {
   app.use('/api/finance', financeRouter);
   app.use('/api/integrations/quickbooks', quickbooksRouter);
   app.use('/api/integrations/google-drive', googleDriveRouter);
+  app.use('/api/integrations/image-gen', imageGenRouter);
   app.use('/api/estimate-templates', estimateTemplatesRouter);
   app.use('/api/estimates', estimatesRouter);
+  app.use('/api/estimates/:estimateId/sketch', estimateSketchRouter);
   // Lead + estimate attachment endpoints — mounted at /api so the
   // routes use /api/leads/:id/attachments + /api/estimates/:id/attachments.
   app.use('/api', attachmentsRouter);

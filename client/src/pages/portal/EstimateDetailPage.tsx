@@ -432,6 +432,14 @@ export default function EstimateDetailPage() {
         <section className="card">
           <h2>Actions</h2>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {estimate.status === 'DRAFT' && (
+              <Link
+                to={`/portal/estimates/${estimate.id}/sketch`}
+                className="button-ghost"
+              >
+                ✏️ Open sketch
+              </Link>
+            )}
             {estimate.status === 'DRAFT' && estimate.customer && (
               <button onClick={send}>Send to customer</button>
             )}
