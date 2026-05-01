@@ -2078,6 +2078,10 @@ input:focus, textarea:focus, select:focus {
        content off-screen so links appeared dead). */
     zoom: 1;
     min-height: 100vh;
+    /* Pack the rows (sidebar + main) to the top so any extra height
+       budget goes after the content, not above it. Without this the
+       grid stretches the rows and pushes the page heading down. */
+    align-content: start;
   }
   .portal-sidebar { min-height: 0; }
   /* Top-bar layout on tablet+phone: brand on the left, user avatar on the
@@ -2181,6 +2185,17 @@ input:focus, textarea:focus, select:focus {
   /* --- Mobile pass: layout polish ------------------------------------ */
   /* Tighten the dashboard's vertical rhythm so cards don't waste space. */
   .dashboard { gap: 1rem; }
+  /* Pull the page heading up close to the nav bar — drops the wasted
+     vertical band between the top bar and the page title on phone width. */
+  .portal-main { padding: 0.5rem 1rem 1rem; }
+  .dashboard > header:first-child { margin-top: 0; }
+  .dashboard > header:first-child h1 { margin-top: 0; }
+  /* Header rows that bundle a title + a primary action button (e.g.
+     "Projects" + "New project") stack on mobile via .row-between → make
+     the action button compact and full-width by default. */
+  .dashboard > header.row-between {
+    gap: 0.5rem;
+  }
 
   /* Toolbar children take full width when they wrap, instead of jamming
      in at half-width. Spacer (which pushes action buttons right on
