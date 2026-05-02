@@ -278,13 +278,6 @@ function CalculatorCard({ def }: { def: CalcDef }) {
         slug={`calculators/${def.id}`}
         alt={def.name}
         aspect="16/9"
-        defaultPrompt={[
-          `Isometric editorial illustration of a "${def.name}" construction calculator hero.`,
-          `Subject: ${def.description}`,
-          'Warm wood + matte steel materials, soft studio lighting, deep navy background.',
-          'No text, no logos, no people. Tight composition with clean negative space.',
-          'Style: digital editorial, slightly stylized, photoreal materials.',
-        ].join(' ')}
       />
       <div style={{ padding: '1rem 1.25rem' }}>
       <h2 style={{ marginTop: 0 }}>{def.name}</h2>

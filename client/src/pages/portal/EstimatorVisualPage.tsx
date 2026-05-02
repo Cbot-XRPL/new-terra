@@ -218,13 +218,6 @@ export default function EstimatorVisualPage() {
                 slug={scene.imageSlug}
                 alt={scene.name}
                 aspect="8/5"
-                defaultPrompt={[
-                  `Photoreal isometric illustration of "${scene.name}" for a residential GC visual estimator.`,
-                  scene.description,
-                  'Render as if shot on a deep-navy studio backdrop, soft directional lighting from upper left.',
-                  'Clean composition, no text, no logos, no people.',
-                  'Wide aspect ratio, 1536x1024.',
-                ].join(' ')}
               />
             </div>
           )}
