@@ -133,15 +133,7 @@ export default function ToolImageSlot({
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
         />
       ) : (
-        <span className="muted" style={{ fontSize: '0.85rem', textAlign: 'center', padding: '0.5rem' }}>
-          {alt}
-          {isAdmin && (
-            <>
-              <br />
-              <em style={{ fontSize: '0.75rem' }}>(admin: generate an illustration)</em>
-            </>
-          )}
-        </span>
+        <StaticOrPlaceholder slug={slug} alt={alt} isAdmin={isAdmin} />
       )}
 
       {isAdmin && (
@@ -223,6 +215,51 @@ export default function ToolImageSlot({
         </div>
       )}
     </div>
+  );
+}
+
+// Static fallback — every slot has a corresponding committed PNG at
+// /media/tools/<slug-with-underscores>.png that ships with the build.
+// We try that first; if the file doesn't exist (or 404s), we fall
+// through to the muted placeholder copy. The slash→underscore swap is
+// because Vite's public/ folder serves files flat per directory and
+// we keep all tool images in one bucket.
+function StaticOrPlaceholder({
+  slug,
+  alt,
+  isAdmin,
+}: {
+  slug: string;
+  alt: string;
+  isAdmin: boolean;
+}) {
+  const flat = slug.replace(/\//g, '_');
+  // Committed assets ship as WebP (~40 KB vs ~2 MB PNG). Same filename
+  // pattern, just .webp. The slot's image-gen flow still produces PNGs
+  // on demand for admin regens — that path uses the index pointer
+  // (above), not this static fallback.
+  const src = `/media/tools/${flat}.webp`;
+  const [missing, setMissing] = useState(false);
+  if (missing) {
+    return (
+      <span className="muted" style={{ fontSize: '0.85rem', textAlign: 'center', padding: '0.5rem' }}>
+        {alt}
+        {isAdmin && (
+          <>
+            <br />
+            <em style={{ fontSize: '0.75rem' }}>(admin: generate an illustration)</em>
+          </>
+        )}
+      </span>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      onError={() => setMissing(true)}
+      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+    />
   );
 }
 
