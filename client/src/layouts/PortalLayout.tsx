@@ -208,20 +208,21 @@ export default function PortalLayout() {
               <TrendingUp size={ICON_SIZE} /> <span>Finance</span>
             </NavLink>
           )}
-          {user?.role === 'ADMIN' && (
-            <NavLink to="/portal/contract-templates">
-              <Files size={ICON_SIZE} /> <span>Templates</span>
-            </NavLink>
-          )}
           {(user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isSales)) && (
-            <NavLink to="/portal/catalog">
-              <Package size={ICON_SIZE} /> <span>Catalog</span>
-            </NavLink>
-          )}
-          {(user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isSales)) && (
-            <NavLink to="/portal/catalog/inventory">
-              <Box size={ICON_SIZE} /> <span>Inventory</span>
-            </NavLink>
+            <div className="portal-nav-section">
+              <span className="portal-nav-section-label">Lists</span>
+              {user?.role === 'ADMIN' && (
+                <NavLink to="/portal/contract-templates">
+                  <Files size={ICON_SIZE} /> <span>Templates</span>
+                </NavLink>
+              )}
+              <NavLink to="/portal/catalog">
+                <Package size={ICON_SIZE} /> <span>Catalog</span>
+              </NavLink>
+              <NavLink to="/portal/catalog/inventory">
+                <Box size={ICON_SIZE} /> <span>Inventory</span>
+              </NavLink>
+            </div>
           )}
           {/* Tools hub — single sidebar entry that fans out to the
               sketcher, roof sketcher, visual estimator, and calculators.

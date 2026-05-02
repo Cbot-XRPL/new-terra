@@ -1976,6 +1976,22 @@ input:focus, textarea:focus, select:focus {
 .portal-sidebar nav a:hover > svg { color: var(--text); }
 .portal-sidebar nav a.active { background: var(--surface-strong); color: var(--accent); }
 .portal-sidebar nav a.active > svg { color: var(--accent); }
+.portal-nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(95, 99, 104, 0.25);
+}
+.portal-nav-section-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0.25rem 0.75rem 0.1rem;
+}
 .portal-user { margin-top: auto; display: flex; flex-direction: column; gap: 0.5rem; }
 .portal-user-name { font-weight: 600; }
 .portal-user-role { font-size: 0.85rem; color: var(--text-muted); text-transform: capitalize; }
@@ -2155,9 +2171,11 @@ input:focus, textarea:focus, select:focus {
 /* Visual estimator */
 .estimator-visual {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 1rem;
 }
+.estimator-canvas { padding: 0.75rem; }
+.estimator-side { padding: 0.85rem; }
 .estimator-canvas svg { display: block; }
 .hotspot-list {
   display: flex;

@@ -226,4 +226,368 @@ const DRIVEWAY_PLAN: Scene = {
   ],
 };
 
-export const SCENES: Scene[] = [DECK_CROSS_SECTION, BATHROOM_PLAN, DRIVEWAY_PLAN];
+// Kitchen plan view: cabinets, island, range, fridge, sink.
+const KITCHEN_PLAN: Scene = {
+  id: 'kitchen-plan',
+  name: 'Kitchen plan view',
+  description: 'Cabinets, island, and rough-ins for a kitchen remodel.',
+  imageSlug: 'estimator/kitchen-plan',
+  drawing: `
+    <!-- room outline -->
+    <rect x="80" y="60" width="640" height="380" fill="#292a2d" stroke="#5f6368" stroke-width="3" />
+
+    <!-- perimeter cabinets (top + right run) -->
+    <rect x="80" y="60" width="640" height="60" fill="#3c4043" />
+    <rect x="640" y="120" width="80" height="240" fill="#3c4043" />
+
+    <!-- range -->
+    <rect x="320" y="60" width="80" height="60" fill="#5f6368" />
+    <text x="360" y="98" fill="#e8eaed" font-size="12" text-anchor="middle">range</text>
+
+    <!-- fridge -->
+    <rect x="120" y="60" width="80" height="60" fill="#5f6368" />
+    <text x="160" y="98" fill="#e8eaed" font-size="12" text-anchor="middle">fridge</text>
+
+    <!-- sink in the perimeter run -->
+    <rect x="500" y="74" width="100" height="36" fill="#3c4043" stroke="#aecbfa" stroke-width="2" />
+    <text x="550" y="98" fill="#e8eaed" font-size="12" text-anchor="middle">sink</text>
+
+    <!-- island -->
+    <rect x="240" y="220" width="320" height="100" fill="#3c4043" />
+    <text x="400" y="278" fill="#e8eaed" font-size="14" text-anchor="middle">island</text>
+
+    <!-- floor -->
+    <text x="400" y="400" fill="#bdc1c6" font-size="14" text-anchor="middle">flooring</text>
+    <pattern id="kitchen-floor" patternUnits="userSpaceOnUse" width="40" height="40">
+      <rect width="40" height="40" fill="none" stroke="#5f6368" stroke-width="1" />
+    </pattern>
+    <rect x="80" y="340" width="640" height="100" fill="url(#kitchen-floor)" opacity="0.4" />
+  `,
+  hotspots: [
+    {
+      id: 'cabinets',
+      label: 'Cabinets',
+      assemblyName: 'Kitchen cabinets',
+      shape: { kind: 'polygon', points: '80,60 720,60 720,360 640,360 640,120 80,120' },
+    },
+    {
+      id: 'island',
+      label: 'Island',
+      assemblyName: 'Kitchen island',
+      shape: { kind: 'rect', x: 240, y: 220, w: 320, h: 100 },
+    },
+    {
+      id: 'range',
+      label: 'Range rough-in',
+      assemblyName: 'Range rough-in',
+      shape: { kind: 'rect', x: 320, y: 60, w: 80, h: 60 },
+    },
+    {
+      id: 'sink',
+      label: 'Sink rough-in',
+      assemblyName: 'Sink rough-in',
+      shape: { kind: 'rect', x: 500, y: 74, w: 100, h: 36 },
+    },
+    {
+      id: 'flooring',
+      label: 'Flooring',
+      assemblyName: 'Kitchen flooring',
+      shape: { kind: 'rect', x: 80, y: 340, w: 640, h: 100 },
+    },
+  ],
+};
+
+// Wood fence side elevation: posts, rails, pickets, gate.
+const FENCE_ELEVATION: Scene = {
+  id: 'fence-elevation',
+  name: 'Wood fence elevation',
+  description: 'Side elevation of a privacy fence run with a gate.',
+  imageSlug: 'estimator/fence-elevation',
+  drawing: `
+    <!-- ground -->
+    <line x1="0" y1="400" x2="800" y2="400" stroke="#5f6368" stroke-width="2" />
+    <text x="10" y="420" fill="#bdc1c6" font-size="12">grade</text>
+
+    <!-- posts -->
+    <rect x="80"  y="120" width="20" height="280" fill="#5f6368" />
+    <rect x="260" y="120" width="20" height="280" fill="#5f6368" />
+    <rect x="440" y="120" width="20" height="280" fill="#5f6368" />
+    <rect x="620" y="120" width="20" height="280" fill="#5f6368" />
+
+    <!-- pickets between posts -->
+    <g fill="#aecbfa">
+      <rect x="100" y="160" width="160" height="240" />
+      <rect x="280" y="160" width="160" height="240" />
+      <rect x="460" y="160" width="160" height="240" />
+    </g>
+
+    <!-- top + bottom rails (just the visible faces) -->
+    <rect x="80" y="160" width="560" height="10" fill="#8ab4f8" />
+    <rect x="80" y="380" width="560" height="10" fill="#8ab4f8" />
+
+    <!-- gate (middle bay rendered slightly separated) -->
+    <rect x="280" y="170" width="160" height="220" fill="none" stroke="#f9ab00" stroke-width="3" stroke-dasharray="6 4" />
+    <text x="360" y="280" fill="#e8eaed" font-size="14" text-anchor="middle">gate</text>
+
+    <!-- footings under the posts -->
+    <ellipse cx="90"  cy="400" rx="22" ry="6" fill="#5f6368" />
+    <ellipse cx="270" cy="400" rx="22" ry="6" fill="#5f6368" />
+    <ellipse cx="450" cy="400" rx="22" ry="6" fill="#5f6368" />
+    <ellipse cx="630" cy="400" rx="22" ry="6" fill="#5f6368" />
+
+    <text x="180" y="148" fill="#e8eaed" font-size="12" text-anchor="middle">pickets</text>
+    <text x="640" y="148" fill="#e8eaed" font-size="12" text-anchor="middle">post</text>
+  `,
+  hotspots: [
+    {
+      id: 'posts',
+      label: 'Posts + footings',
+      assemblyName: 'Fence post',
+      shape: { kind: 'rect', x: 70, y: 120, w: 580, h: 290 },
+    },
+    {
+      id: 'pickets',
+      label: 'Pickets + rails',
+      assemblyName: 'Fence pickets',
+      shape: { kind: 'rect', x: 100, y: 160, w: 540, h: 240 },
+    },
+    {
+      id: 'gate',
+      label: 'Gate',
+      assemblyName: 'Fence gate',
+      shape: { kind: 'rect', x: 280, y: 170, w: 160, h: 220 },
+    },
+  ],
+};
+
+// Hardscape patio plan: patio surface, walkway, fire pit, seating wall.
+const PATIO_PLAN: Scene = {
+  id: 'patio-plan',
+  name: 'Patio / hardscape plan',
+  description: 'Paver patio with walkway, fire pit, and seating wall.',
+  imageSlug: 'estimator/patio-plan',
+  drawing: `
+    <rect x="60" y="60" width="680" height="380" fill="#292a2d" stroke="#5f6368" stroke-width="3" />
+
+    <!-- patio slab -->
+    <rect x="180" y="100" width="440" height="240" fill="#aecbfa" opacity="0.5" />
+    <text x="400" y="226" fill="#e8eaed" font-size="14" text-anchor="middle">paver patio</text>
+
+    <!-- walkway leading off to the right edge -->
+    <rect x="620" y="220" width="120" height="60" fill="#aecbfa" opacity="0.4" />
+    <text x="680" y="256" fill="#e8eaed" font-size="12" text-anchor="middle">walkway</text>
+
+    <!-- fire pit (circle) -->
+    <circle cx="320" cy="220" r="38" fill="#3c4043" stroke="#aecbfa" stroke-width="2" />
+    <text x="320" y="226" fill="#e8eaed" font-size="12" text-anchor="middle">fire pit</text>
+
+    <!-- seating wall along the back edge -->
+    <rect x="180" y="100" width="440" height="20" fill="#5f6368" />
+    <text x="400" y="92" fill="#bdc1c6" font-size="12" text-anchor="middle">seat wall</text>
+
+    <!-- edge restraints -->
+    <rect x="170" y="100" width="10" height="240" fill="#8ab4f8" />
+    <rect x="620" y="100" width="10" height="240" fill="#8ab4f8" />
+    <rect x="180" y="340" width="440" height="10" fill="#8ab4f8" />
+  `,
+  hotspots: [
+    {
+      id: 'patio',
+      label: 'Paver patio',
+      assemblyName: 'Paver patio',
+      shape: { kind: 'rect', x: 180, y: 120, w: 440, h: 220 },
+    },
+    {
+      id: 'walkway',
+      label: 'Walkway',
+      assemblyName: 'Paver walkway',
+      shape: { kind: 'rect', x: 620, y: 220, w: 120, h: 60 },
+    },
+    {
+      id: 'firepit',
+      label: 'Fire pit',
+      assemblyName: 'Fire pit',
+      shape: { kind: 'circle', cx: 320, cy: 220, r: 44 },
+    },
+    {
+      id: 'seatwall',
+      label: 'Seating wall',
+      assemblyName: 'Seating wall',
+      shape: { kind: 'rect', x: 180, y: 100, w: 440, h: 20 },
+    },
+    {
+      id: 'edging',
+      label: 'Edge restraints',
+      assemblyName: 'Hardscape edging',
+      shape: { kind: 'polygon', points: '170,100 180,100 180,350 170,350 630,350 630,100 620,100 620,340 180,340 180,340' },
+    },
+  ],
+};
+
+// Basement remodel plan: framed walls, bathroom, family room, mechanical.
+const BASEMENT_PLAN: Scene = {
+  id: 'basement-plan',
+  name: 'Basement remodel plan',
+  description: 'Framed-out basement with bath, family room, and mechanical.',
+  imageSlug: 'estimator/basement-plan',
+  drawing: `
+    <!-- foundation outline -->
+    <rect x="60" y="60" width="680" height="380" fill="#292a2d" stroke="#5f6368" stroke-width="3" />
+
+    <!-- partition walls -->
+    <rect x="60"  y="240" width="320" height="6" fill="#5f6368" />
+    <rect x="380" y="60"  width="6"   height="200" fill="#5f6368" />
+    <rect x="380" y="240" width="360" height="6" fill="#5f6368" />
+
+    <!-- bathroom -->
+    <rect x="80" y="80" width="160" height="140" fill="#3c4043" />
+    <rect x="100" y="100" width="60" height="40" fill="#5f6368" />
+    <ellipse cx="200" cy="130" rx="16" ry="22" fill="#5f6368" />
+    <text x="160" y="200" fill="#e8eaed" font-size="12" text-anchor="middle">bath</text>
+
+    <!-- bedroom -->
+    <rect x="260" y="80" width="100" height="140" fill="#3c4043" />
+    <text x="310" y="158" fill="#e8eaed" font-size="12" text-anchor="middle">bedroom</text>
+
+    <!-- family room -->
+    <rect x="400" y="80" width="320" height="140" fill="#3c4043" />
+    <text x="560" y="158" fill="#e8eaed" font-size="14" text-anchor="middle">family room</text>
+
+    <!-- mechanical / utility -->
+    <rect x="80" y="260" width="220" height="160" fill="#3c4043" />
+    <text x="190" y="346" fill="#e8eaed" font-size="12" text-anchor="middle">mechanical</text>
+
+    <!-- finished flooring (rest of basement) -->
+    <pattern id="basement-floor" patternUnits="userSpaceOnUse" width="40" height="40">
+      <rect width="40" height="40" fill="none" stroke="#5f6368" stroke-width="1" />
+    </pattern>
+    <rect x="320" y="260" width="400" height="160" fill="url(#basement-floor)" opacity="0.35" />
+    <text x="520" y="346" fill="#bdc1c6" font-size="12" text-anchor="middle">flooring</text>
+  `,
+  hotspots: [
+    {
+      id: 'framing',
+      label: 'Wall framing',
+      assemblyName: 'Basement framing',
+      shape: { kind: 'rect', x: 60, y: 60, w: 680, h: 380 },
+    },
+    {
+      id: 'bath',
+      label: 'Basement bath',
+      assemblyName: 'Basement bath',
+      shape: { kind: 'rect', x: 80, y: 80, w: 160, h: 140 },
+    },
+    {
+      id: 'bedroom',
+      label: 'Bedroom',
+      assemblyName: 'Basement bedroom',
+      shape: { kind: 'rect', x: 260, y: 80, w: 100, h: 140 },
+    },
+    {
+      id: 'familyroom',
+      label: 'Family room',
+      assemblyName: 'Basement family room',
+      shape: { kind: 'rect', x: 400, y: 80, w: 320, h: 140 },
+    },
+    {
+      id: 'mechanical',
+      label: 'Mechanical',
+      assemblyName: 'Basement mechanical',
+      shape: { kind: 'rect', x: 80, y: 260, w: 220, h: 160 },
+    },
+    {
+      id: 'flooring',
+      label: 'Finished flooring',
+      assemblyName: 'Basement flooring',
+      shape: { kind: 'rect', x: 320, y: 260, w: 400, h: 160 },
+    },
+  ],
+};
+
+// Roof framing plan: ridge, hips, valleys, rafters.
+const ROOF_PLAN: Scene = {
+  id: 'roof-plan',
+  name: 'Roof framing plan',
+  description: 'Top-down hip roof with ridge, hips, and rafter layout.',
+  imageSlug: 'estimator/roof-plan',
+  drawing: `
+    <!-- house footprint -->
+    <rect x="120" y="80" width="560" height="340" fill="#292a2d" stroke="#5f6368" stroke-width="3" />
+
+    <!-- hip lines from corners to ridge -->
+    <line x1="120" y1="80"  x2="280" y2="200" stroke="#aecbfa" stroke-width="2" />
+    <line x1="680" y1="80"  x2="520" y2="200" stroke="#aecbfa" stroke-width="2" />
+    <line x1="120" y1="420" x2="280" y2="300" stroke="#aecbfa" stroke-width="2" />
+    <line x1="680" y1="420" x2="520" y2="300" stroke="#aecbfa" stroke-width="2" />
+
+    <!-- ridge -->
+    <line x1="280" y1="250" x2="520" y2="250" stroke="#f9ab00" stroke-width="3" />
+    <text x="400" y="240" fill="#e8eaed" font-size="12" text-anchor="middle">ridge</text>
+
+    <!-- hip end seams -->
+    <line x1="280" y1="200" x2="280" y2="300" stroke="#aecbfa" stroke-width="2" />
+    <line x1="520" y1="200" x2="520" y2="300" stroke="#aecbfa" stroke-width="2" />
+
+    <!-- rafters (faint) -->
+    <g stroke="#5f6368" stroke-width="1">
+      <line x1="160" y1="80"  x2="160" y2="420" />
+      <line x1="200" y1="80"  x2="200" y2="420" />
+      <line x1="240" y1="80"  x2="240" y2="420" />
+      <line x1="320" y1="80"  x2="320" y2="420" />
+      <line x1="360" y1="80"  x2="360" y2="420" />
+      <line x1="400" y1="80"  x2="400" y2="420" />
+      <line x1="440" y1="80"  x2="440" y2="420" />
+      <line x1="480" y1="80"  x2="480" y2="420" />
+      <line x1="560" y1="80"  x2="560" y2="420" />
+      <line x1="600" y1="80"  x2="600" y2="420" />
+      <line x1="640" y1="80"  x2="640" y2="420" />
+    </g>
+
+    <!-- shingle areas (the four slopes) -->
+    <text x="400" y="124" fill="#bdc1c6" font-size="12" text-anchor="middle">front slope</text>
+    <text x="400" y="380" fill="#bdc1c6" font-size="12" text-anchor="middle">back slope</text>
+    <text x="180" y="254" fill="#bdc1c6" font-size="12" text-anchor="middle">end</text>
+    <text x="620" y="254" fill="#bdc1c6" font-size="12" text-anchor="middle">end</text>
+
+    <!-- gutters along the eaves -->
+    <rect x="120" y="416" width="560" height="6" fill="#8ab4f8" />
+    <rect x="120" y="78"  width="560" height="6" fill="#8ab4f8" />
+  `,
+  hotspots: [
+    {
+      id: 'shingles',
+      label: 'Shingles',
+      assemblyName: 'Asphalt shingles',
+      shape: { kind: 'rect', x: 120, y: 80, w: 560, h: 340 },
+    },
+    {
+      id: 'framing',
+      label: 'Roof framing',
+      assemblyName: 'Roof framing',
+      shape: { kind: 'rect', x: 120, y: 80, w: 560, h: 340 },
+    },
+    {
+      id: 'ridge',
+      label: 'Ridge + hips',
+      assemblyName: 'Ridge cap',
+      shape: { kind: 'rect', x: 280, y: 240, w: 240, h: 20 },
+    },
+    {
+      id: 'gutters',
+      label: 'Gutters',
+      assemblyName: 'Gutters',
+      shape: { kind: 'polygon', points: '120,76 680,76 680,90 120,90 120,416 680,416 680,430 120,430' },
+    },
+  ],
+};
+
+export const SCENES: Scene[] = [
+  DECK_CROSS_SECTION,
+  BATHROOM_PLAN,
+  DRIVEWAY_PLAN,
+  KITCHEN_PLAN,
+  FENCE_ELEVATION,
+  PATIO_PLAN,
+  BASEMENT_PLAN,
+  ROOF_PLAN,
+];

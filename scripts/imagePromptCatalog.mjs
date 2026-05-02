@@ -191,4 +191,39 @@ export const CATALOG = [
       'a driveway plan top-down — long rectangular asphalt or paver driveway from a street curb up to a garage door, edge restraints on either side, drainage channel near the garage.',
     ),
   },
+  {
+    slug: 'estimator/kitchen-plan',
+    size: '1536x1024',
+    prompt: blueprintPrompt(
+      'a kitchen floor plan top-down — perimeter cabinets along two walls with a range and a fridge, a sink under the back run, a large island in the middle, faint flooring grid filling the lower portion of the room.',
+    ),
+  },
+  {
+    slug: 'estimator/fence-elevation',
+    size: '1536x1024',
+    prompt: blueprintPrompt(
+      'a wood privacy fence side elevation — four posts in concrete footings, top and bottom rails, vertical pickets between bays, one bay rendered as a gate with a dashed swing arc.',
+    ),
+  },
+  {
+    slug: 'estimator/patio-plan',
+    size: '1536x1024',
+    prompt: blueprintPrompt(
+      'a paver patio plan top-down — rectangular patio surface, a circular fire pit, a seating wall along the back edge, a short walkway extending off one side, edge restraints on the perimeter.',
+    ),
+  },
+  {
+    slug: 'estimator/basement-plan',
+    size: '1536x1024',
+    prompt: blueprintPrompt(
+      'a basement remodel floor plan top-down — partitioned into a small bath with toilet and vanity, a bedroom, a large family room, and a mechanical room. Faint flooring grid in the family room area.',
+    ),
+  },
+  {
+    slug: 'estimator/roof-plan',
+    size: '1536x1024',
+    prompt: blueprintPrompt(
+      'a hip roof framing plan top-down — rectangular footprint with hip lines from each corner meeting a horizontal ridge, faint rafter lines running perpendicular to the ridge, gutters along the eaves.',
+    ),
+  },
 ];
