@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { formatCents } from '../../lib/format';
 import { SCENES, type Hotspot, type Scene } from './estimator/scenes';
+import ToolImageSlot from '../../components/ToolImageSlot';
 
 interface AssemblyRow {
   id: string;
@@ -208,6 +209,25 @@ export default function EstimatorVisualPage() {
 
       <div className="estimator-visual">
         <section className="card estimator-canvas">
+          {/* Optional generated-image backdrop. Falls back to the
+              hand-drawn SVG-only look when no image is pinned for this
+              scene. The hotspot SVG renders ON TOP at full opacity. */}
+          {scene.imageSlug && (
+            <div style={{ marginBottom: '0.5rem' }}>
+              <ToolImageSlot
+                slug={scene.imageSlug}
+                alt={scene.name}
+                aspect="8/5"
+                defaultPrompt={[
+                  `Photoreal isometric illustration of "${scene.name}" for a residential GC visual estimator.`,
+                  scene.description,
+                  'Render as if shot on a deep-navy studio backdrop, soft directional lighting from upper left.',
+                  'Clean composition, no text, no logos, no people.',
+                  'Wide aspect ratio, 1536x1024.',
+                ].join(' ')}
+              />
+            </div>
+          )}
           <svg
             viewBox="0 0 800 500"
             preserveAspectRatio="xMidYMid meet"

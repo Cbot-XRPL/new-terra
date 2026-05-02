@@ -224,21 +224,14 @@ export default function PortalLayout() {
               <Box size={ICON_SIZE} /> <span>Inventory</span>
             </NavLink>
           )}
-          {(user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isSales)) && (
-            <NavLink to="/portal/estimator/visual">
-              <Box size={ICON_SIZE} /> <span>Visual estimator</span>
-            </NavLink>
-          )}
-          {(user?.role === 'ADMIN' || (user?.role === 'EMPLOYEE' && user.isSales)) && (
-            <NavLink to="/portal/sketcher">
-              <Pencil size={ICON_SIZE} /> <span>Sketcher</span>
-            </NavLink>
-          )}
-          {(user?.role === 'EMPLOYEE' ||
-            user?.role === 'SUBCONTRACTOR' ||
-            user?.role === 'ADMIN') && (
-            <NavLink to="/portal/calculators">
-              <Calculator size={ICON_SIZE} /> <span>Calculators</span>
+          {/* Tools hub — single sidebar entry that fans out to the
+              sketcher, roof sketcher, visual estimator, and calculators.
+              Anyone who could see at least one of those gets the link. */}
+          {(user?.role === 'ADMIN' ||
+            user?.role === 'EMPLOYEE' ||
+            user?.role === 'SUBCONTRACTOR') && (
+            <NavLink to="/portal/tools">
+              <Pencil size={ICON_SIZE} /> <span>Tools</span>
             </NavLink>
           )}
           {user?.role === 'ADMIN' && (

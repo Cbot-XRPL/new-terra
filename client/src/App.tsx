@@ -25,6 +25,7 @@ const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 const EstimateSketchPage = lazy(() => import('./pages/portal/EstimateSketchPage'));
 const EstimateRoofSketchPage = lazy(() => import('./pages/portal/EstimateRoofSketchPage'));
 const SketcherHubPage = lazy(() => import('./pages/portal/SketcherHubPage'));
+const ToolsHubPage = lazy(() => import('./pages/portal/ToolsHubPage'));
 const AdminPricingPage = lazy(() => import('./pages/portal/AdminPricingPage'));
 const ContactPage = lazy(() => import('./pages/public/ContactPage'));
 const PublicGalleryPage = lazy(() => import('./pages/public/PublicGalleryPage'));
@@ -417,6 +418,14 @@ export default function App() {
           element={
             <RequireAuth salesAccess>
               <SketcherHubPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="tools"
+          element={
+            <RequireAuth roles={['ADMIN', 'EMPLOYEE', 'SUBCONTRACTOR']}>
+              <ToolsHubPage />
             </RequireAuth>
           }
         />

@@ -121,4 +121,48 @@ router.post('/generate', async (req, res, next) => {
   }
 });
 
+// Slot pointer — every "tool image slot" on the client (calculator
+// hero, sketcher card, visual-estimator scene) reads a small JSON
+// pointer at /uploads/generated/<slug>.json that records which
+// generated image to render. The /generate endpoint above creates
+// many candidate PNGs (one per regen); this endpoint pins the chosen
+// one. Slug must match the filesystem-safe pattern the client uses.
+const slotSchema = z.object({
+  slug: z
+    .string()
+    .min(1)
+    .max(120)
+    .regex(/^[a-z0-9-]+(\/[a-z0-9-]+)*$/, 'slug must be lowercase letters / digits / dashes / slashes'),
+  url: z.string().min(1).max(500),
+  prompt: z.string().max(4000).optional(),
+});
+
+router.post('/slot', async (req, res, next) => {
+  try {
+    const { slug, url, prompt } = slotSchema.parse(req.body);
+    // Refuse anything that doesn't actually point at a file we just
+    // saved — defense against an admin pasting an arbitrary URL.
+    if (!url.startsWith('/uploads/generated/')) {
+      return res.status(400).json({ error: 'url must reference an uploaded image' });
+    }
+    const indexPath = path.join(GENERATED_ROOT, `${slug}.json`);
+    await fs.mkdir(path.dirname(indexPath), { recursive: true });
+    await fs.writeFile(
+      indexPath,
+      JSON.stringify(
+        { url, prompt, generatedAt: new Date().toISOString() },
+        null,
+        2,
+      ),
+    );
+    await audit(req, {
+      action: 'imagegen.slot',
+      meta: { slug, url, prompt: prompt?.slice(0, 200) ?? null },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

@@ -351,3 +351,101 @@ export function fenceLayout(input: {
     ],
   };
 }
+
+// --- Insulation (batts / blown) ---
+//
+// Bag coverage assumes R-value matches the batt's stated coverage. For
+// blown-in we treat coverage as a nominal sqft-per-bag at the chosen
+// R-value. Both inputs round up to whole bags.
+export function insulationBatts(input: {
+  wallSqft: number;
+  rValue: number; // target R-value (R-13, R-19, R-30, etc.)
+  cavityDepthInches?: number;
+}): CalcResult {
+  // Loose lookup table: each batt size covers some sqft per bag at a
+  // given R. Approximations from the major US manufacturers' published
+  // bag yields.
+  const rValue = Math.max(0, input.rValue || 13);
+  let coveragePerBag = 88; // R-13 typical 3.5" batts
+  if (rValue >= 30) coveragePerBag = 49;
+  else if (rValue >= 21) coveragePerBag = 67;
+  else if (rValue >= 19) coveragePerBag = 76;
+  const bags = roundUpTo(Math.ceil(input.wallSqft / coveragePerBag), 1);
+  return {
+    primary: { label: 'Batts', value: `${bags} bags` },
+    breakdown: [
+      { label: 'Wall area', value: `${input.wallSqft} sqft` },
+      { label: 'R-value', value: `R-${rValue}` },
+      { label: 'Coverage per bag', value: `${coveragePerBag} sqft` },
+      ...(input.cavityDepthInches
+        ? [{ label: 'Cavity depth', value: `${input.cavityDepthInches}"` }]
+        : []),
+    ],
+    notes: [
+      'Add ~10% for waste on cuts around openings.',
+      'Faced batts include vapor retarder; choose unfaced behind finished walls in conditioned space.',
+    ],
+  };
+}
+
+// --- Roofing (squares + bundles) ---
+//
+// 1 square = 100 sqft of roof surface. Architectural shingles run
+// 3 bundles per square; 3-tab is also 3 bundles/square. Add 10% waste
+// by default — more for complex hip roofs.
+export function roofingShingles(input: {
+  surfaceSqft: number;
+  wastePct?: number;
+  bundlesPerSquare?: number;
+}): CalcResult {
+  const waste = (input.wastePct ?? 10) / 100;
+  const grossSqft = input.surfaceSqft * (1 + waste);
+  const squares = grossSqft / 100;
+  const bundles = Math.ceil(squares * (input.bundlesPerSquare ?? 3));
+  return {
+    primary: { label: 'Shingles', value: `${bundles} bundles` },
+    breakdown: [
+      { label: 'Net surface area', value: `${input.surfaceSqft} sqft` },
+      { label: 'With waste', value: `${grossSqft.toFixed(0)} sqft` },
+      { label: 'Squares (100 sqft)', value: `${squares.toFixed(2)} sq` },
+      { label: 'Waste %', value: `${(waste * 100).toFixed(0)}%` },
+    ],
+    notes: [
+      'Most architectural shingles run 3 bundles per square (~33 sqft/bundle).',
+      'Add another ~5% on cut-up roofs (lots of valleys, dormers, hips).',
+      'Order at least 1 extra bundle for repair stash.',
+    ],
+  };
+}
+
+// --- Lumber take-off (board feet) ---
+//
+// Board feet = (thickness_in × width_in × length_ft) / 12, per piece.
+// Useful for hardwood / rough-sawn pricing where suppliers quote per
+// board-foot rather than per piece. Output rounds the nominal price
+// per linear foot too if a $/bf rate is provided.
+export function lumberBoardFeet(input: {
+  thicknessInches: number;
+  widthInches: number;
+  lengthFt: number;
+  pieces: number;
+  pricePerBfDollars?: number;
+}): CalcResult {
+  const bfPerPiece = (input.thicknessInches * input.widthInches * input.lengthFt) / 12;
+  const totalBf = bfPerPiece * input.pieces;
+  const totalDollars = (input.pricePerBfDollars ?? 0) * totalBf;
+  return {
+    primary: { label: 'Total board feet', value: `${totalBf.toFixed(1)} bf` },
+    breakdown: [
+      { label: 'Per piece', value: `${bfPerPiece.toFixed(2)} bf` },
+      { label: 'Pieces', value: `${input.pieces}` },
+      ...(input.pricePerBfDollars
+        ? [{ label: 'At $/bf', value: `$${totalDollars.toFixed(2)}` }]
+        : []),
+    ],
+    notes: [
+      'Nominal sizes — a 2×4 is actually 1.5×3.5, but lumberyards bill on nominal so use the labeled dimensions.',
+      'Add ~10% scrap on cut-heavy framing (rafters, stair stringers).',
+    ],
+  };
+}

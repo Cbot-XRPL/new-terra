@@ -31,6 +31,11 @@ export interface Scene {
   // Whatever you draw inside <svg viewBox="0 0 800 500">.
   drawing: string;
   hotspots: Hotspot[];
+  // Optional generated-image backdrop. When the admin "Generate"s an
+  // image for the slug, the SVG drawing renders on top of the image
+  // (semi-transparent diagrammatic overlay). Without an image, only
+  // the SVG renders — matches the legacy look.
+  imageSlug?: string;
 }
 
 // Build a deck cross-section: ledger board, joists, decking, posts, footings.
@@ -38,6 +43,7 @@ const DECK_CROSS_SECTION: Scene = {
   id: 'deck-cross-section',
   name: 'Deck cross-section',
   description: 'Click components to add their material assemblies to your estimate.',
+  imageSlug: 'estimator/deck-cross-section',
   drawing: `
     <!-- ground line -->
     <line x1="0" y1="430" x2="800" y2="430" stroke="#5f6368" stroke-width="2" />
@@ -110,6 +116,7 @@ const BATHROOM_PLAN: Scene = {
   id: 'bathroom-plan',
   name: 'Bathroom plan view',
   description: 'Drop standard fixture rough-ins and finish assemblies.',
+  imageSlug: 'estimator/bathroom-plan',
   drawing: `
     <!-- room outline -->
     <rect x="100" y="60" width="600" height="380" fill="#292a2d" stroke="#5f6368" stroke-width="3" />
@@ -170,6 +177,7 @@ const DRIVEWAY_PLAN: Scene = {
   id: 'driveway-plan',
   name: 'Driveway / hardscape plan',
   description: 'Layered scopes — base prep, edging, surface, and drainage.',
+  imageSlug: 'estimator/driveway-plan',
   drawing: `
     <rect x="60" y="60" width="680" height="380" fill="#292a2d" stroke="#5f6368" stroke-width="3" />
 

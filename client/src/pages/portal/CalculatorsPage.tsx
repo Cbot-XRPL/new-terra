@@ -7,14 +7,18 @@ import {
   drywall,
   fenceLayout,
   frenchDrain,
+  insulationBatts,
+  lumberBoardFeet,
   mulchCoverage,
   paintCoverage,
   retainingWall,
+  roofingShingles,
   sonotubeFooting,
   tileFloor,
   type CalcResult,
 } from '../../lib/calculators';
 import { useAuth } from '../../auth/AuthContext';
+import ToolImageSlot from '../../components/ToolImageSlot';
 
 interface FieldDef {
   key: string;
@@ -188,6 +192,58 @@ const CALCS: CalcDef[] = [
         pipeDiameterInches: v.pipeDiameterInches,
       }),
   },
+  {
+    id: 'insulation',
+    name: 'Insulation batts',
+    description: 'Bags of fiberglass batt insulation for a wall area at a target R-value.',
+    fields: [
+      { key: 'wallSqft', label: 'Wall area', unit: 'sqft', default: 800, step: '10', min: 0 },
+      { key: 'rValue', label: 'R-value', default: 13, step: '1', min: 0, max: 49 },
+      { key: 'cavityDepthInches', label: 'Cavity depth', unit: 'in', default: 3.5, step: '0.5', min: 0, optional: true },
+    ],
+    run: (v) =>
+      insulationBatts({
+        wallSqft: v.wallSqft,
+        rValue: v.rValue,
+        cavityDepthInches: v.cavityDepthInches,
+      }),
+  },
+  {
+    id: 'roofing',
+    name: 'Roofing shingles',
+    description: 'Bundles + squares of asphalt shingles for a roof surface area (use the roof sketch for the SF).',
+    fields: [
+      { key: 'surfaceSqft', label: 'Roof surface', unit: 'sqft', default: 2000, step: '10', min: 0 },
+      { key: 'wastePct', label: 'Waste %', default: 10, step: '1', min: 0, max: 30, optional: true },
+      { key: 'bundlesPerSquare', label: 'Bundles per square', default: 3, step: '1', min: 3, max: 4, optional: true },
+    ],
+    run: (v) =>
+      roofingShingles({
+        surfaceSqft: v.surfaceSqft,
+        wastePct: v.wastePct,
+        bundlesPerSquare: v.bundlesPerSquare,
+      }),
+  },
+  {
+    id: 'lumberbf',
+    name: 'Lumber board-feet',
+    description: 'Total board-feet for a lumber order (rough-sawn / hardwood, where suppliers quote per bf).',
+    fields: [
+      { key: 'thicknessInches', label: 'Thickness', unit: 'in', default: 2, step: '0.25', min: 0.25 },
+      { key: 'widthInches', label: 'Width', unit: 'in', default: 4, step: '0.25', min: 0.25 },
+      { key: 'lengthFt', label: 'Length per piece', unit: 'ft', default: 8, step: '1', min: 1 },
+      { key: 'pieces', label: 'Pieces', default: 10, step: '1', min: 1 },
+      { key: 'pricePerBfDollars', label: 'Price', unit: '$/bf', default: 0, step: '0.05', min: 0, optional: true },
+    ],
+    run: (v) =>
+      lumberBoardFeet({
+        thicknessInches: v.thicknessInches,
+        widthInches: v.widthInches,
+        lengthFt: v.lengthFt,
+        pieces: v.pieces,
+        pricePerBfDollars: v.pricePerBfDollars,
+      }),
+  },
 ];
 
 // Build a URL for the new-estimate page with a single line prefilled from a
@@ -217,8 +273,21 @@ function CalculatorCard({ def }: { def: CalcDef }) {
   }
 
   return (
-    <section className="card">
-      <h2>{def.name}</h2>
+    <section className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <ToolImageSlot
+        slug={`calculators/${def.id}`}
+        alt={def.name}
+        aspect="16/9"
+        defaultPrompt={[
+          `Isometric editorial illustration of a "${def.name}" construction calculator hero.`,
+          `Subject: ${def.description}`,
+          'Warm wood + matte steel materials, soft studio lighting, deep navy background.',
+          'No text, no logos, no people. Tight composition with clean negative space.',
+          'Style: digital editorial, slightly stylized, photoreal materials.',
+        ].join(' ')}
+      />
+      <div style={{ padding: '1rem 1.25rem' }}>
+      <h2 style={{ marginTop: 0 }}>{def.name}</h2>
       <p className="muted" style={{ fontSize: '0.85rem' }}>{def.description}</p>
       <form onSubmit={calculate}>
         <div className="form-row" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
@@ -278,6 +347,7 @@ function CalculatorCard({ def }: { def: CalcDef }) {
           )}
         </div>
       )}
+      </div>
     </section>
   );
 }
