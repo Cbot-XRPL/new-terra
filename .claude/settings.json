@@ -51,7 +51,8 @@
       "Bash(xargs -I {} bash -c 'echo \"=== line {} ===\"; sed -n \"{}p\" c:/Users/codyr/Desktop/code/new-terra-4/client/src/pages/portal/NewEstimatePage.tsx')",
       "Bash(node scripts/genTestImage.mjs)",
       "Bash(node scripts/generateToolImages.mjs)",
-      "Bash(tee /tmp/gen.log)"
+      "Bash(tee /tmp/gen.log)",
+      "Bash(node scripts/generateFixtureIcons.mjs)"
     ]
   }
 }

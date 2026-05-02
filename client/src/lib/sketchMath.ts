@@ -31,9 +31,36 @@ export interface SketchRoom {
   openings: SketchOpening[];
 }
 
+// A placed fixture symbol on the sketch — toilet, sink, range, etc.
+// Each entry references one of the catalog slugs (e.g. "fixtures/toilet")
+// and carries its plan-view position + rotation in inches/degrees.
+// Width and height inches default to the catalog's footprint but the
+// rep can override per-instance (e.g. a 72" custom vanity).
+export interface SketchFixture {
+  id: string;
+  // Catalog slug; the client renders the matching webp from
+  // /media/sketcher/<slug-with-underscores>.webp.
+  slug: string;
+  // Free-form display label (defaults to the catalog label, but the
+  // rep can rename "Toilet" → "ADA toilet" for the line item that
+  // gets pushed to the estimate).
+  label: string;
+  // Plan-view center, in inches (same coordinate system as room points).
+  x: number;
+  y: number;
+  // Footprint — drawn axis-aligned. Rotation pivots around the center.
+  widthInches: number;
+  heightInches: number;
+  rotationDeg: number; // 0, 90, 180, 270 — UI snaps to 90°.
+}
+
 export interface Sketch {
   version: 1;
   rooms: SketchRoom[];
+  // Fixtures live at the sketch level (not per-room) so the rep can
+  // place them freely — a kitchen island sink doesn't have to belong
+  // to a "kitchen" room polygon.
+  fixtures: SketchFixture[];
   viewport?: { x: number; y: number; scale: number };
 }
 
@@ -43,6 +70,10 @@ export interface SketchTotals {
   wallSqft: number;
   perimeterFeet: number;
   openingCount: number;
+  // Per-fixture-type counts (e.g. { toilet: 2, vanity: 1 }). Keyed by
+  // the catalog slug's last segment so the consumer doesn't have to
+  // parse "fixtures/toilet" itself. Empty object when no fixtures.
+  fixtureCounts: Record<string, number>;
 }
 
 // Polygon area via the shoelace formula. Returns square inches.
@@ -118,6 +149,11 @@ export function sketchTotals(sketch: Sketch): SketchTotals {
     perimeterIn += t.perimeterIn;
     openingCount += t.openingCount;
   }
+  const fixtureCounts: Record<string, number> = {};
+  for (const f of sketch.fixtures ?? []) {
+    const key = f.slug.split('/').pop() ?? f.slug;
+    fixtureCounts[key] = (fixtureCounts[key] ?? 0) + 1;
+  }
   // 144 sq inches per sqft, 12 inches per foot.
   return {
     floorSqft: Math.round(floorSqIn / 144),
@@ -125,6 +161,7 @@ export function sketchTotals(sketch: Sketch): SketchTotals {
     wallSqft: Math.round(wallSqIn / 144),
     perimeterFeet: Math.round(perimeterIn / 12),
     openingCount,
+    fixtureCounts,
   };
 }
 
@@ -177,10 +214,35 @@ export function parseSketch(raw: unknown): Sketch {
       openings: normalizedOpenings,
     };
   });
+  const rawFixtures = Array.isArray(obj.fixtures) ? obj.fixtures : [];
+  const fixtures: SketchFixture[] = rawFixtures.map((f, fi) => {
+    const fo = f as Record<string, unknown>;
+    if (!fo || typeof fo !== 'object') throw new Error(`Fixture ${fi} is not an object`);
+    const slug = typeof fo.slug === 'string' ? (fo.slug as string) : '';
+    if (!/^fixtures\/[a-z0-9-]+$/.test(slug)) {
+      throw new Error(`Fixture ${fi} has bad slug: ${slug}`);
+    }
+    const x = Number(fo.x);
+    const y = Number(fo.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      throw new Error(`Fixture ${fi} has bad coords`);
+    }
+    return {
+      id: typeof fo.id === 'string' ? (fo.id as string) : `fx-${fi}`,
+      slug,
+      label: typeof fo.label === 'string' ? (fo.label as string).slice(0, 60) : slug.split('/').pop() ?? 'Fixture',
+      x,
+      y,
+      widthInches: Math.max(1, Number(fo.widthInches) || 24),
+      heightInches: Math.max(1, Number(fo.heightInches) || 24),
+      rotationDeg: ((Number(fo.rotationDeg) || 0) % 360 + 360) % 360,
+    };
+  });
   const viewport = obj.viewport as { x?: unknown; y?: unknown; scale?: unknown } | undefined;
   return {
     version: 1,
     rooms,
+    fixtures,
     viewport: viewport
       ? {
           x: Number(viewport.x) || 0,

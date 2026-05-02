@@ -182,8 +182,35 @@ router.post('/push-to-estimate', async (req, res, next) => {
       });
     }
 
+    // Fixtures — each placed fixture becomes an "ea" line so the rep
+    // can drop a price next to it. Group by label so 3 toilets land
+    // as one line "Toilet × 3" instead of three rows; the rep can
+    // still split later if pricing differs per unit.
+    type FixtureRow = { slug: string; label: string };
+    const fixtures = Array.isArray((sketch.data as { fixtures?: FixtureRow[] })?.fixtures)
+      ? ((sketch.data as { fixtures?: FixtureRow[] }).fixtures ?? [])
+      : [];
+    const grouped = new Map<string, { count: number; label: string }>();
+    for (const f of fixtures) {
+      const key = `${f.slug}::${f.label ?? ''}`;
+      const cur = grouped.get(key) ?? { count: 0, label: f.label || f.slug.split('/').pop() || 'Fixture' };
+      cur.count += 1;
+      grouped.set(key, cur);
+    }
+    for (const { count, label } of grouped.values()) {
+      newLines.push({
+        description: `${label} (from sketch fixtures)`,
+        quantity: count,
+        unit: 'ea',
+        unitPriceCents: 0,
+        totalCents: 0,
+        category: 'Materials',
+        position: pos++,
+      });
+    }
+
     if (newLines.length === 0) {
-      return res.status(400).json({ error: 'Sketch is empty — add a room first' });
+      return res.status(400).json({ error: 'Sketch is empty — add a room or fixture first' });
     }
 
     await prisma.estimateLine.createMany({

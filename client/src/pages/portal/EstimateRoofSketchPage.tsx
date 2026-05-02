@@ -399,6 +399,62 @@ export default function EstimateRoofSketchPage() {
                       EAVE
                     </text>
                   )}
+                  {/* Pitch direction arrow — runs from the centroid
+                      toward the eave (downhill). Skipped on flat roofs
+                      because there's no slope to indicate. */}
+                  {facet.pitchOver12 > 0 && (() => {
+                    const cx = facet.points.reduce((s, p) => s + p.x, 0) / facet.points.length;
+                    const cy = facet.points.reduce((s, p) => s + p.y, 0) / facet.points.length;
+                    // Direction from centroid → eave midpoint.
+                    const tx = eaveLabelAnchor.x - cx;
+                    const ty = eaveLabelAnchor.y - cy;
+                    const len = Math.hypot(tx, ty) || 1;
+                    // Arrow length: 60% of centroid→eave distance, capped.
+                    const armIn = Math.min(len * 0.6, 48);
+                    const ux = tx / len;
+                    const uy = ty / len;
+                    const tipX = cx + ux * armIn;
+                    const tipY = cy + uy * armIn;
+                    // Arrowhead: two short legs at 30° back from the tip.
+                    const headLen = 12;
+                    const cosT = Math.cos((150 * Math.PI) / 180);
+                    const sinT = Math.sin((150 * Math.PI) / 180);
+                    const leftX = tipX + headLen * (ux * cosT - uy * sinT);
+                    const leftY = tipY + headLen * (uy * cosT + ux * sinT);
+                    const rightX = tipX + headLen * (ux * cosT + uy * sinT);
+                    const rightY = tipY + headLen * (uy * cosT - ux * sinT);
+                    return (
+                      <g pointerEvents="none">
+                        <line
+                          x1={ix(cx)}
+                          y1={ix(cy)}
+                          x2={ix(tipX)}
+                          y2={ix(tipY)}
+                          stroke="var(--accent)"
+                          strokeWidth={2}
+                          strokeLinecap="round"
+                        />
+                        <line
+                          x1={ix(tipX)}
+                          y1={ix(tipY)}
+                          x2={ix(leftX)}
+                          y2={ix(leftY)}
+                          stroke="var(--accent)"
+                          strokeWidth={2}
+                          strokeLinecap="round"
+                        />
+                        <line
+                          x1={ix(tipX)}
+                          y1={ix(tipY)}
+                          x2={ix(rightX)}
+                          y2={ix(rightY)}
+                          stroke="var(--accent)"
+                          strokeWidth={2}
+                          strokeLinecap="round"
+                        />
+                      </g>
+                    );
+                  })()}
                 </g>
               );
             })}
