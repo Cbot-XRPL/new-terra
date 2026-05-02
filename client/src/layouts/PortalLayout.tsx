@@ -16,7 +16,6 @@ import {
   Files,
   Package,
   Box,
-  Calculator,
   Shield,
   Settings,
   Wrench,
