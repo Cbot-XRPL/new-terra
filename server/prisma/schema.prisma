@@ -2006,6 +2006,17 @@ model EstimateLine {
   // migration to add another variant. Null means "unspecified" — the
   // line is just whatever its description says.
   action       String?
+  // Section grouping. Lines with the same sectionTitle render together
+  // under a section header on the estimate detail page with their own
+  // subtotal. The push-to-estimate flows (sketch, roof sketch, visual
+  // estimator) tag every line in a single push with the same title so
+  // a rep can mix sketched rooms + visual-estimator items + hand-typed
+  // lines and still see clean per-area subtotals.
+  // sectionNotes is the section-level description shown once under the
+  // header. Renderer uses the first non-empty value it finds in the
+  // section's lines.
+  sectionTitle String?
+  sectionNotes String?
   // Optional link to a catalog Product. When set, we can look up
   // per-ZIP material price samples to seed the unit price instead of
   // using the catalog default. Set by the line builder when the user

@@ -30,9 +30,12 @@ const DEFAULT_ROOM_WIDTH_IN = 144;
 const DEFAULT_ROOM_HEIGHT_IN = 120;
 const DEFAULT_CEILING_IN = 96;
 
-// Pixel scale for the SVG: how many pixels represent one inch. The
-// view scrolls inside the SVG container so rooms 30 feet wide fit fine.
-const PX_PER_IN = 0.5;
+// Pixel scale for the SVG: how many pixels represent one inch. At
+// 3 px/in a 1-foot grid is 36 px (comfortable click target), and a
+// typical 30-foot room is ~1080 px wide — fits on most desktop
+// monitors with the sidebar still in view. The card scrolls if the
+// sketch outgrows it.
+const PX_PER_IN = 3;
 function ix(n: number) {
   return n * PX_PER_IN;
 }
@@ -208,13 +211,25 @@ export default function EstimateSketchPage() {
 
   async function pushToEstimate() {
     if (!estimateId) return;
-    if (!confirm('Push sketch totals into the estimate as new line items?')) return;
+    // Prompt for the section label so multiple pushes (e.g. main floor
+    // sketch + basement sketch) land in distinct subtotal blocks on
+    // the estimate. Cancel = abort. Empty = use the server default
+    // ("Floor sketch").
+    const sectionTitle = prompt(
+      'Section name for these line items?\n\nUse one section per area (e.g. "Kitchen", "Master bath", "Deck"). The estimate detail will subtotal everything in this section together.',
+      'Floor sketch',
+    );
+    if (sectionTitle === null) return;
     try {
       await save();
-      const r = await api<{ added: number }>(`/api/estimates/${estimateId}/sketch/push-to-estimate`, {
-        method: 'POST',
-      });
-      alert(`Added ${r.added} line${r.added === 1 ? '' : 's'} to the estimate.`);
+      const r = await api<{ added: number; sectionTitle: string }>(
+        `/api/estimates/${estimateId}/sketch/push-to-estimate`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ sectionTitle: sectionTitle.trim() || undefined }),
+        },
+      );
+      alert(`Added ${r.added} line${r.added === 1 ? '' : 's'} to "${r.sectionTitle}".`);
       navigate(`/portal/estimates/${estimateId}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Push failed');

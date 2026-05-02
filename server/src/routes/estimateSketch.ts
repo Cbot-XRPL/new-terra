@@ -105,6 +105,14 @@ router.post('/push-to-estimate', async (req, res, next) => {
     const est = await loadEditable((req.params as { estimateId: string }).estimateId, me.id, me.role === Role.ADMIN);
     if (!est) return res.status(404).json({ error: 'Estimate not found or locked' });
 
+    // Section tagging — every line pushed in one shot lands in the same
+    // section so the estimate detail can show a clean "Floor sketch" /
+    // "Deck" / "Kitchen" subtotal block. Caller can override; default
+    // is "Floor sketch".
+    const body = (req.body ?? {}) as { sectionTitle?: string; sectionNotes?: string };
+    const sectionTitle = (body.sectionTitle ?? 'Floor sketch').toString().slice(0, 120) || 'Floor sketch';
+    const sectionNotes = body.sectionNotes ? body.sectionNotes.toString().slice(0, 400) : null;
+
     const sketch = await (prisma as any).estimateSketch.findUnique({
       where: { estimateId: est.id },
     });
@@ -179,12 +187,17 @@ router.post('/push-to-estimate', async (req, res, next) => {
     }
 
     await prisma.estimateLine.createMany({
-      data: newLines.map((l) => ({
+      data: newLines.map((l, idx) => ({
         estimateId: est.id,
         ...l,
-      })),
+        // First line in the push carries the section description so
+        // the renderer has something to show under the header. Later
+        // lines just carry the title.
+        sectionTitle,
+        sectionNotes: idx === 0 ? sectionNotes : null,
+      } as never)),
     });
-    res.json({ added: newLines.length });
+    res.json({ added: newLines.length, sectionTitle });
   } catch (err) {
     next(err);
   }

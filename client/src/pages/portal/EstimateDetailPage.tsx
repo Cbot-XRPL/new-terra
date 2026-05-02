@@ -20,6 +20,13 @@ interface Line {
   // Xactimate-style action variant: REPLACE / RR / DR / CLEAN. Optional;
   // legacy lines without an explicit action render as plain.
   action?: string | null;
+  // Section grouping. Lines that share a sectionTitle render under one
+  // header with a subtotal. Pushed-from-sketch / pushed-from-visual-
+  // estimator flows tag everything in a single push with the same
+  // title (e.g. "Deck", "Kitchen — main floor"). Null/empty → falls
+  // back to the legacy category grouping.
+  sectionTitle?: string | null;
+  sectionNotes?: string | null;
 }
 interface Estimate {
   id: string;
@@ -185,14 +192,38 @@ export default function EstimateDetailPage() {
     }
   }
 
-  // Group lines by category for the customer-facing display.
-  const grouped = estimate.lines.reduce<Map<string, Line[]>>((m, l) => {
-    const key = l.category || 'Items';
-    const arr = m.get(key) ?? [];
-    arr.push(l);
-    m.set(key, arr);
-    return m;
-  }, new Map());
+  // Two-level grouping: by sectionTitle first (e.g. "Deck", "Roof",
+  // "Kitchen — main floor"), then by category (Labor / Materials)
+  // inside each section. Lines without a section land in a default
+  // "Items" bucket so the existing customer view is unchanged for
+  // estimates that haven't used the push-from-sketch flow yet.
+  //
+  // Sections preserve insertion order — sketch / visual estimator
+  // pushes append at the bottom, hand-typed lines stay where they
+  // were.
+  const sectionsMap = new Map<string, { notes: string | null; lines: Line[] }>();
+  for (const l of estimate.lines) {
+    const key = l.sectionTitle?.trim() || 'Items';
+    const bucket = sectionsMap.get(key) ?? { notes: null, lines: [] };
+    bucket.lines.push(l);
+    if (!bucket.notes && l.sectionNotes) bucket.notes = l.sectionNotes;
+    sectionsMap.set(key, bucket);
+  }
+  const sections = [...sectionsMap.entries()].map(([title, { notes, lines }]) => {
+    const byCategory = lines.reduce<Map<string, Line[]>>((m, l) => {
+      const cat = l.category || 'Items';
+      const arr = m.get(cat) ?? [];
+      arr.push(l);
+      m.set(cat, arr);
+      return m;
+    }, new Map());
+    return {
+      title,
+      notes,
+      categories: byCategory,
+      subtotalCents: lines.reduce((s, l) => s + l.totalCents, 0),
+    };
+  });
 
   return (
     <div className="dashboard">
@@ -283,64 +314,86 @@ export default function EstimateDetailPage() {
 
       <section className="card">
         <h2>Line items</h2>
-        {[...grouped.entries()].map(([cat, items]) => {
-          const subtotal = items.reduce((s, l) => s + l.totalCents, 0);
-          return (
-            <div key={cat} style={{ marginBottom: '1.25rem' }}>
-              <h3 style={{ marginBottom: '0.5rem' }}>{cat}</h3>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Description</th>
-                    <th>Qty</th>
-                    <th>Unit</th>
-                    <th>Price</th>
-                    <th>Total</th>
-                    {isStaff && <th aria-label="Photos">📷</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((l) => (
-                    <tr key={l.id}>
-                      <td>
-                        {l.description}
-                        {l.action && (
-                          <span
-                            className="badge"
-                            style={{ marginLeft: 6, fontSize: '0.7rem' }}
-                            title="Action variant"
-                          >
-                            {actionLabel(l.action)}
-                          </span>
-                        )}
-                      </td>
-                      <td>{l.quantity}</td>
-                      <td>{l.unit ?? '—'}</td>
-                      <td>{formatCents(l.unitPriceCents)}</td>
-                      <td><strong>{formatCents(l.totalCents)}</strong></td>
-                      {isStaff && (
-                        <td>
-                          <LinePhotosButton
-                            estimateId={estimate.id}
-                            lineId={l.id}
-                            editable={estimate.status === 'DRAFT'}
-                          />
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td colSpan={4} style={{ textAlign: 'right' }}><em>Subtotal — {cat}</em></td>
-                    <td><strong>{formatCents(subtotal)}</strong></td>
-                    {isStaff && <td />}
-                  </tr>
-                </tfoot>
-              </table>
+        {sections.map((section) => (
+          <div
+            key={section.title}
+            style={{
+              marginBottom: '2rem',
+              paddingBottom: '1rem',
+              borderBottom: '1px solid var(--border)',
+            }}
+          >
+            <div className="row-between" style={{ alignItems: 'baseline', marginBottom: '0.25rem' }}>
+              <h3 style={{ margin: 0 }}>{section.title}</h3>
+              <strong>{formatCents(section.subtotalCents)}</strong>
             </div>
-          );
-        })}
+            {section.notes && (
+              <p className="muted" style={{ marginTop: 0, marginBottom: '0.5rem', whiteSpace: 'pre-wrap' }}>
+                {section.notes}
+              </p>
+            )}
+            {[...section.categories.entries()].map(([cat, items]) => {
+              const catSubtotal = items.reduce((s, l) => s + l.totalCents, 0);
+              return (
+                <div key={cat} style={{ marginBottom: '1rem' }}>
+                  <h4 style={{ margin: '0.5rem 0' }}>{cat}</h4>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Description</th>
+                        <th>Qty</th>
+                        <th>Unit</th>
+                        <th>Price</th>
+                        <th>Total</th>
+                        {isStaff && <th aria-label="Photos">📷</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((l) => (
+                        <tr key={l.id}>
+                          <td>
+                            {l.description}
+                            {l.action && (
+                              <span
+                                className="badge"
+                                style={{ marginLeft: 6, fontSize: '0.7rem' }}
+                                title="Action variant"
+                              >
+                                {actionLabel(l.action)}
+                              </span>
+                            )}
+                          </td>
+                          <td>{l.quantity}</td>
+                          <td>{l.unit ?? '—'}</td>
+                          <td>{formatCents(l.unitPriceCents)}</td>
+                          <td><strong>{formatCents(l.totalCents)}</strong></td>
+                          {isStaff && (
+                            <td>
+                              <LinePhotosButton
+                                estimateId={estimate.id}
+                                lineId={l.id}
+                                editable={estimate.status === 'DRAFT'}
+                              />
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={4} style={{ textAlign: 'right' }}>
+                          <em>Subtotal — {cat}</em>
+                        </td>
+                        <td><strong>{formatCents(catSubtotal)}</strong></td>
+                        {isStaff && <td />}
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              );
+            })}
+          </div>
+        ))}
 
         <dl className="kv" style={{ maxWidth: 360, marginLeft: 'auto' }}>
           <dt>Subtotal</dt><dd>{formatCents(estimate.subtotalCents)}</dd>

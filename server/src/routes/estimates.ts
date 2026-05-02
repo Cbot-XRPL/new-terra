@@ -1044,7 +1044,16 @@ router.post('/:id/add-assembly', async (req, res, next) => {
     if (!me || !hasSalesAccess(me)) return res.status(403).json({ error: 'Forbidden' });
 
     const body = z
-      .object({ assemblyId: z.string().min(1), quantity: z.number().nonnegative().default(1) })
+      .object({
+        assemblyId: z.string().min(1),
+        quantity: z.number().nonnegative().default(1),
+        // Section grouping — same pattern as the sketch push routes.
+        // Visual estimator passes the assembly name (e.g. "Composite
+        // deck install") so the customer's estimate reads as a clear
+        // "Deck → … → subtotal" block instead of a flat list.
+        sectionTitle: z.string().max(120).optional(),
+        sectionNotes: z.string().max(400).optional(),
+      })
       .parse(req.body);
 
     const existing = await prisma.estimate.findUnique({
@@ -1070,6 +1079,8 @@ router.post('/:id/add-assembly', async (req, res, next) => {
     }
 
     const startPos = existing.lines.length;
+    const sectionTitle = (body.sectionTitle ?? '').trim() || null;
+    const sectionNotes = (body.sectionNotes ?? '').trim() || null;
     const newLines = expanded.map((l, idx) => ({
       estimateId: existing.id,
       description: l.description,
@@ -1080,6 +1091,8 @@ router.post('/:id/add-assembly', async (req, res, next) => {
       category: l.category === 'Labor' ? 'Labor' : 'Materials',
       notes: l.notes,
       position: startPos + idx,
+      sectionTitle,
+      sectionNotes: idx === 0 ? sectionNotes : null,
     }));
 
     const allLines = [...existing.lines, ...newLines];
@@ -1093,7 +1106,7 @@ router.post('/:id/add-assembly', async (req, res, next) => {
 
     const updated = await prisma.$transaction(async (tx) => {
       if (newLines.length > 0) {
-        await tx.estimateLine.createMany({ data: newLines });
+        await tx.estimateLine.createMany({ data: newLines as never });
       }
       await tx.estimate.update({ where: { id: existing.id }, data: totals });
       return tx.estimate.findUnique({
@@ -1104,7 +1117,7 @@ router.post('/:id/add-assembly', async (req, res, next) => {
         },
       });
     });
-    res.json({ estimate: updated, addedLines: newLines.length });
+    res.json({ estimate: updated, addedLines: newLines.length, sectionTitle });
   } catch (err) {
     next(err);
   }

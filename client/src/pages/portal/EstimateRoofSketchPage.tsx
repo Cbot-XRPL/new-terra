@@ -34,7 +34,10 @@ const DEFAULT_FACET_WIDTH_IN = 20 * 12;
 const DEFAULT_FACET_HEIGHT_IN = 16 * 12;
 const DEFAULT_PITCH = 6;
 
-const PX_PER_IN = 0.5;
+// Match EstimateSketchPage's scale (3 px/in) so the floor + roof
+// sketches feel the same. A 1-foot grid is 36 px, comfortable for
+// click + drag.
+const PX_PER_IN = 3;
 function ix(n: number) {
   return n * PX_PER_IN;
 }
@@ -187,14 +190,21 @@ export default function EstimateRoofSketchPage() {
 
   async function pushToEstimate() {
     if (!estimateId) return;
-    if (!confirm('Push roof totals into the estimate as new line items?')) return;
+    const sectionTitle = prompt(
+      'Section name for these line items?\n\nUse one section per area (e.g. "Main roof", "Garage roof", "Porch roof"). The estimate detail will subtotal everything in this section together.',
+      'Roof',
+    );
+    if (sectionTitle === null) return;
     try {
       await save();
-      const r = await api<{ added: number }>(
+      const r = await api<{ added: number; sectionTitle: string }>(
         `/api/estimates/${estimateId}/roof-sketch/push-to-estimate`,
-        { method: 'POST' },
+        {
+          method: 'POST',
+          body: JSON.stringify({ sectionTitle: sectionTitle.trim() || undefined }),
+        },
       );
-      alert(`Added ${r.added} line${r.added === 1 ? '' : 's'} to the estimate.`);
+      alert(`Added ${r.added} line${r.added === 1 ? '' : 's'} to "${r.sectionTitle}".`);
       navigate(`/portal/estimates/${estimateId}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Push failed');

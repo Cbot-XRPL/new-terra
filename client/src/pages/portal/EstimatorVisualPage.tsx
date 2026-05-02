@@ -61,6 +61,10 @@ export default function EstimatorVisualPage() {
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [adding, setAdding] = useState(false);
+  // Section label sent with the push so multiple visual-estimator
+  // assemblies on one estimate land in their own subtotal blocks (a
+  // deck assembly + a kitchen assembly produce two separate sections).
+  const [sectionTitle, setSectionTitle] = useState('');
 
   const scene: Scene = useMemo(
     () => SCENES.find((s) => s.id === sceneId) ?? SCENES[0],
@@ -125,15 +129,23 @@ export default function EstimatorVisualPage() {
     setError(null);
     setInfo(null);
     try {
-      const r = await api<{ addedLines: number }>(
+      // Default the section to the assembly's name when the rep didn't
+      // type one — keeps single-shot pushes labeled without forcing a
+      // prompt every time.
+      const effectiveSection = sectionTitle.trim() || activeResolved.assembly.name;
+      const r = await api<{ addedLines: number; sectionTitle: string | null }>(
         `/api/estimates/${draftId}/add-assembly`,
         {
           method: 'POST',
-          body: JSON.stringify({ assemblyId: activeResolved.assembly.id, quantity: qty }),
+          body: JSON.stringify({
+            assemblyId: activeResolved.assembly.id,
+            quantity: qty,
+            sectionTitle: effectiveSection,
+          }),
         },
       );
       setInfo(
-        `Added ${r.addedLines} line${r.addedLines === 1 ? '' : 's'} to estimate.`,
+        `Added ${r.addedLines} line${r.addedLines === 1 ? '' : 's'} to "${r.sectionTitle ?? 'Items'}".`,
       );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not add to estimate');
@@ -299,6 +311,19 @@ export default function EstimatorVisualPage() {
                         min="0"
                         value={quantity}
                         onChange={(e) => setQuantity(e.target.value)}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label htmlFor="ve-section">
+                        Section <span className="muted" style={{ fontWeight: 'normal' }}>(blank = use assembly name)</span>
+                      </label>
+                      <input
+                        id="ve-section"
+                        type="text"
+                        value={sectionTitle}
+                        onChange={(e) => setSectionTitle(e.target.value)}
+                        placeholder={activeResolved?.assembly?.name ?? 'e.g. Deck, Kitchen, Master bath'}
+                        title="Lines pushed in one click land in this subtotal block on the estimate."
                       />
                     </div>
                     <button

@@ -107,6 +107,11 @@ router.post('/push-to-estimate', async (req, res, next) => {
     const est = await loadEditable((req.params as { estimateId: string }).estimateId, me.id, me.role === Role.ADMIN);
     if (!est) return res.status(404).json({ error: 'Estimate not found or locked' });
 
+    // Section grouping — same pattern as the floor sketch push.
+    const body = (req.body ?? {}) as { sectionTitle?: string; sectionNotes?: string };
+    const sectionTitle = (body.sectionTitle ?? 'Roof').toString().slice(0, 120) || 'Roof';
+    const sectionNotes = body.sectionNotes ? body.sectionNotes.toString().slice(0, 400) : null;
+
     const sketch = await (prisma as any).estimateRoofSketch.findUnique({
       where: { estimateId: est.id },
     });
@@ -193,12 +198,14 @@ router.post('/push-to-estimate', async (req, res, next) => {
     }
 
     await prisma.estimateLine.createMany({
-      data: newLines.map((l) => ({
+      data: newLines.map((l, idx) => ({
         estimateId: est.id,
         ...l,
-      })),
+        sectionTitle,
+        sectionNotes: idx === 0 ? sectionNotes : null,
+      } as never)),
     });
-    res.json({ added: newLines.length });
+    res.json({ added: newLines.length, sectionTitle });
   } catch (err) {
     next(err);
   }
