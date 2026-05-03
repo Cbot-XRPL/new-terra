@@ -87,8 +87,12 @@ interface EstimateRef {
 }
 
 export default function EstimateRoofSketchPage() {
-  const { id: estimateId } = useParams<{ id: string }>();
+  const { id: paramId } = useParams<{ id: string }>();
+  const isStandalone = !paramId;
   const navigate = useNavigate();
+  const [pickedId, setPickedId] = useState<string>('');
+  const targetId = paramId ?? (pickedId || null);
+  const [drafts, setDrafts] = useState<EstimateRef[] | null>(null);
   const [estimate, setEstimate] = useState<EstimateRef | null>(null);
   const [sketch, setSketch] = useState<RoofSketch>(emptySketch());
   const [selectedFacetId, setSelectedFacetId] = useState<string | null>(null);
@@ -97,18 +101,45 @@ export default function EstimateRoofSketchPage() {
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
+  // Standalone mode loads the draft list once for the picker.
   useEffect(() => {
-    if (!estimateId) return;
+    if (!isStandalone) return;
+    let ignored = false;
+    (async () => {
+      try {
+        const r = await api<{ estimates: EstimateRef[] }>(
+          '/api/estimates?status=DRAFT&pageSize=100',
+        );
+        if (!ignored) setDrafts(r.estimates);
+      } catch (err) {
+        if (!ignored) setError(err instanceof ApiError ? err.message : 'Failed to load drafts');
+      }
+    })();
+    return () => {
+      ignored = true;
+    };
+  }, [isStandalone]);
+
+  useEffect(() => {
+    if (!targetId) {
+      setEstimate(null);
+      setSketch(emptySketch());
+      setSelectedFacetId(null);
+      setSavedAt(null);
+      return;
+    }
     let ignored = false;
     (async () => {
       try {
         const [est, s] = await Promise.all([
-          api<{ estimate: EstimateRef }>(`/api/estimates/${estimateId}`),
-          api<{ sketch: { data: RoofSketch } | null }>(`/api/estimates/${estimateId}/roof-sketch`),
+          api<{ estimate: EstimateRef }>(`/api/estimates/${targetId}`),
+          api<{ sketch: { data: RoofSketch } | null }>(`/api/estimates/${targetId}/roof-sketch`),
         ]);
         if (ignored) return;
         setEstimate(est.estimate);
-        if (s.sketch?.data) setSketch(s.sketch.data);
+        setSketch(s.sketch?.data ?? emptySketch());
+        setSelectedFacetId(null);
+        setSavedAt(null);
       } catch (err) {
         if (!ignored) setError(err instanceof ApiError ? err.message : 'Failed to load roof sketch');
       }
@@ -116,7 +147,7 @@ export default function EstimateRoofSketchPage() {
     return () => {
       ignored = true;
     };
-  }, [estimateId]);
+  }, [targetId]);
 
   const totals = useMemo(() => roofTotals(sketch), [sketch]);
   const classified = useMemo(() => classifyEdges(sketch), [sketch]);
@@ -172,11 +203,11 @@ export default function EstimateRoofSketchPage() {
 
   async function save(e?: FormEvent) {
     e?.preventDefault();
-    if (!estimateId) return;
+    if (!targetId) return;
     setSaving(true);
     setError(null);
     try {
-      await api(`/api/estimates/${estimateId}/roof-sketch`, {
+      await api(`/api/estimates/${targetId}/roof-sketch`, {
         method: 'PUT',
         body: JSON.stringify({ data: sketch }),
       });
@@ -189,7 +220,7 @@ export default function EstimateRoofSketchPage() {
   }
 
   async function pushToEstimate() {
-    if (!estimateId) return;
+    if (!targetId) return;
     const sectionTitle = prompt(
       'Section name for these line items?\n\nUse one section per area (e.g. "Main roof", "Garage roof", "Porch roof"). The estimate detail will subtotal everything in this section together.',
       'Roof',
@@ -198,14 +229,14 @@ export default function EstimateRoofSketchPage() {
     try {
       await save();
       const r = await api<{ added: number; sectionTitle: string }>(
-        `/api/estimates/${estimateId}/roof-sketch/push-to-estimate`,
+        `/api/estimates/${targetId}/roof-sketch/push-to-estimate`,
         {
           method: 'POST',
           body: JSON.stringify({ sectionTitle: sectionTitle.trim() || undefined }),
         },
       );
       alert(`Added ${r.added} line${r.added === 1 ? '' : 's'} to "${r.sectionTitle}".`);
-      navigate(`/portal/estimates/${estimateId}`);
+      navigate(`/portal/estimates/${targetId}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Push failed');
     }
@@ -235,22 +266,51 @@ export default function EstimateRoofSketchPage() {
                 {' · '}
                 <strong>{estimate.title}</strong>
               </>
+            ) : isStandalone ? (
+              'Pick a draft estimate below to start.'
             ) : (
               'Loading…'
             )}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <button type="button" onClick={addFacet}>+ Facet</button>
-          <button type="button" className="button-ghost" onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : 'Save sketch'}
-          </button>
-          <button type="button" onClick={pushToEstimate}>Push totals to estimate</button>
-        </div>
+        {targetId && (
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button type="button" onClick={addFacet}>+ Facet</button>
+            <button type="button" className="button-ghost" onClick={save} disabled={saving}>
+              {saving ? 'Saving…' : 'Save sketch'}
+            </button>
+            <button type="button" onClick={pushToEstimate}>Push totals to estimate</button>
+          </div>
+        )}
       </header>
 
       {error && <div className="form-error">{error}</div>}
 
+      {isStandalone && (
+        <section className="card">
+          <label htmlFor="roof-sketch-draft-pick">Target draft estimate</label>
+          <select
+            id="roof-sketch-draft-pick"
+            value={pickedId}
+            onChange={(e) => setPickedId(e.target.value)}
+          >
+            <option value="">— Pick a draft —</option>
+            {drafts === null && <option disabled>Loading…</option>}
+            {drafts?.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.number} · {d.title}
+              </option>
+            ))}
+          </select>
+          <p className="muted" style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
+            Sketch saves and pushed lines land on the selected draft. Switching drafts loads
+            that draft's saved roof sketch (or starts blank).{' '}
+            <Link to="/portal/estimates/new">Create a new draft →</Link>
+          </p>
+        </section>
+      )}
+
+      {targetId && <>
       <section className="card">
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <div>
@@ -534,6 +594,7 @@ export default function EstimateRoofSketchPage() {
           )}
         </aside>
       </div>
+      </>}
     </div>
   );
 }

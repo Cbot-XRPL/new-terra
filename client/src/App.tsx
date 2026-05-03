@@ -422,6 +422,22 @@ export default function App() {
           }
         />
         <Route
+          path="sketcher/floor"
+          element={
+            <RequireAuth salesAccess>
+              <EstimateSketchPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="sketcher/roof"
+          element={
+            <RequireAuth salesAccess>
+              <EstimateRoofSketchPage />
+            </RequireAuth>
+          }
+        />
+        <Route
           path="tools"
           element={
             <RequireAuth roles={['ADMIN', 'EMPLOYEE', 'SUBCONTRACTOR']}>

@@ -101,8 +101,12 @@ interface EstimateRef {
 }
 
 export default function EstimateSketchPage() {
-  const { id: estimateId } = useParams<{ id: string }>();
+  const { id: paramId } = useParams<{ id: string }>();
+  const isStandalone = !paramId;
   const navigate = useNavigate();
+  const [pickedId, setPickedId] = useState<string>('');
+  const targetId = paramId ?? (pickedId || null);
+  const [drafts, setDrafts] = useState<EstimateRef[] | null>(null);
   const [estimate, setEstimate] = useState<EstimateRef | null>(null);
   const [sketch, setSketch] = useState<Sketch>(emptySketch());
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
@@ -114,15 +118,41 @@ export default function EstimateSketchPage() {
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
+  // Standalone mode loads the draft list once for the picker.
+  useEffect(() => {
+    if (!isStandalone) return;
+    let ignored = false;
+    (async () => {
+      try {
+        const r = await api<{ estimates: EstimateRef[] }>(
+          '/api/estimates?status=DRAFT&pageSize=100',
+        );
+        if (!ignored) setDrafts(r.estimates);
+      } catch (err) {
+        if (!ignored) setError(err instanceof ApiError ? err.message : 'Failed to load drafts');
+      }
+    })();
+    return () => {
+      ignored = true;
+    };
+  }, [isStandalone]);
+
   // Load estimate + existing sketch.
   useEffect(() => {
-    if (!estimateId) return;
+    if (!targetId) {
+      setEstimate(null);
+      setSketch(emptySketch());
+      setSelectedRoomId(null);
+      setSelectedFixtureId(null);
+      setSavedAt(null);
+      return;
+    }
     let ignored = false;
     (async () => {
       try {
         const [est, s] = await Promise.all([
-          api<{ estimate: EstimateRef }>(`/api/estimates/${estimateId}`),
-          api<{ sketch: { data: Sketch } | null }>(`/api/estimates/${estimateId}/sketch`),
+          api<{ estimate: EstimateRef }>(`/api/estimates/${targetId}`),
+          api<{ sketch: { data: Sketch } | null }>(`/api/estimates/${targetId}/sketch`),
         ]);
         if (ignored) return;
         setEstimate(est.estimate);
@@ -132,7 +162,12 @@ export default function EstimateSketchPage() {
           const data = s.sketch.data;
           if (!Array.isArray(data.fixtures)) data.fixtures = [];
           setSketch(data);
+        } else {
+          setSketch(emptySketch());
         }
+        setSelectedRoomId(null);
+        setSelectedFixtureId(null);
+        setSavedAt(null);
       } catch (err) {
         if (!ignored) setError(err instanceof ApiError ? err.message : 'Failed to load sketch');
       }
@@ -140,7 +175,7 @@ export default function EstimateSketchPage() {
     return () => {
       ignored = true;
     };
-  }, [estimateId]);
+  }, [targetId]);
 
   const totals = useMemo(() => sketchTotals(sketch), [sketch]);
   const selectedRoom = sketch.rooms.find((r) => r.id === selectedRoomId) ?? null;
@@ -333,11 +368,11 @@ export default function EstimateSketchPage() {
 
   async function save(e?: FormEvent) {
     e?.preventDefault();
-    if (!estimateId) return;
+    if (!targetId) return;
     setSaving(true);
     setError(null);
     try {
-      await api(`/api/estimates/${estimateId}/sketch`, {
+      await api(`/api/estimates/${targetId}/sketch`, {
         method: 'PUT',
         body: JSON.stringify({ data: sketch }),
       });
@@ -350,7 +385,7 @@ export default function EstimateSketchPage() {
   }
 
   async function pushToEstimate() {
-    if (!estimateId) return;
+    if (!targetId) return;
     // Prompt for the section label so multiple pushes (e.g. main floor
     // sketch + basement sketch) land in distinct subtotal blocks on
     // the estimate. Cancel = abort. Empty = use the server default
@@ -363,14 +398,14 @@ export default function EstimateSketchPage() {
     try {
       await save();
       const r = await api<{ added: number; sectionTitle: string }>(
-        `/api/estimates/${estimateId}/sketch/push-to-estimate`,
+        `/api/estimates/${targetId}/sketch/push-to-estimate`,
         {
           method: 'POST',
           body: JSON.stringify({ sectionTitle: sectionTitle.trim() || undefined }),
         },
       );
       alert(`Added ${r.added} line${r.added === 1 ? '' : 's'} to "${r.sectionTitle}".`);
-      navigate(`/portal/estimates/${estimateId}`);
+      navigate(`/portal/estimates/${targetId}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Push failed');
     }
@@ -408,22 +443,51 @@ export default function EstimateSketchPage() {
                 {' · '}
                 <strong>{estimate.title}</strong>
               </>
+            ) : isStandalone ? (
+              'Pick a draft estimate below to start.'
             ) : (
               'Loading…'
             )}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <button type="button" onClick={addRoom}>+ Room</button>
-          <button type="button" className="button-ghost" onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : 'Save sketch'}
-          </button>
-          <button type="button" onClick={pushToEstimate}>Push totals to estimate</button>
-        </div>
+        {targetId && (
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button type="button" onClick={addRoom}>+ Room</button>
+            <button type="button" className="button-ghost" onClick={save} disabled={saving}>
+              {saving ? 'Saving…' : 'Save sketch'}
+            </button>
+            <button type="button" onClick={pushToEstimate}>Push totals to estimate</button>
+          </div>
+        )}
       </header>
 
       {error && <div className="form-error">{error}</div>}
 
+      {isStandalone && (
+        <section className="card">
+          <label htmlFor="floor-sketch-draft-pick">Target draft estimate</label>
+          <select
+            id="floor-sketch-draft-pick"
+            value={pickedId}
+            onChange={(e) => setPickedId(e.target.value)}
+          >
+            <option value="">— Pick a draft —</option>
+            {drafts === null && <option disabled>Loading…</option>}
+            {drafts?.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.number} · {d.title}
+              </option>
+            ))}
+          </select>
+          <p className="muted" style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
+            Sketch saves and pushed lines land on the selected draft. Switching drafts loads
+            that draft's saved floor sketch (or starts blank).{' '}
+            <Link to="/portal/estimates/new">Create a new draft →</Link>
+          </p>
+        </section>
+      )}
+
+      {targetId && <>
       <section className="card">
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <div>
@@ -645,6 +709,7 @@ export default function EstimateSketchPage() {
           )}
         </aside>
       </div>
+      </>}
     </div>
   );
 }

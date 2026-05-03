@@ -85,7 +85,7 @@ export default function ToolsHubPage() {
               description="Draw rooms + openings. Pushes floor SF, wall SF (openings subtracted), ceiling SF, and perimeter LF."
               icon={<Pencil size={18} />}
               imageKey="tools/floor-sketch"
-              note="Pick a Draft estimate below to start."
+              link={{ to: '/portal/sketcher/floor', label: 'Open' }}
             />
           )}
           {/* Roof sketch */}
@@ -95,7 +95,7 @@ export default function ToolsHubPage() {
               description="Draw facets with pitch. Pushes shingle SF, drip edge, ridge cap, valley flashing, and gutter LF."
               icon={<Box size={18} />}
               imageKey="tools/roof-sketch"
-              note="Pick a Draft estimate below to start."
+              link={{ to: '/portal/sketcher/roof', label: 'Open' }}
             />
           )}
           {/* Visual estimator */}
